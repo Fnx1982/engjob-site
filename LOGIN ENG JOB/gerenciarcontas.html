@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="gerenciacontas.css" />
+<title>Gerenciar Usuários</title>
+
+</head>
+<body>
+<main class="container">
+    <h1>Gerenciar Usuários</h1>
+
+    <!-- FORMULÁRIO DE CADASTRO DE USUÁRIO -->
+    <form id="formUsuario">
+        <label>
+            Nome Completo
+            <input type="text" id="nome" required />
+        </label>
+        <label>
+            Registro
+            <input type="text" id="registro" required />
+        </label>
+        <label>
+            Email
+            <input type="email" id="email" required />
+        </label>
+        <label>
+            Telefone
+            <input type="tel" id="telefone" placeholder="(99) 99999-9999" required />
+        </label>
+        <label>
+            Sexo
+            <select id="sexo" required>
+                <option value="" disabled selected>Selecione</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Feminino">Feminino</option>
+                <option value="Outro">Outro</option>
+            </select>
+        </label>
+        <label>
+            CPF
+            <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" />
+        </label>
+        <label>
+            RG
+            <input type="text" id="rg" placeholder="00.000.000-0" maxlength="12" />
+        </label>
+        <label>
+            Endereço
+            <input type="text" id="endereco" required />
+        </label>
+        <label>
+            Senha
+            <input type="password" id="senha" required />
+        </label>
+        <label>
+            Setor
+            <select id="setor" required>
+                <option value="" disabled selected>Selecione o setor</option>
+            </select>
+        </label>
+
+        <button type="submit">Adicionar Usuário</button>
+    </form>
+
+    <!-- FORMULÁRIO DE CADASTRO DE SETOR -->
+    <h2>Cadastrar Setor</h2>
+    <form id="formSetor">
+        <div class="linha-setor">
+            <input type="text" id="novoSetorInput" placeholder="Digite o nome do setor" required />
+            <button type="submit">Adicionar Setor</button>
+        </div>
+    </form>
+
+    <!-- LISTA DE SETORES -->
+    <h2>Setores Cadastrados</h2>
+    <table id="tabelaSetores">
+        <thead>
+            <tr>
+                <th>Nome do Setor</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <!-- TABELA USUÁRIOS -->
+    <h2>Usuários Cadastrados</h2>
+    <table id="tabelaUsuarios">
+        <thead>
+            <tr>
+                <th>Nome Completo</th>
+                <th>Registro</th>
+                <th>Tipo</th>
+                <th>Editar</th>
+                <th>Permissão</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <button onclick="window.location.href='home.html'">Voltar</button>
+</main>
+
+<script>
+    // Funções de Setores (mantidas iguais)
+    function carregarSetores() {
+        const setores = JSON.parse(localStorage.getItem("setores")) || [];
+        const selectSetor = document.getElementById("setor");
+        selectSetor.innerHTML = '<option value="" disabled selected>Selecione o setor</option>';
+        setores.forEach(setor => {
+            const option = document.createElement("option");
+            option.value = setor;
+            option.textContent = setor;
+            selectSetor.appendChild(option);
+        });
+
+        const tbody = document.querySelector("#tabelaSetores tbody");
+        tbody.innerHTML = "";
+        setores.forEach((setor, index) => {
+            const tr = document.createElement("tr");
+            const tdNome = document.createElement("td");
+            tdNome.textContent = setor;
+            tr.appendChild(tdNome);
+
+            const tdAcoes = document.createElement("td");
+            const btnExcluir = document.createElement("button");
+            btnExcluir.textContent = "Excluir";
+            btnExcluir.className = "btn-excluir-setor";
+            btnExcluir.addEventListener("click", () => excluirSetor(index));
+            tdAcoes.appendChild(btnExcluir);
+            tr.appendChild(tdAcoes);
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    function salvarNovoSetor(novoSetor) {
+        let setores = JSON.parse(localStorage.getItem("setores")) || [];
+        if (setores.includes(novoSetor)) {
+            alert("Este setor já existe.");
+            return false;
+        }
+        setores.push(novoSetor);
+        localStorage.setItem("setores", JSON.stringify(setores));
+        carregarSetores();
+        return true;
+    }
+
+    function excluirSetor(index) {
+        let setores = JSON.parse(localStorage.getItem("setores")) || [];
+        setores.splice(index, 1);
+        localStorage.setItem("setores", JSON.stringify(setores));
+        carregarSetores();
+    }
+
+    document.getElementById("formSetor").addEventListener("submit", function(e) {
+        e.preventDefault();
+        const novoSetor = document.getElementById("novoSetorInput").value.trim();
+        if (novoSetor) {
+            if (salvarNovoSetor(novoSetor)) {
+                document.getElementById("novoSetorInput").value = "";
+            }
+        }
+    });
+
+    // Máscaras (mantidas iguais)
+    function mascaraTelefone(event) {
+        let input = event.target;
+        let valor = input.value.replace(/\D/g, '');
+        if (valor.length > 11) valor = valor.slice(0, 11);
+
+        if (valor.length > 10) {
+            valor = valor.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3');
+        } else if (valor.length > 5) {
+            valor = valor.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+        } else if (valor.length > 2) {
+            valor = valor.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+        } else if (valor.length > 0) {
+            valor = valor.replace(/^(\d{0,2})/, '($1');
+        }
+        input.value = valor;
+    }
+    document.getElementById("telefone").addEventListener("input", mascaraTelefone);
+
+    function mascaraCPF(event) {
+        let input = event.target;
+        let valor = input.value.replace(/\D/g, '');
+        if (valor.length > 11) valor = valor.slice(0, 11);
+        valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+        input.value = valor;
+    }
+    document.getElementById("cpf").addEventListener("input", mascaraCPF);
+
+    function mascaraRG(event) {
+        let input = event.target;
+        let valor = input.value.replace(/\D/g, '');
+        if (valor.length > 9) valor = valor.slice(0, 9);
+        valor = valor.replace(/(\d{2})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d{1})$/, '$1-$2');
+        input.value = valor;
+    }
+    document.getElementById("rg").addEventListener("input", mascaraRG);
+
+    // Usuários
+    function carregarUsuarios() {
+        const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+        const tbody = document.querySelector("#tabelaUsuarios tbody");
+        tbody.innerHTML = "";
+
+        usuarios.forEach((user, index) => {
+            const tr = document.createElement("tr");
+
+            const tdNome = document.createElement("td");
+            tdNome.textContent = user.nome;
+            tr.appendChild(tdNome);
+
+            const tdRegistro = document.createElement("td");
+            tdRegistro.textContent = user.registro;
+            tr.appendChild(tdRegistro);
+
+            const tdTipo = document.createElement("td");
+            tdTipo.textContent = user.tipo === "admin" ? "Admin" : user.tipo === "gestor" ? "Gestor" : "Operador";
+            tr.appendChild(tdTipo);
+
+            const tdEditar = document.createElement("td");
+            const btnEditar = document.createElement("button");
+            btnEditar.textContent = "Editar";
+            btnEditar.className = "btn-editar";
+            btnEditar.addEventListener("click", () => {
+                window.location.href = `editar.html?index=${index}`;
+            });
+            tdEditar.appendChild(btnEditar);
+            tr.appendChild(tdEditar);
+
+            const tdToggle = document.createElement("td");
+            const btnToggle = document.createElement("button");
+            btnToggle.textContent = "Alterar Permissão";
+            btnToggle.className = "btn-toggle-tipo";
+            btnToggle.addEventListener("click", () => {
+                const tipos = ["admin", "gestor", "operador"];
+                let atual = tipos.indexOf(user.tipo);
+                let proximo = (atual + 1) % tipos.length;
+                usuarios[index].tipo = tipos[proximo];
+                localStorage.setItem("usuarios", JSON.stringify(usuarios));
+
+                tdTipo.textContent = usuarios[index].tipo === "admin" ? "Admin" : usuarios[index].tipo === "gestor" ? "Gestor" : "Operador";
+            });
+            tdToggle.appendChild(btnToggle);
+            tr.appendChild(tdToggle);
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById("formUsuario").addEventListener("submit", function(event) {
+        event.preventDefault();
+
+        const nome = document.getElementById("nome").value.trim();
+        const registro = document.getElementById("registro").value.trim();
+        const email = document.getElementById("email").value.trim();
+        const telefone = document.getElementById("telefone").value.trim();
+        const sexo = document.getElementById("sexo").value;
+        const cpf = document.getElementById("cpf").value.trim();
+        const rg = document.getElementById("rg").value.trim();
+        const endereco = document.getElementById("endereco").value.trim();
+        const senha = document.getElementById("senha").value;
+        const setor = document.getElementById("setor").value;
+
+        // LOG DE DEPURAÇÃO: abra o Console (F12) para ver os valores capturados
+        console.log("Dados do formulário:", { nome, registro, email, telefone, sexo, cpf, rg, endereco, senha, setor });
+
+        if (!nome || !registro || !email || !telefone || !sexo || !endereco || !senha || !setor) {
+            alert("Por favor, preencha todos os campos obrigatórios.");
+            return;
+        }
+
+        // CORREÇÃO: regex de telefone mais tolerante a variações de espaço
+        // geradas pela máscara (fixo ou celular, com ou sem espaço após o DDD)
+        const telefoneRegex = /^\(\d{2}\)\s?\d{4,5}-\d{4}$/;
+        if (!telefoneRegex.test(telefone)) {
+            alert("Telefone inválido. Use o formato (99) 99999-9999.");
+            console.warn("Telefone rejeitado pela regex:", telefone);
+            return;
+        }
+
+        let usuarios = [];
+        try {
+            usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+        } catch (err) {
+            console.error("Erro ao ler usuarios do localStorage:", err);
+            usuarios = [];
+        }
+
+        if (usuarios.some(u => u.registro === registro)) {
+            alert("Já existe um usuário com este registro.");
+            return;
+        }
+        if (usuarios.some(u => u.email === email)) {
+            alert("Já existe um usuário com este email.");
+            return;
+        }
+
+        const novoUsuario = {
+            nome,
+            registro,
+            email,
+            telefone,
+            sexo,
+            cpf,
+            rg,
+            endereco,
+            senha,
+            setor,
+            tipo: "operador" // padrão inicial
+        };
+
+        usuarios.push(novoUsuario);
+
+        // CORREÇÃO: try/catch para detectar falhas de gravação
+        // (ex: localStorage desabilitado, modo privado, quota excedida)
+        try {
+            localStorage.setItem("usuarios", JSON.stringify(usuarios));
+            console.log("Usuário salvo com sucesso. Total de usuários:", usuarios.length);
+        } catch (err) {
+            console.error("Erro ao salvar usuario no localStorage:", err);
+            alert("Não foi possível salvar o usuário. Verifique se o armazenamento local do navegador está habilitado (não funciona em modo anônimo/privado em alguns navegadores).");
+            return;
+        }
+
+        this.reset();
+        carregarUsuarios();
+        alert("Usuário cadastrado com sucesso!");
+    });
+
+    window.addEventListener("load", () => {
+        carregarSetores();
+        carregarUsuarios();
+    });
+</script>
+</body>
+</html>

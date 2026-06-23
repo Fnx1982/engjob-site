@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="login.css" />
+    <title>Eng Job - registro</title>
+</head>
+<body>
+    <main class="container">
+        <form onsubmit="event.preventDefault(); registrar();">
+            <h1>Cadastre-se</h1>
+            <div class="input-box">
+                <input id="nome" placeholder="Nome completo" type="text" required />
+                <i class="bx bxs-user"></i>
+            </div>
+            <div class="input-box">
+                <input id="email" placeholder="Email" type="email" required />
+                <i class="bx bxs-envelope"></i>
+            </div>
+            <div class="input-box">
+                <input id="senha" placeholder="Senha" type="password" required />
+                <i class="bx bxs-lock-alt"></i>
+            </div>
+
+            <button type="submit" class="register">Registrar</button>
+
+            <div class="register-link">
+                <p>Já tem uma conta? <a href="index.html">Login</a></p>
+            </div>
+        </form>
+    </main>
+
+    <script>
+        function registrar() {
+            var nome = document.getElementById("nome").value.trim();
+            var email = document.getElementById("email").value.trim();
+            var senha = document.getElementById("senha").value;
+
+            if (!nome || !email || !senha) {
+                alert("Por favor, preencha todos os campos.");
+                return;
+            }
+
+            // Recupera usuários do localStorage
+            var usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+
+            // Verifica se o email já está cadastrado
+            var emailExistente = usuarios.some(function (user) {
+                return user.email === email;
+            });
+
+            if (emailExistente) {
+                alert("Este email já está cadastrado. Tente outro.");
+                return;
+            }
+
+            // Adiciona novo usuário
+            usuarios.push({ nome: nome, email: email, senha: senha });
+
+            // Salva no localStorage
+            localStorage.setItem("usuarios", JSON.stringify(usuarios));
+
+            window.location.href = "index.html";
+        }
+    </script>
+</body>
+</html>

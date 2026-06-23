@@ -1,0 +1,237 @@
+/* ==========================================================================
+   CONFIGURAÇÕES GERAIS
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Montserrat", sans-serif;
+}
+
+body, html {
+  height: 100%;
+  overflow-x: hidden;
+  background: #f2f2f2;
+}
+
+/* ==========================================================================
+   MENU LATERAL (SIDEBAR)
+   ========================================================================== */
+.menu {
+  background-color: #131313;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 70px;
+  transition: width 0.3s linear;
+  overflow-y: auto; /* Permite scroll se abrir muitos submenus */
+  overflow-x: hidden;
+  z-index: 1000;
+}
+
+.menu:hover,
+nav.menu.expanded {
+  width: 230px;
+}
+
+.menu ul {
+  margin: 5px 0;
+  list-style: none;
+}
+
+.menu li {
+  width: 100%;
+  height: auto; /* Garante que o item cresça ao abrir submenu */
+}
+
+.menu li a {
+  display: flex;
+  align-items: center;
+  color: #8a8a8a;
+  font-size: 16px;
+  text-decoration: none;
+  padding: 10px 15px;
+  transition: background-color 0.15s linear, color 0.15s linear;
+  cursor: pointer;
+}
+
+.menu li:hover > a,
+nav.menu li.active > a {
+  color: #eb991c;
+  background-color: #1a1a1a;
+  border-left: 4px solid #eb991c;
+  padding-left: 11px;
+}
+
+/* Texto do Menu */
+.menu .span-menu {
+  margin-left: 10px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  flex-grow: 1;
+}
+
+.menu:hover .span-menu,
+nav.menu.expanded .span-menu {
+  opacity: 1;
+}
+
+/* Ícones BoxIcons */
+.bx {
+  font-size: 24px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Logo */
+.menu .logo {
+  width: 200px;
+  max-width: 90%;
+  height: auto;
+  display: block;
+  margin: 15px auto;
+}
+
+/* ==========================================================================
+   SUBMENUS (MULTINÍVEL)
+   ========================================================================== */
+.has-submenu > a {
+  justify-content: space-between;
+}
+
+.submenu-arrow {
+  font-size: 18px;
+  color: #8a8a8a;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.menu:hover .submenu-arrow,
+nav.menu.expanded .submenu-arrow {
+  opacity: 1;
+}
+
+/* Primeiro Nível de Submenu */
+.submenu {
+  list-style: none;
+  padding-left: 20px;
+  background-color: #1a1a1a;
+  display: none; /* Controlado pelo JS */
+}
+
+/* Segundo Nível (Ex: Dentro do Extrato) */
+.submenu .submenu {
+  background-color: #222222;
+  padding-left: 15px;
+  border-left: 1px dashed #333;
+}
+
+.submenu li a {
+  font-size: 14px;
+  color: #b0b0b0;
+  padding: 8px 10px;
+}
+
+.submenu li a:hover {
+  color: #eb991c;
+}
+
+/* ==========================================================================
+   CONTEÚDO PRINCIPAL (DASHBOARD)
+   ========================================================================== */
+.dashboard {
+  margin-left: 70px;
+  min-height: 100vh;
+  padding: 20px;
+  background: rgb(208, 207, 207);
+  transition: margin-left 0.3s linear;
+}
+
+.menu:hover ~ .dashboard,
+nav.menu.expanded ~ .dashboard {
+  margin-left: 230px;
+}
+
+/* Card Montante (Fixo) */
+.dashboard .card-montante {
+  position: fixed;
+  bottom: 20px;
+  left: 90px;
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  width: 280px;
+  transition: left 0.3s ease;
+  z-index: 900;
+}
+
+.menu:hover ~ .dashboard .card-montante {
+  left: 250px;
+}
+
+.card-montante h2 { font-size: 18px; margin-bottom: 10px; color: #333; }
+.card-montante input, .card-montante textarea {
+  width: 100%; padding: 10px; margin: 5px 0 10px;
+  border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+}
+
+.card-montante button {
+  background: #eb991c; color: white; border: none;
+  padding: 10px 15px; border-radius: 6px; cursor: pointer;
+  margin-bottom: 8px; transition: background 0.2s; width: 100%;
+}
+
+.card-montante button:hover { background: #d4840d; }
+
+/* Calendar Box */
+.calendar-box {
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  padding: 20px;
+  width: 350px;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+/* ==========================================================================
+   MODAL DE LOGOUT
+   ========================================================================== */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.5);
+  display: none; justify-content: center; align-items: center;
+  z-index: 9999;
+}
+
+.modal-overlay.active { display: flex; }
+
+.modal-content {
+  background: #fff; padding: 20px 30px; border-radius: 12px;
+  text-align: center; max-width: 320px; width: 90%;
+}
+
+.modal-buttons { margin-top: 20px; display: flex; gap: 10px; }
+.modal-buttons button {
+  flex: 1; padding: 8px; border-radius: 6px; border: none; cursor: pointer;
+}
+
+.modal-buttons #btn-yes:hover { background: #eb991c; color: white; }
+
+/* ==========================================================================
+   SCROLLBAR CUSTOMIZADA
+   ========================================================================== */
+.menu::-webkit-scrollbar { width: 4px; }
+.menu::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+.menu::-webkit-scrollbar-thumb:hover { background: #eb991c; }
