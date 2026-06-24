@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet' />
     <link rel="stylesheet" href="editar.css">
+    <script src="confirm-modal.js"></script>
     <title>Editar Usuário</title>
     
 </head>
@@ -173,12 +174,16 @@
         });
 
         // Excluir usuário
-        document.getElementById("btnExcluir").addEventListener("click", function() {
-            {
-                usuarios.splice(index, 1); 
-                localStorage.setItem("usuarios", JSON.stringify(usuarios));
-                window.location.href = "gerenciarcontas.html";
-            }
+        document.getElementById("btnExcluir").addEventListener("click", async function() {
+            const confirmado = await confirmarAcao(
+                `Excluir o usuário "${usuario.nome}"?`,
+                "Essa ação não pode ser desfeita."
+            );
+            if (!confirmado) return;
+
+            usuarios.splice(index, 1);
+            localStorage.setItem("usuarios", JSON.stringify(usuarios));
+            window.location.href = "gerenciarcontas.html";
         });
     </script>
 </body>
