@@ -155,6 +155,7 @@ body {
 
 .tag-tipo.funcionarios { background: rgba(235, 153, 28, 0.18); color: rgb(180, 110, 10); }
 .tag-tipo.extrato { background: rgba(28, 138, 75, 0.15); color: #1c8a4b; }
+.tag-tipo.materiais { background: rgba(43, 108, 176, 0.15); color: #2b6cb0; }
 .tag-tipo.combinado { background: rgba(70, 70, 70, 0.15); color: #444; }
 
 .relatorio-acoes {
@@ -417,6 +418,21 @@ body {
 }
 
 .select-simples-relatorio select:hover {
+    border-color: rgb(235, 153, 28);
+}
+
+.input-busca-relatorio {
+    width: 100%;
+    height: 40px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+    padding: 0 10px;
+    font-family: inherit;
+    font-size: 13px;
+}
+
+.input-busca-relatorio:focus {
     border-color: rgb(235, 153, 28);
 }
 

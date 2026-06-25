@@ -34,9 +34,11 @@ const nomeRelatorioInput = document.getElementById("nomeRelatorio");
 
 const btnTipoFuncionarios = document.getElementById("btnTipoFuncionarios");
 const btnTipoExtrato = document.getElementById("btnTipoExtrato");
+const btnTipoMateriais = document.getElementById("btnTipoMateriais");
 const btnTipoCombinado = document.getElementById("btnTipoCombinado");
 const secaoFuncionarios = document.getElementById("secaoFuncionarios");
 const secaoExtrato = document.getElementById("secaoExtrato");
+const secaoMateriais = document.getElementById("secaoMateriais");
 
 const bancosExtratoSel = new Set(); // vazio = nenhum banco ainda (obrigatório escolher ao menos um)
 const tipoLancamentoExtratoSelect = document.getElementById("tipoLancamentoExtrato");
@@ -52,6 +54,7 @@ let mesesFuncSel = new Set();
 let obrasFuncSel = new Set();
 let nomesFuncSel = new Set();
 let classificacoesExtratoSel = new Set();
+let setoresMaterialSel = new Set();
 
 // ====================================================
 // LEITURA DOS DADOS EXISTENTES (Funcionários / Extrato)
@@ -69,6 +72,12 @@ function lerExtrato(bancoKey) {
     lancamentos: JSON.parse(localStorage.getItem(banco.chaveLancamentos)) || [],
     classificacoes: JSON.parse(localStorage.getItem(banco.chaveClassificacoes)) || [],
   };
+}
+function lerMateriais() {
+  return JSON.parse(localStorage.getItem("materiais_lista")) || [];
+}
+function lerSetoresMaterial() {
+  return JSON.parse(localStorage.getItem("materiais_setores")) || [];
 }
 
 // ====================================================
@@ -90,6 +99,8 @@ btnNovoRelatorio.addEventListener("click", () => {
   classificacoesExtratoSel.clear();
   bancosExtratoSel.clear();
   tipoLancamentoExtratoSelect.value = "todos";
+  setoresMaterialSel.clear();
+  buscaMaterialInput.value = "";
   definirTipo("funcionarios");
   tituloModalRelatorio.textContent = "Novo Relatório";
   btnSalvarRelatorio.textContent = "Salvar e Gerar PDF";
@@ -111,16 +122,21 @@ document.addEventListener("keydown", (e) => {
 // ====================================================
 function definirTipo(tipo) {
   tipoSelecionado = tipo;
-  [btnTipoFuncionarios, btnTipoExtrato, btnTipoCombinado].forEach((b) => b.classList.remove("active"));
+  [btnTipoFuncionarios, btnTipoExtrato, btnTipoMateriais, btnTipoCombinado].forEach((b) => b.classList.remove("active"));
   if (tipo === "funcionarios") btnTipoFuncionarios.classList.add("active");
   if (tipo === "extrato") btnTipoExtrato.classList.add("active");
+  if (tipo === "materiais") btnTipoMateriais.classList.add("active");
   if (tipo === "combinado") btnTipoCombinado.classList.add("active");
 
+  // "Combinado" reúne Funcionários + Extrato. Materiais é uma aba
+  // própria, separada (não entra no Combinado por enquanto).
   secaoFuncionarios.style.display = tipo === "funcionarios" || tipo === "combinado" ? "block" : "none";
   secaoExtrato.style.display = tipo === "extrato" || tipo === "combinado" ? "block" : "none";
+  secaoMateriais.style.display = tipo === "materiais" ? "block" : "none";
 }
 btnTipoFuncionarios.addEventListener("click", () => definirTipo("funcionarios"));
 btnTipoExtrato.addEventListener("click", () => definirTipo("extrato"));
+btnTipoMateriais.addEventListener("click", () => definirTipo("materiais"));
 btnTipoCombinado.addEventListener("click", () => definirTipo("combinado"));
 
 // ====================================================
@@ -263,6 +279,18 @@ const msClassificacaoExtrato = configurarMultiSelect({
   labelTodos: "Todas",
 });
 
+const msSetorMaterial = configurarMultiSelect({
+  painel: document.getElementById("painelSetorMaterial"),
+  toggle: document.getElementById("toggleSetorMaterial"),
+  container: document.getElementById("multiSetorMaterial"),
+  resumoEl: document.getElementById("resumoSetorMaterial"),
+  getOpcoes: () => lerSetoresMaterial(),
+  selecionados: setoresMaterialSel,
+  labelTodos: "Todos",
+});
+
+const buscaMaterialInput = document.getElementById("buscaMaterial");
+
 function atualizarOpcoesMultiSelect() {
   // Força reconstrução das opções (ex: obras/classificações podem ter mudado)
   msMesFunc.atualizarResumo();
@@ -270,6 +298,7 @@ function atualizarOpcoesMultiSelect() {
   msNomeFunc.atualizarResumo();
   msBancoExtrato.atualizarResumo();
   msClassificacaoExtrato.atualizarResumo();
+  msSetorMaterial.atualizarResumo();
 }
 
 // ====================================================
@@ -280,14 +309,23 @@ function salvarRelatorios() {
 }
 
 btnSalvarRelatorio.addEventListener("click", () => {
+  limparErrosDoFormulario(modalRelatorio);
+
   const nome = nomeRelatorioInput.value.trim();
+  let temErro = false;
+
   if (!nome) {
-    alert("Dê um nome para o relatório.");
-    return;
+    marcarCampoComErro(nomeRelatorioInput, "Dê um nome para o relatório.");
+    temErro = true;
   }
 
   if ((tipoSelecionado === "extrato" || tipoSelecionado === "combinado") && bancosExtratoSel.size === 0) {
-    alert("Selecione ao menos um banco para o Extrato.");
+    marcarCampoComErro(document.getElementById("toggleBancoExtrato"), "Selecione ao menos um banco.");
+    temErro = true;
+  }
+
+  if (temErro) {
+    focarPrimeiroErro(modalRelatorio);
     return;
   }
 
@@ -306,6 +344,10 @@ btnSalvarRelatorio.addEventListener("click", () => {
       bancos: [...bancosExtratoSel],
       tipoLancamento: tipoLancamentoExtratoSelect.value,
       classificacoes: [...classificacoesExtratoSel],
+    },
+    filtrosMateriais: {
+      setores: [...setoresMaterialSel],
+      busca: buscaMaterialInput.value.trim(),
     },
   };
 
@@ -364,6 +406,16 @@ function editarRelatorio(id) {
   classificacoesExtratoSel.clear();
   r.filtrosExtrato.classificacoes.forEach((c) => classificacoesExtratoSel.add(c));
 
+  setoresMaterialSel.clear();
+  // Retrocompatibilidade: relatórios salvos antes de Materiais existir
+  // não têm filtrosMateriais.
+  if (r.filtrosMateriais) {
+    r.filtrosMateriais.setores.forEach((s) => setoresMaterialSel.add(s));
+    buscaMaterialInput.value = r.filtrosMateriais.busca || "";
+  } else {
+    buscaMaterialInput.value = "";
+  }
+
   atualizarOpcoesMultiSelect();
 
   tituloModalRelatorio.textContent = "Editar Relatório";
@@ -401,6 +453,7 @@ function formatarDataHora(iso) {
 function rotuloTipo(tipo) {
   if (tipo === "funcionarios") return "Funcionários";
   if (tipo === "extrato") return "Extrato";
+  if (tipo === "materiais") return "Materiais";
   return "Combinado";
 }
 
@@ -520,6 +573,9 @@ function gerarPDF(config) {
   if (config.tipo === "extrato" || config.tipo === "combinado") {
     y = secaoExtratoPDF(doc, config, y, margemEsquerda);
   }
+  if (config.tipo === "materiais") {
+    y = secaoMateriaisPDF(doc, config, y, margemEsquerda);
+  }
 
   const nomeArquivo = config.nome.replace(/[^a-z0-9]+/gi, "_").toLowerCase() || "relatorio";
   doc.save(`${nomeArquivo}.pdf`);
@@ -627,8 +683,69 @@ function secaoExtratoPDF(doc, config, y, margemEsquerda) {
   return y;
 }
 
+function filtrarMateriais(config) {
+  const { setores, busca } = config.filtrosMateriais;
+  const termo = (busca || "").trim().toLowerCase();
+
+  return lerMateriais().filter((m) => {
+    const setorOK = setores.length === 0 || setores.includes(m.setor);
+    const buscaOK =
+      termo === "" ||
+      m.nome.toLowerCase().includes(termo) ||
+      m.codigo.toLowerCase().includes(termo) ||
+      (m.observacao || "").toLowerCase().includes(termo);
+    return setorOK && buscaOK;
+  });
+}
+
+function secaoMateriaisPDF(doc, config, y, margemEsquerda) {
+  y = garantirEspaco(doc, y, 60);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("Gestão de Materiais", margemEsquerda, y);
+  y += 16;
+
+  const itens = filtrarMateriais(config);
+
+  if (itens.length === 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Nenhum material encontrado com os filtros selecionados.", margemEsquerda, y);
+    return y + 20;
+  }
+
+  const ordenados = [...itens].sort((a, b) => a.setor.localeCompare(b.setor, "pt-BR") || a.nome.localeCompare(b.nome, "pt-BR"));
+
+  const linhas = ordenados.map((m) => [
+    m.nome,
+    m.setor,
+    m.codigo,
+    `R$ ${formatarMoeda(m.valor)}`,
+    String(m.quantidade),
+    `R$ ${formatarMoeda(m.valor * m.quantidade)}`,
+  ]);
+
+  const totalQuantidade = ordenados.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const totalValor = ordenados.reduce((s, m) => s + m.valor * m.quantidade, 0);
+
+  doc.autoTable({
+    startY: y,
+    head: [["Material", "Setor", "Código", "Valor Unit.", "Qtd.", "Subtotal"]],
+    body: linhas,
+    margin: { left: margemEsquerda, right: margemEsquerda },
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [43, 108, 176] },
+    foot: [["", "", "", "", "Total", `R$ ${formatarMoeda(totalValor)} (${totalQuantidade} itens)`]],
+    footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
+  });
+
+  return doc.lastAutoTable.finalY + 24;
+}
+
 // ====================================================
 // INICIALIZAÇÃO
 // ====================================================
+limparErroAoEditar(nomeRelatorioInput);
+
 definirTipo("funcionarios");
 renderListaRelatorios();

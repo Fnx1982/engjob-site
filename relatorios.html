@@ -6,6 +6,7 @@
   <title>Relatórios</title>
   <link rel="stylesheet" href="relatorios.css" />
   <script src="confirm-modal.js"></script>
+  <script src="validacao.js"></script>
 
   <!-- Geração de PDF no navegador -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -49,8 +50,10 @@
         <div class="tipo-relatorio-toggle">
           <button type="button" data-tipo="funcionarios" id="btnTipoFuncionarios">Funcionários</button>
           <button type="button" data-tipo="extrato" id="btnTipoExtrato">Extrato</button>
+          <button type="button" data-tipo="materiais" id="btnTipoMateriais">Materiais</button>
           <button type="button" data-tipo="combinado" id="btnTipoCombinado">Combinado</button>
         </div>
+        <p class="banco-aviso">"Combinado" reúne Funcionários + Extrato no mesmo PDF. Materiais é gerado separadamente por enquanto.</p>
       </div>
 
       <!-- Seção: filtros de Funcionários -->
@@ -107,6 +110,23 @@
               <span class="filtro-valor" id="resumoClassificacaoExtrato">Todas</span>
             </button>
             <div class="multi-select-painel" id="painelClassificacaoExtrato"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seção: filtros de Materiais -->
+      <div class="secao-filtro" id="secaoMateriais">
+        <h3>Filtros — Gestão de Materiais</h3>
+        <div class="linha-campos">
+          <div class="multi-select" id="multiSetorMaterial">
+            <button type="button" class="multi-select-toggle" id="toggleSetorMaterial">
+              <span class="filtro-label-mini">Setor</span>
+              <span class="filtro-valor" id="resumoSetorMaterial">Todos</span>
+            </button>
+            <div class="multi-select-painel" id="painelSetorMaterial"></div>
+          </div>
+          <div>
+            <input type="text" id="buscaMaterial" class="input-busca-relatorio" placeholder="Buscar por nome ou código..." />
           </div>
         </div>
       </div>

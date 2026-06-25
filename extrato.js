@@ -171,10 +171,11 @@
 
   formClassificacao.addEventListener("submit", (e) => {
     e.preventDefault();
+    limparErroCampo(novaClassificacaoInput);
     const nome = novaClassificacaoInput.value.trim();
     if (!nome) return;
     if (classificacoes.includes(nome)) {
-      alert("Essa classificação já está cadastrada.");
+      marcarCampoComErro(novaClassificacaoInput, "Essa classificação já está cadastrada.");
       return;
     }
     classificacoes.push(nome);
@@ -182,6 +183,7 @@
     renderClassificacoes();
     novaClassificacaoInput.value = "";
   });
+  limparErroAoEditar(novaClassificacaoInput);
 
   // ====================================================
   // LANÇAMENTOS (cadastro / edição)
@@ -192,14 +194,39 @@
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const data = document.getElementById("dataLancamento").value;
-    const descricao = document.getElementById("descricao").value.trim();
-    const valor = parseFloat(document.getElementById("valor").value);
+
+    const campoData = document.getElementById("dataLancamento");
+    const campoDescricao = document.getElementById("descricao");
+    const campoValor = document.getElementById("valor");
+
+    limparErrosDoFormulario(form);
+
+    const data = campoData.value;
+    const descricao = campoDescricao.value.trim();
+    const valor = parseFloat(campoValor.value);
     const classificacao = selectClassificacao.value;
     const observacao = document.getElementById("observacao").value.trim();
 
-    if (!data || !descricao || isNaN(valor) || !classificacao) {
-      alert("Preencha todos os campos obrigatórios.");
+    let temErro = false;
+    if (!data) {
+      marcarCampoComErro(campoData, "Informe a data.");
+      temErro = true;
+    }
+    if (!descricao) {
+      marcarCampoComErro(campoDescricao, "Informe a descrição.");
+      temErro = true;
+    }
+    if (isNaN(valor)) {
+      marcarCampoComErro(campoValor, "Informe um valor válido.");
+      temErro = true;
+    }
+    if (!classificacao) {
+      marcarCampoComErro(selectClassificacao, "Selecione uma classificação.");
+      temErro = true;
+    }
+
+    if (temErro) {
+      focarPrimeiroErro(form);
       return;
     }
 
@@ -467,6 +494,10 @@
   // ====================================================
   // INICIALIZAÇÃO
   // ====================================================
+  ["dataLancamento", "descricao", "valor", "classificacao"].forEach((id) => {
+    limparErroAoEditar(document.getElementById(id));
+  });
+
   definirTipoModal("entrada");
   renderTudo();
 })();

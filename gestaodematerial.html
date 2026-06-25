@@ -3,95 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestão de Materiais</title>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-    
+    <title>Gestão de Materiais</title>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="gestao.css">
+    <link rel="stylesheet" href="gestaodematerial.css">
+    <script src="confirm-modal.js"></script>
+    <script src="validacao.js"></script>
 </head>
 <body>
-
-    <div class="top-bar">
-        <a href="home.html" class="btn btn-home">⬅ Voltar</a>
+  <main class="container">
+    <div class="topo-pagina">
+      <h1>Gestão de Materiais</h1>
+      <a href="home.html" class="btn-voltar">Voltar</a>
     </div>
 
-    <div class="container">
-        
-        <div class="section" id="secCadastroMateriais">
-            <h2>Cadastro de Materiais</h2>
-            <div class="form-group"><label>Nome:</label><input type="text" id="nomeMaterial"></div>
-            <div class="form-group"><label>Valor (R$):</label><input type="number" id="valorMaterial" step="0.01"></div>
-            <div class="form-group">
-                <label>Setores:</label>
-                <select id="setorMaterial"><option value="">Selecione um setor...</option></select>
-            </div>
-            <div class="form-group"><label>Código:</label><input type="number" id="codigoMaterial"></div>
-            <div class="form-group"><label>Quantidade:</label><input type="number" id="quantidadeMaterial"></div>
-            <div class="form-group"><label>Observação:</label><textarea id="obsMaterial" rows="3"></textarea></div>
-            <button class="btn btn-add" onclick="adicionarMaterial()">Adicionar Material</button>
-        </div>
+    <!-- Barra de ações -->
+    <div class="barra-acoes">
+      <div class="abas">
+        <button type="button" class="aba active" id="btnVisaoSetor">Por Setor</button>
+        <button type="button" class="aba" id="btnVisaoMaterial">Por Material</button>
+      </div>
 
-        <div class="section" id="secGerenciarTipos">
-            <h2>Gerenciamento de Setores</h2>
-            <div class="form-group"><label>Novo Setor:</label><input type="text" id="novoTipo"></div>
-            <button class="btn btn-add" onclick="adicionarTipo()">Adicionar Setor</button>
-            <table id="tabelaTipos">
-                <thead><tr><th>#</th><th>Nome</th><th>Ações</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-
-        <div class="section">
-            <h2>Lista de Materiais</h2>
-            <input type="text" id="pesquisa" placeholder="Pesquisar..." oninput="renderMateriais()">
-            <table id="tabelaMateriais">
-                <thead>
-                    <tr><th>#</th><th>Nome</th><th>Valor</th><th>Setor</th><th>Código</th><th>Qtd</th><th>Obs</th><th>Ações</th></tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
+      <div class="botoes-cadastro">
+        <button type="button" class="btn-secundario" id="btnAbrirSetor">+ Setor</button>
+        <button type="button" class="btn-laranja" id="btnAbrirMaterial">+ Material</button>
+      </div>
     </div>
 
-    <div id="modalEditarMaterial" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="fecharModal('modalEditarMaterial')">&times;</span>
-            <h3>Editar Material</h3>
-            <input type="hidden" id="editIndex">
-            <div class="form-group"><label>Nome:</label><input type="text" id="editNome"></div>
-            <div class="form-group"><label>Valor:</label><input type="number" id="editValor" step="0.01"></div>
-            <div class="form-group"><label>Setor:</label><select id="editSetor"></select></div>
-            <div class="form-group"><label>Código:</label><input type="number" id="editCodigo"></div>
-            <div class="form-group"><label>Quantidade:</label><input type="number" id="editQuantidade"></div>
-            <div class="form-group"><label>Observação:</label><textarea id="editObs"></textarea></div>
-            <button class="btn btn-export" style="width:100%" onclick="salvarEdicaoMaterial()">Salvar Alterações</button>
+    <!-- Filtros -->
+    <div class="card-filtros">
+      <h2>Filtros</h2>
+      <div class="filtros">
+        <div class="filtro-busca">
+          <label class="filtro-label" for="buscaTexto">Buscar</label>
+          <input type="text" id="buscaTexto" placeholder="Nome, código ou observação..." />
         </div>
+
+        <div class="multi-select" id="multiFiltroSetor">
+          <button type="button" class="multi-select-toggle" id="toggleFiltroSetor">
+            <span class="filtro-label">Setor</span>
+            <span class="filtro-valor" id="resumoFiltroSetor">Todos</span>
+          </button>
+          <div class="multi-select-painel" id="painelFiltroSetor"></div>
+        </div>
+
+        <button type="button" class="btn-limpar-filtros" id="btnLimparFiltros">Limpar filtros</button>
+      </div>
     </div>
 
-    <div id="modalEditarTipo" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="fecharModal('modalEditarTipo')">&times;</span>
-            <h3>Editar Setor</h3>
-            <input type="hidden" id="editTipoIndex">
-            <div class="form-group"><label>Nome do Setor:</label><input type="text" id="editTipoNome"></div>
-            <button class="btn btn-export" style="width:100%" onclick="salvarEdicaoTipo()">Salvar Alterações</button>
-        </div>
+    <!-- Conteúdo agrupado (setor ou material) -->
+    <div id="grupos"></div>
+    <div class="sem-resultados" id="semResultados" style="display:none;">
+      Nenhum material encontrado com esses filtros.
     </div>
+  </main>
 
-    <div id="modalConfirmacao" class="modal">
-        <div class="modal-content" style="text-align: center;">
-            <h3 style="color: #d9534f; border-bottom-color: #d9534f;">Confirmar Exclusão</h3>
-            <p id="confirMensagem">Deseja realmente excluir este item?</p>
-            <div style="margin-top: 20px;">
-                <button id="btnConfirmarSim" class="btn btn-delete">Sim, Excluir</button>
-                <button class="btn btn-add" onclick="fecharModal('modalConfirmacao')">Cancelar</button>
-            </div>
-        </div>
+  <!-- Total fixo no rodapé -->
+  <div class="total-fixo">
+    <div class="bloco-total">
+      <span>Itens exibidos</span>
+      <span id="totalItensValor">0</span>
     </div>
+    <div class="bloco-total">
+      <span>Quantidade total</span>
+      <span id="totalQuantidadeValor">0</span>
+    </div>
+    <div class="bloco-total">
+      <span>Valor total</span>
+      <span id="totalValorValor">R$ 0,00</span>
+    </div>
+  </div>
 
-    <script src="gestaodematerial.js"></script>
+  <!-- Modal: Cadastrar / gerenciar Setores -->
+  <div class="modal-overlay" id="modalSetor">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <h2>Setores</h2>
+        <button type="button" class="modal-fechar" id="fecharModalSetor">&times;</button>
+      </div>
+      <form id="form-setor" class="linha-form">
+        <input type="text" id="novoSetorInput" placeholder="Nome do setor" required />
+        <button type="submit" class="btn-laranja">Adicionar</button>
+      </form>
+      <div id="listaSetores" class="chips-lista"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Cadastrar / Editar Material -->
+  <div class="modal-overlay" id="modalMaterial">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <h2 id="tituloModalMaterial">Novo Material</h2>
+        <button type="button" class="modal-fechar" id="fecharModalMaterial">&times;</button>
+      </div>
+      <form id="form-material" class="form-modal-grid">
+        <label class="campo-largura-total">
+          Nome do material
+          <input type="text" id="nomeMaterial" placeholder="Ex: Cimento CP II 50kg" required />
+        </label>
+
+        <label>
+          Setor
+          <select id="setorMaterial" required>
+            <option value="" disabled selected>Selecione o setor</option>
+          </select>
+        </label>
+
+        <label>
+          Código
+          <input type="text" id="codigoMaterial" placeholder="Ex: 0012" required />
+        </label>
+
+        <label>
+          Valor unitário (R$)
+          <input type="number" id="valorMaterial" placeholder="0,00" step="0.01" min="0" required />
+        </label>
+
+        <label>
+          <span class="rotulo-com-opcional">Quantidade <span class="texto-opcional">(opcional)</span></span>
+          <input type="number" id="quantidadeMaterial" placeholder="0" min="0" />
+        </label>
+
+        <label class="campo-largura-total">
+          Observação
+          <textarea id="obsMaterial" rows="2" placeholder="Opcional"></textarea>
+        </label>
+
+        <button type="submit" id="btnSubmitMaterial" class="btn-laranja campo-largura-total">Adicionar</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="gestaodematerial.js"></script>
 </body>
 </html>
