@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Extrato — Interbanking</title>
+  <link rel="stylesheet" href="extrato.css" />
+  <script src="confirm-modal.js"></script>
+</head>
+<body>
+  <main class="container">
+    <div class="topo-pagina">
+      <div>
+        <h1>Extrato Bancário</h1>
+        <span class="banco-tag">Interbanking</span>
+      </div>
+      <a href="home.html" class="btn-voltar">Voltar</a>
+    </div>
+
+    <!-- Resumo geral (todos os lançamentos) -->
+    <div class="resumo-cards">
+      <div class="resumo-card entrada">
+        <div class="resumo-label">Entradas (total)</div>
+        <div class="resumo-valor" id="resumoEntradaValor">R$ 0,00</div>
+      </div>
+      <div class="resumo-card saida">
+        <div class="resumo-label">Saídas (total)</div>
+        <div class="resumo-valor" id="resumoSaidaValor">R$ 0,00</div>
+      </div>
+      <div class="resumo-card saldo">
+        <div class="resumo-label">Saldo (total)</div>
+        <div class="resumo-valor" id="resumoSaldoValor">R$ 0,00</div>
+      </div>
+    </div>
+
+    <!-- Barra de ações -->
+    <div class="barra-acoes">
+      <button type="button" class="btn-secundario" id="btnAbrirClassificacao">+ Classificação</button>
+      <button type="button" class="btn-laranja" id="btnAbrirLancamento">+ Lançamento</button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card-filtros">
+      <h2>Filtros</h2>
+      <div class="filtros">
+        <div class="filtro-busca">
+          <label class="filtro-label" for="buscaTexto">Buscar</label>
+          <input type="text" id="buscaTexto" placeholder="Descrição ou observação..." />
+        </div>
+
+        <div class="select-simples">
+          <label class="filtro-label" for="filtroTipo">Tipo</label>
+          <select id="filtroTipo">
+            <option value="todos">Todos</option>
+            <option value="entrada">Entradas</option>
+            <option value="saida">Saídas</option>
+          </select>
+        </div>
+
+        <div class="multi-select" id="multiClassificacao">
+          <button type="button" class="multi-select-toggle" id="toggleClassificacao">
+            <span class="filtro-label">Classificação</span>
+            <span class="filtro-valor" id="resumoClassificacao">Todas</span>
+          </button>
+          <div class="multi-select-painel" id="painelClassificacao"></div>
+        </div>
+
+        <button type="button" class="btn-limpar-filtros" id="btnLimparFiltros">Limpar filtros</button>
+      </div>
+    </div>
+
+    <!-- Tabela de lançamentos -->
+    <div class="tabela-card">
+      <table id="tabelaLancamentos">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Descrição</th>
+            <th>Classificação</th>
+            <th>Observação</th>
+            <th>Valor</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="sem-resultados" id="semResultados" style="display:none;">
+      Nenhum lançamento encontrado com esses filtros.
+    </div>
+  </main>
+
+  <!-- Total fixo no rodapé (entrada / saída / saldo do que está filtrado) -->
+  <div class="total-fixo">
+    <div class="bloco-total entrada">
+      <span>Entradas</span>
+      <span id="totalEntradaValor">R$ 0,00</span>
+    </div>
+    <div class="bloco-total saida">
+      <span>Saídas</span>
+      <span id="totalSaidaValor">R$ 0,00</span>
+    </div>
+    <div class="bloco-total saldo">
+      <span>Saldo</span>
+      <span id="totalSaldoValor">R$ 0,00</span>
+    </div>
+  </div>
+
+  <!-- Modal: Cadastrar / gerenciar Classificações -->
+  <div class="modal-overlay" id="modalClassificacao">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <h2>Classificações</h2>
+        <button type="button" class="modal-fechar" id="fecharModalClassificacao">&times;</button>
+      </div>
+      <form id="form-classificacao" class="linha-form">
+        <input type="text" id="novaClassificacaoInput" placeholder="Ex: Material, Salário, Combustível..." required />
+        <button type="submit" class="btn-laranja">Adicionar</button>
+      </form>
+      <div id="listaClassificacoes" class="chips-lista"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Cadastrar / Editar Lançamento -->
+  <div class="modal-overlay" id="modalLancamento">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <h2 id="tituloModalLancamento">Novo lançamento</h2>
+        <button type="button" class="modal-fechar" id="fecharModalLancamento">&times;</button>
+      </div>
+      <form id="form-lancamento" class="form-modal-grid">
+        <input type="hidden" id="tipoLancamento" value="entrada" />
+
+        <div class="tipo-toggle campo-largura-total">
+          <button type="button" class="tipo-entrada active" id="btnTipoEntrada">Entrada</button>
+          <button type="button" class="tipo-saida" id="btnTipoSaida">Saída</button>
+        </div>
+
+        <label>
+          Data
+          <input type="date" id="dataLancamento" required />
+        </label>
+
+        <label>
+          Valor (R$)
+          <input type="number" id="valor" placeholder="0,00" step="0.01" min="0" required />
+        </label>
+
+        <label class="campo-largura-total">
+          Descrição
+          <input type="text" id="descricao" placeholder="Ex: Pagamento fornecedor X" required />
+        </label>
+
+        <label class="campo-largura-total">
+          Classificação
+          <select id="classificacao" required>
+            <option value="" disabled selected>Selecione</option>
+          </select>
+        </label>
+
+        <label class="campo-largura-total">
+          Observação
+          <textarea id="observacao" rows="2" placeholder="Opcional"></textarea>
+        </label>
+
+        <button type="submit" id="btnSubmitLancamento" class="btn-laranja campo-largura-total">Adicionar</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    window.EXTRATO_CONFIG = {
+      chaveLancamentos: "extrato_interbanking_lancamentos",
+      chaveClassificacoes: "extrato_interbanking_classificacoes",
+    };
+  </script>
+  <script src="extrato.js"></script>
+</body>
+</html>
