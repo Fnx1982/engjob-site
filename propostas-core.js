@@ -11,6 +11,7 @@
 // ============================================================
 
 const CHAVE_PROPOSTAS = "propostas_lista";
+const CHAVE_OBRAS = "obras_lista";
 
 // ====================================================
 // LEITURA / ESCRITA
@@ -74,10 +75,12 @@ function mudarStatusProposta(id, novoStatus) {
   proposta.status = novoStatus;
 
   // Ao aprovar, a proposta sai de "Propostas" e entra automaticamente
-  // em "Em Andamento" (com sub-status inicial "andamento").
+  // em "Em Andamento" (com sub-status inicial "andamento"), e cria
+  // uma Obra vinculada na tela de Obras.
   if (novoStatus === "aprovada") {
     proposta.status = "andamento";
     proposta.statusExecucao = "andamento";
+    criarObraAPartirDaProposta(proposta);
   }
 
   proposta.atualizadoEm = new Date().toISOString();
@@ -192,6 +195,218 @@ function corStatus(proposta) {
   if (proposta.status === "negada") return "vermelho";
   if (proposta.status === "andamento" || proposta.status === "finalizada") return "verde";
   return "cinza"; // orcamento (ainda não enviado para análise)
+}
+
+// ====================================================
+// OBRAS (criadas automaticamente ao aprovar uma proposta)
+// ====================================================
+function lerObras() {
+  return JSON.parse(localStorage.getItem(CHAVE_OBRAS)) || [];
+}
+function salvarObras(lista) {
+  localStorage.setItem(CHAVE_OBRAS, JSON.stringify(lista));
+}
+function buscarObra(id) {
+  return lerObras().find((o) => o.id === id);
+}
+
+// Cria a obra a partir da proposta aprovada. Se a proposta já tiver
+// uma obra vinculada (ex: aprovação repetida), não duplica.
+function criarObraAPartirDaProposta(proposta) {
+  const obras = lerObras();
+  const jaExiste = obras.some((o) => o.propostaId === proposta.id);
+  if (jaExiste) return;
+
+  const obra = {
+    id: `obra_${Date.now()}`,
+    propostaId: proposta.id,
+    cliente: proposta.cliente,
+    local: proposta.local,
+    servico: proposta.servico,
+    valorMaoDeObraOrcamento: totalMaoDeObra(proposta),
+    valorMateriaisOrcamento: totalMateriais(proposta),
+    observacao: "",
+    funcionarios: [], // { id, nome, valorCobrado, valorPago, pagamentoMes }
+    materiais: [], // { id, nome, codigo, valor, data }
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString(),
+  };
+
+  obras.push(obra);
+  salvarObras(obras);
+}
+
+function salvarObra(obra) {
+  const obras = lerObras();
+  obra.atualizadoEm = new Date().toISOString();
+  const idx = obras.findIndex((o) => o.id === obra.id);
+  if (idx !== -1) obras[idx] = obra;
+  else obras.push(obra);
+  salvarObras(obras);
+}
+
+function excluirObra(id) {
+  const obras = lerObras().filter((o) => o.id !== id);
+  salvarObras(obras);
+}
+
+// ----- Funcionários da obra (vinculados ao Financeiro) -----
+function lerFuncionariosFinanceiro() {
+  return JSON.parse(localStorage.getItem("financeiro")) || [];
+}
+function salvarFuncionariosFinanceiro(lista) {
+  localStorage.setItem("financeiro", JSON.stringify(lista));
+}
+
+const NOMES_MESES_OBRA = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+// Adiciona um funcionário na obra E cria automaticamente o
+// pagamento correspondente no Financeiro de Funcionários, usando
+// o nome da obra (cliente + serviço) como referência de "obra".
+function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
+  const obra = buscarObra(obraId);
+  if (!obra) return;
+
+  const nomeObraNoFinanceiro = nomeObraParaFinanceiro(obra);
+  const mesAtual = NOMES_MESES_OBRA[new Date().getMonth()];
+  const vinculoId = `vinculo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+  // Garante que essa "obra" existe na lista fixa de obras do
+  // Financeiro de Funcionários (obrasFinanceiro), senão ela não
+  // aparece nos seletores por lá.
+  const obrasFinanceiro = JSON.parse(localStorage.getItem("obrasFinanceiro")) || [];
+  if (!obrasFinanceiro.includes(nomeObraNoFinanceiro)) {
+    obrasFinanceiro.push(nomeObraNoFinanceiro);
+    localStorage.setItem("obrasFinanceiro", JSON.stringify(obrasFinanceiro));
+  }
+
+  // Cria o pagamento no Financeiro de Funcionários, marcado com um
+  // ID de vínculo estável (em vez de depender da posição no array,
+  // que mudaria se outro pagamento fosse excluído antes dele).
+  const financeiro = lerFuncionariosFinanceiro();
+  financeiro.push({
+    nome: dadosFuncionario.nome,
+    obra: nomeObraNoFinanceiro,
+    mes: mesAtual,
+    valor: dadosFuncionario.valorPago,
+    comprovante: null,
+    vinculoObraId: vinculoId,
+  });
+  salvarFuncionariosFinanceiro(financeiro);
+
+  obra.funcionarios.push({
+    id: `func_${Date.now()}`,
+    nome: dadosFuncionario.nome,
+    valorCobrado: dadosFuncionario.valorCobrado,
+    valorPago: dadosFuncionario.valorPago,
+    vinculoObraId: vinculoId,
+  });
+
+  salvarObra(obra);
+}
+
+function nomeObraParaFinanceiro(obra) {
+  const partes = [obra.cliente, obra.servico].filter(Boolean);
+  return partes.join(" — ") || "Obra sem nome";
+}
+
+// Atualiza um funcionário já existente na obra, e sincroniza o
+// valor pago de volta no Financeiro de Funcionários.
+function editarFuncionarioNaObra(obraId, funcionarioId, dadosNovos) {
+  const obra = buscarObra(obraId);
+  if (!obra) return;
+
+  const func = obra.funcionarios.find((f) => f.id === funcionarioId);
+  if (!func) return;
+
+  func.nome = dadosNovos.nome;
+  func.valorCobrado = dadosNovos.valorCobrado;
+  func.valorPago = dadosNovos.valorPago;
+
+  // Sincroniza com o Financeiro de Funcionários, procurando pelo
+  // ID de vínculo estável (funciona mesmo que outros pagamentos
+  // tenham sido excluídos/reordenados desde a criação).
+  if (func.vinculoObraId) {
+    const financeiro = lerFuncionariosFinanceiro();
+    const pagamento = financeiro.find((p) => p.vinculoObraId === func.vinculoObraId);
+    if (pagamento) {
+      pagamento.nome = dadosNovos.nome;
+      pagamento.valor = dadosNovos.valorPago;
+      salvarFuncionariosFinanceiro(financeiro);
+    }
+  }
+
+  salvarObra(obra);
+}
+
+function excluirFuncionarioDaObra(obraId, funcionarioId) {
+  const obra = buscarObra(obraId);
+  if (!obra) return;
+
+  const func = obra.funcionarios.find((f) => f.id === funcionarioId);
+  obra.funcionarios = obra.funcionarios.filter((f) => f.id !== funcionarioId);
+  salvarObra(obra);
+
+  // Remove também o pagamento vinculado no Financeiro, se existir
+  // (procurado pelo ID de vínculo, não por posição no array).
+  if (func && func.vinculoObraId) {
+    const financeiro = lerFuncionariosFinanceiro();
+    const novoFinanceiro = financeiro.filter((p) => p.vinculoObraId !== func.vinculoObraId);
+    salvarFuncionariosFinanceiro(novoFinanceiro);
+  }
+}
+
+// ----- Materiais da obra (anotação livre, sem vínculo de estoque) -----
+function adicionarMaterialNaObra(obraId, dadosMaterial) {
+  const obra = buscarObra(obraId);
+  if (!obra) return;
+  obra.materiais.push({
+    id: `mat_${Date.now()}`,
+    nome: dadosMaterial.nome || "",
+    codigo: dadosMaterial.codigo || "",
+    valor: dadosMaterial.valor || 0,
+    data: dadosMaterial.data || "",
+  });
+  salvarObra(obra);
+}
+
+function editarMaterialNaObra(obraId, materialId, dadosNovos) {
+  const obra = buscarObra(obraId);
+  if (!obra) return;
+  const mat = obra.materiais.find((m) => m.id === materialId);
+  if (!mat) return;
+  mat.nome = dadosNovos.nome || "";
+  mat.codigo = dadosNovos.codigo || "";
+  mat.valor = dadosNovos.valor || 0;
+  mat.data = dadosNovos.data || "";
+  salvarObra(obra);
+}
+
+function excluirMaterialDaObra(obraId, materialId) {
+  const obra = buscarObra(obraId);
+  if (!obra) return;
+  obra.materiais = obra.materiais.filter((m) => m.id !== materialId);
+  salvarObra(obra);
+}
+
+// ----- Cálculos de lucro -----
+function totalPagoFuncionariosObra(obra) {
+  return obra.funcionarios.reduce((s, f) => s + (f.valorPago || 0), 0);
+}
+function totalCobradoFuncionariosObra(obra) {
+  return obra.funcionarios.reduce((s, f) => s + (f.valorCobrado || 0), 0);
+}
+function totalGastoMateriaisObra(obra) {
+  return obra.materiais.reduce((s, m) => s + (m.valor || 0), 0);
+}
+function lucroMaoDeObraObra(obra) {
+  return (obra.valorMaoDeObraOrcamento || 0) - totalPagoFuncionariosObra(obra);
+}
+function lucroMaterialObra(obra) {
+  return (obra.valorMateriaisOrcamento || 0) - totalGastoMateriaisObra(obra);
+}
+function lucroTotalObra(obra) {
+  return lucroMaoDeObraObra(obra) + lucroMaterialObra(obra);
 }
 
 // ====================================================

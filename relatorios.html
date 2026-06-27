@@ -11,6 +11,7 @@
   <!-- Geração de PDF no navegador -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="propostas-core.js"></script>
 </head>
 <body>
   <main class="container">
@@ -51,9 +52,10 @@
           <button type="button" data-tipo="funcionarios" id="btnTipoFuncionarios">Funcionários</button>
           <button type="button" data-tipo="extrato" id="btnTipoExtrato">Extrato</button>
           <button type="button" data-tipo="materiais" id="btnTipoMateriais">Materiais</button>
+          <button type="button" data-tipo="obras" id="btnTipoObras">Obras</button>
           <button type="button" data-tipo="combinado" id="btnTipoCombinado">Combinado</button>
         </div>
-        <p class="banco-aviso">"Combinado" reúne Funcionários + Extrato no mesmo PDF. Materiais é gerado separadamente por enquanto.</p>
+        <p class="banco-aviso">"Combinado" reúne Funcionários + Extrato no mesmo PDF. Materiais e Obras são gerados separadamente por enquanto.</p>
       </div>
 
       <!-- Seção: filtros de Funcionários -->
@@ -127,6 +129,21 @@
           </div>
           <div>
             <input type="text" id="buscaMaterial" class="input-busca-relatorio" placeholder="Buscar por nome ou código..." />
+          </div>
+        </div>
+      </div>
+
+      <!-- Seção: filtros de Obras -->
+      <div class="secao-filtro" id="secaoObras">
+        <h3>Filtros — Obras</h3>
+        <p class="banco-aviso">Selecione uma ou mais obras. Cada obra aparece em sua própria seção no PDF, com funcionários e materiais detalhados.</p>
+        <div class="linha-campos">
+          <div class="multi-select" id="multiObrasRelatorio">
+            <button type="button" class="multi-select-toggle" id="toggleObrasRelatorio">
+              <span class="filtro-label-mini">Obra(s)</span>
+              <span class="filtro-valor" id="resumoObrasRelatorio">Todas</span>
+            </button>
+            <div class="multi-select-painel" id="painelObrasRelatorio"></div>
           </div>
         </div>
       </div>

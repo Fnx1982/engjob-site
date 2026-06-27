@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Detalhe da Obra</title>
+  <link rel="stylesheet" href="propostas.css" />
+  <link rel="stylesheet" href="obras.css" />
+  <script src="confirm-modal.js"></script>
+  <script src="validacao.js"></script>
+  <script src="propostas-core.js"></script>
+</head>
+<body>
+  <main class="container">
+    <div class="topo-pagina">
+      <div>
+        <h1 id="tituloObra">Obra</h1>
+      </div>
+      <a href="obras.html" class="btn-voltar">Voltar</a>
+    </div>
+
+    <div class="detalhe-topo-info">
+      <h2 id="clienteObra"></h2>
+      <div class="servico" id="servicoObra"></div>
+
+      <div class="detalhe-observacao">
+        <label for="campoObservacaoObra">Observação</label>
+        <textarea id="campoObservacaoObra" rows="3" placeholder="Anotações sobre esta obra..."></textarea>
+      </div>
+    </div>
+
+    <div class="cards-lucro">
+      <div class="card-lucro">
+        <div class="rotulo">Lucro Mão de Obra</div>
+        <div class="valor" id="lucroMaoDeObraValor">R$ 0,00</div>
+        <div class="detalhe-conta" id="lucroMaoDeObraConta"></div>
+      </div>
+      <div class="card-lucro">
+        <div class="rotulo">Lucro Material</div>
+        <div class="valor" id="lucroMaterialValor">R$ 0,00</div>
+        <div class="detalhe-conta" id="lucroMaterialConta"></div>
+      </div>
+      <div class="card-lucro">
+        <div class="rotulo">Lucro Total</div>
+        <div class="valor" id="lucroTotalValor">R$ 0,00</div>
+        <div class="detalhe-conta">Mão de Obra + Material</div>
+      </div>
+    </div>
+
+    <div class="secao-detalhe">
+      <h3>Funcionários nesta obra</h3>
+      <div class="lista-itens-obra" id="listaFuncionariosObra"></div>
+      <div class="form-rapido-item">
+        <input type="text" id="novoFuncNome" placeholder="Nome do funcionário" />
+        <input type="number" id="novoFuncCobrado" placeholder="Valor cobrado (opcional)" step="0.01" min="0" />
+        <input type="number" id="novoFuncPago" placeholder="Valor pago (opcional)" step="0.01" min="0" />
+        <button type="button" class="btn-laranja" id="btnAddFuncionarioObra">+ Adicionar</button>
+      </div>
+    </div>
+
+    <div class="secao-detalhe">
+      <h3>Materiais anotados</h3>
+      <div class="lista-itens-obra" id="listaMateriaisObra"></div>
+      <div class="form-rapido-item">
+        <input type="text" id="novoMatNome" placeholder="Nome (opcional)" />
+        <input type="text" id="novoMatCodigo" placeholder="Código (opcional)" />
+        <input type="number" id="novoMatValor" placeholder="Valor (opcional)" step="0.01" min="0" />
+        <input type="date" id="novoMatData" />
+        <button type="button" class="btn-laranja" id="btnAddMaterialObra">+ Adicionar</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="obra-detalhe.js"></script>
+</body>
+</html>

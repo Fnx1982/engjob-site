@@ -156,6 +156,7 @@ body {
 .tag-tipo.funcionarios { background: rgba(235, 153, 28, 0.18); color: rgb(180, 110, 10); }
 .tag-tipo.extrato { background: rgba(28, 138, 75, 0.15); color: #1c8a4b; }
 .tag-tipo.materiais { background: rgba(43, 108, 176, 0.15); color: #2b6cb0; }
+.tag-tipo.obras { background: rgba(146, 64, 14, 0.15); color: #92400e; }
 .tag-tipo.combinado { background: rgba(70, 70, 70, 0.15); color: #444; }
 
 .relatorio-acoes {

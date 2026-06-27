@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Obras</title>
+  <link rel="stylesheet" href="propostas.css" />
+  <link rel="stylesheet" href="obras.css" />
+  <script src="confirm-modal.js"></script>
+  <script src="validacao.js"></script>
+  <script src="propostas-core.js"></script>
+</head>
+<body>
+  <main class="container">
+    <div class="topo-pagina">
+      <div>
+        <h1>Obras</h1>
+        <p>Obras aprovadas, organizadas por mês. Clique numa obra para ver detalhes.</p>
+      </div>
+      <a href="home.html" class="btn-voltar">Voltar</a>
+    </div>
+
+    <div class="card-filtros">
+      <h2>Filtros</h2>
+      <div class="filtros">
+        <div class="filtro-busca">
+          <label class="filtro-label" for="buscaTexto">Buscar</label>
+          <input type="text" id="buscaTexto" placeholder="Cliente, local ou serviço..." />
+        </div>
+        <div class="select-simples">
+          <label class="filtro-label" for="filtroAno">Ano</label>
+          <select id="filtroAno"><option value="todos">Todos</option></select>
+        </div>
+        <button type="button" class="btn-limpar-filtros" id="btnLimparFiltros">Limpar filtros</button>
+      </div>
+    </div>
+
+    <div id="gruposMeses"></div>
+    <div class="sem-resultados" id="semResultados" style="display:none;">
+      Nenhuma obra encontrada. Obras aparecem aqui automaticamente quando uma proposta é aprovada.
+    </div>
+  </main>
+
+  <script src="obras.js"></script>
+</body>
+</html>

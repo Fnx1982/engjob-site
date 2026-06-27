@@ -35,10 +35,12 @@ const nomeRelatorioInput = document.getElementById("nomeRelatorio");
 const btnTipoFuncionarios = document.getElementById("btnTipoFuncionarios");
 const btnTipoExtrato = document.getElementById("btnTipoExtrato");
 const btnTipoMateriais = document.getElementById("btnTipoMateriais");
+const btnTipoObras = document.getElementById("btnTipoObras");
 const btnTipoCombinado = document.getElementById("btnTipoCombinado");
 const secaoFuncionarios = document.getElementById("secaoFuncionarios");
 const secaoExtrato = document.getElementById("secaoExtrato");
 const secaoMateriais = document.getElementById("secaoMateriais");
+const secaoObras = document.getElementById("secaoObras");
 
 const bancosExtratoSel = new Set(); // vazio = nenhum banco ainda (obrigatório escolher ao menos um)
 const tipoLancamentoExtratoSelect = document.getElementById("tipoLancamentoExtrato");
@@ -55,6 +57,7 @@ let obrasFuncSel = new Set();
 let nomesFuncSel = new Set();
 let classificacoesExtratoSel = new Set();
 let setoresMaterialSel = new Set();
+let obrasRelatorioSel = new Set(); // vazio = todas as obras
 
 // ====================================================
 // LEITURA DOS DADOS EXISTENTES (Funcionários / Extrato)
@@ -101,6 +104,7 @@ btnNovoRelatorio.addEventListener("click", () => {
   tipoLancamentoExtratoSelect.value = "todos";
   setoresMaterialSel.clear();
   buscaMaterialInput.value = "";
+  obrasRelatorioSel.clear();
   definirTipo("funcionarios");
   tituloModalRelatorio.textContent = "Novo Relatório";
   btnSalvarRelatorio.textContent = "Salvar e Gerar PDF";
@@ -122,21 +126,24 @@ document.addEventListener("keydown", (e) => {
 // ====================================================
 function definirTipo(tipo) {
   tipoSelecionado = tipo;
-  [btnTipoFuncionarios, btnTipoExtrato, btnTipoMateriais, btnTipoCombinado].forEach((b) => b.classList.remove("active"));
+  [btnTipoFuncionarios, btnTipoExtrato, btnTipoMateriais, btnTipoObras, btnTipoCombinado].forEach((b) => b.classList.remove("active"));
   if (tipo === "funcionarios") btnTipoFuncionarios.classList.add("active");
   if (tipo === "extrato") btnTipoExtrato.classList.add("active");
   if (tipo === "materiais") btnTipoMateriais.classList.add("active");
+  if (tipo === "obras") btnTipoObras.classList.add("active");
   if (tipo === "combinado") btnTipoCombinado.classList.add("active");
 
-  // "Combinado" reúne Funcionários + Extrato. Materiais é uma aba
-  // própria, separada (não entra no Combinado por enquanto).
+  // "Combinado" reúne Funcionários + Extrato. Materiais e Obras são
+  // abas próprias, separadas (não entram no Combinado por enquanto).
   secaoFuncionarios.style.display = tipo === "funcionarios" || tipo === "combinado" ? "block" : "none";
   secaoExtrato.style.display = tipo === "extrato" || tipo === "combinado" ? "block" : "none";
   secaoMateriais.style.display = tipo === "materiais" ? "block" : "none";
+  secaoObras.style.display = tipo === "obras" ? "block" : "none";
 }
 btnTipoFuncionarios.addEventListener("click", () => definirTipo("funcionarios"));
 btnTipoExtrato.addEventListener("click", () => definirTipo("extrato"));
 btnTipoMateriais.addEventListener("click", () => definirTipo("materiais"));
+btnTipoObras.addEventListener("click", () => definirTipo("obras"));
 btnTipoCombinado.addEventListener("click", () => definirTipo("combinado"));
 
 // ====================================================
@@ -291,6 +298,21 @@ const msSetorMaterial = configurarMultiSelect({
 
 const buscaMaterialInput = document.getElementById("buscaMaterial");
 
+const msObrasRelatorio = configurarMultiSelect({
+  painel: document.getElementById("painelObrasRelatorio"),
+  toggle: document.getElementById("toggleObrasRelatorio"),
+  container: document.getElementById("multiObrasRelatorio"),
+  resumoEl: document.getElementById("resumoObrasRelatorio"),
+  getOpcoes: () => lerObras().map((o) => o.id),
+  rotulo: (id) => {
+    const obra = buscarObra(id);
+    if (!obra) return id;
+    return `${obra.cliente || "(sem cliente)"} — ${obra.servico || ""}`.trim();
+  },
+  selecionados: obrasRelatorioSel,
+  labelTodos: "Todas",
+});
+
 function atualizarOpcoesMultiSelect() {
   // Força reconstrução das opções (ex: obras/classificações podem ter mudado)
   msMesFunc.atualizarResumo();
@@ -299,6 +321,7 @@ function atualizarOpcoesMultiSelect() {
   msBancoExtrato.atualizarResumo();
   msClassificacaoExtrato.atualizarResumo();
   msSetorMaterial.atualizarResumo();
+  msObrasRelatorio.atualizarResumo();
 }
 
 // ====================================================
@@ -348,6 +371,9 @@ btnSalvarRelatorio.addEventListener("click", () => {
     filtrosMateriais: {
       setores: [...setoresMaterialSel],
       busca: buscaMaterialInput.value.trim(),
+    },
+    filtrosObras: {
+      obraIds: [...obrasRelatorioSel],
     },
   };
 
@@ -416,6 +442,13 @@ function editarRelatorio(id) {
     buscaMaterialInput.value = "";
   }
 
+  obrasRelatorioSel.clear();
+  // Retrocompatibilidade: relatórios salvos antes de Obras existir
+  // não têm filtrosObras.
+  if (r.filtrosObras) {
+    r.filtrosObras.obraIds.forEach((id) => obrasRelatorioSel.add(id));
+  }
+
   atualizarOpcoesMultiSelect();
 
   tituloModalRelatorio.textContent = "Editar Relatório";
@@ -454,6 +487,7 @@ function rotuloTipo(tipo) {
   if (tipo === "funcionarios") return "Funcionários";
   if (tipo === "extrato") return "Extrato";
   if (tipo === "materiais") return "Materiais";
+  if (tipo === "obras") return "Obras";
   return "Combinado";
 }
 
@@ -575,6 +609,9 @@ function gerarPDF(config) {
   }
   if (config.tipo === "materiais") {
     y = secaoMateriaisPDF(doc, config, y, margemEsquerda);
+  }
+  if (config.tipo === "obras") {
+    y = secaoObrasPDF(doc, config, y, margemEsquerda);
   }
 
   const nomeArquivo = config.nome.replace(/[^a-z0-9]+/gi, "_").toLowerCase() || "relatorio";
@@ -740,6 +777,123 @@ function secaoMateriaisPDF(doc, config, y, margemEsquerda) {
   });
 
   return doc.lastAutoTable.finalY + 24;
+}
+
+function obrasFiltradas(config) {
+  const { obraIds } = config.filtrosObras;
+  const todas = lerObras();
+  if (obraIds.length === 0) return todas;
+  return todas.filter((o) => obraIds.includes(o.id));
+}
+
+function secaoObrasPDF(doc, config, y, margemEsquerda) {
+  const obras = obrasFiltradas(config);
+
+  if (obras.length === 0) {
+    y = garantirEspaco(doc, y, 40);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Nenhuma obra encontrada com os filtros selecionados.", margemEsquerda, y);
+    return y + 20;
+  }
+
+  obras.forEach((obra, indice) => {
+    y = garantirEspaco(doc, y, 100);
+
+    // ----- Cabeçalho da obra -----
+    doc.setFillColor(235, 153, 28);
+    doc.rect(margemEsquerda, y, doc.internal.pageSize.getWidth() - margemEsquerda * 2, 22, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(`${obra.cliente || "(sem cliente)"} — ${obra.servico || ""}`, margemEsquerda + 8, y + 15);
+    doc.setTextColor(0, 0, 0);
+    y += 32;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Criada em ${new Date(obra.criadoEm).toLocaleDateString("pt-BR")}`, margemEsquerda, y);
+    y += 14;
+
+    if (obra.observacao) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Observação:", margemEsquerda, y);
+      doc.setFont("helvetica", "normal");
+      const linhasObs = doc.splitTextToSize(obra.observacao, doc.internal.pageSize.getWidth() - margemEsquerda * 2 - 70);
+      doc.text(linhasObs, margemEsquerda + 65, y);
+      y += 13 * linhasObs.length + 6;
+    }
+
+    // ----- Tabela: funcionários -----
+    y = garantirEspaco(doc, y, 60);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Funcionários", margemEsquerda, y);
+    y += 6;
+
+    const linhasFunc = obra.funcionarios.map((f) => [
+      f.nome,
+      `R$ ${formatarMoeda(f.valorCobrado)}`,
+      `R$ ${formatarMoeda(f.valorPago)}`,
+    ]);
+
+    doc.autoTable({
+      startY: y,
+      head: [["Funcionário", "Cobrado", "Pago"]],
+      body: linhasFunc.length ? linhasFunc : [["Nenhum funcionário", "-", "-"]],
+      margin: { left: margemEsquerda, right: margemEsquerda },
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [92, 92, 92] },
+    });
+    y = doc.lastAutoTable.finalY + 14;
+
+    // ----- Tabela: materiais -----
+    y = garantirEspaco(doc, y, 60);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Materiais anotados", margemEsquerda, y);
+    y += 6;
+
+    const linhasMat = obra.materiais.map((m) => [
+      m.nome || "-",
+      m.codigo || "-",
+      `R$ ${formatarMoeda(m.valor)}`,
+      m.data ? new Date(m.data + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+    ]);
+
+    doc.autoTable({
+      startY: y,
+      head: [["Material", "Código", "Valor", "Data"]],
+      body: linhasMat.length ? linhasMat : [["Nenhum material anotado", "-", "-", "-"]],
+      margin: { left: margemEsquerda, right: margemEsquerda },
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [92, 92, 92] },
+    });
+    y = doc.lastAutoTable.finalY + 14;
+
+    // ----- Resumo de lucro da obra -----
+    y = garantirEspaco(doc, y, 50);
+    const lucroMO = lucroMaoDeObraObra(obra);
+    const lucroMat = lucroMaterialObra(obra);
+    const lucroTot = lucroTotalObra(obra);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(`Lucro Mão de Obra: R$ ${formatarMoeda(lucroMO)}`, margemEsquerda, y);
+    doc.text(`Lucro Material: R$ ${formatarMoeda(lucroMat)}`, margemEsquerda + 200, y);
+    doc.text(`Lucro Total: R$ ${formatarMoeda(lucroTot)}`, margemEsquerda + 380, y);
+    y += 20;
+
+    // Linha divisória entre obras (exceto na última)
+    if (indice < obras.length - 1) {
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.5);
+      doc.line(margemEsquerda, y, doc.internal.pageSize.getWidth() - margemEsquerda, y);
+      y += 20;
+    }
+  });
+
+  return y;
 }
 
 // ====================================================
