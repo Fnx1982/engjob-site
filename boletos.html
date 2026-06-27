@@ -77,6 +77,8 @@
         </div>
         <input type="hidden" id="tipoBoleto" value="despesa" />
 
+        <div class="separador-secao-form">Identificação</div>
+
         <label class="campo-largura-total">
           Cliente / Fornecedor <span class="texto-opcional-inline">(opcional)</span>
           <input type="text" id="campoNomeBoleto" placeholder="Nome do cliente ou de onde comprou o material" />
@@ -92,6 +94,8 @@
           <input type="number" id="campoValorBoleto" placeholder="0,00" step="0.01" min="0" />
         </label>
 
+        <div class="separador-secao-form">Datas</div>
+
         <label>
           Data de cadastro <span class="texto-opcional-inline">(opcional)</span>
           <input type="date" id="campoDataCadastroBoleto" />
@@ -102,19 +106,23 @@
           <input type="date" id="campoDataVencimentoBoleto" />
         </label>
 
-        <label class="campo-largura-total">
-          Observação <span class="texto-opcional-inline">(opcional)</span>
-          <textarea id="campoObservacaoBoleto" rows="2" placeholder="Alguma observação sobre este boleto..."></textarea>
-        </label>
+        <div class="separador-secao-form">Arquivos</div>
 
-        <label>
+        <label class="campo-largura-meia">
           Arquivo do boleto (PDF) <span class="texto-opcional-inline">(opcional)</span>
           <input type="file" id="campoArquivoBoleto" accept="application/pdf,image/*" />
         </label>
 
-        <label>
+        <label class="campo-largura-meia">
           Comprovante de pagamento (PDF) <span class="texto-opcional-inline">(opcional)</span>
           <input type="file" id="campoArquivoComprovante" accept="application/pdf,image/*" />
+        </label>
+
+        <div class="separador-secao-form">Observação</div>
+
+        <label class="campo-largura-total">
+          Observação <span class="texto-opcional-inline">(opcional)</span>
+          <textarea id="campoObservacaoBoleto" rows="3" placeholder="Alguma observação sobre este boleto..."></textarea>
         </label>
 
         <div class="campo-largura-total aviso-comprovante" id="avisoMarcaPago" style="display:none;">
