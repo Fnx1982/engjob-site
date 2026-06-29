@@ -146,3 +146,39 @@ function confirmarAcao(titulo, texto) {
     document.addEventListener("keydown", onKeydown);
   });
 }
+
+// ============================================================
+// Toast de aviso temporário (substitui o alert() nativo para
+// mensagens de sucesso/erro que não precisam de confirmação,
+// como "Cadastro realizado com sucesso!").
+// ============================================================
+function mostrarToast(mensagem, tipo) {
+  let toast = document.getElementById("toast-aviso-global");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast-aviso-global";
+    toast.style.position = "fixed";
+    toast.style.bottom = "24px";
+    toast.style.left = "50%";
+    toast.style.transform = "translateX(-50%)";
+    toast.style.padding = "12px 22px";
+    toast.style.borderRadius = "30px";
+    toast.style.fontWeight = "600";
+    toast.style.fontSize = "14px";
+    toast.style.fontFamily = "inherit";
+    toast.style.color = "white";
+    toast.style.zIndex = "3000";
+    toast.style.boxShadow = "0 4px 16px rgba(0,0,0,0.25)";
+    toast.style.transition = "opacity 0.3s";
+    toast.style.maxWidth = "90vw";
+    toast.style.textAlign = "center";
+    document.body.appendChild(toast);
+  }
+  toast.style.backgroundColor = tipo === "erro" ? "crimson" : "rgb(28, 138, 75)";
+  toast.textContent = mensagem;
+  toast.style.opacity = "1";
+  clearTimeout(toast._timeoutId);
+  toast._timeoutId = setTimeout(() => {
+    toast.style.opacity = "0";
+  }, 2800);
+}

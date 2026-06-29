@@ -64,6 +64,11 @@ function setupSubmenuToggle(menuId) {
   const submenu = menu.querySelector(".submenu");
   const arrow = menu.querySelector(".submenu-arrow");
 
+  // Proteção extra: se o item não tiver mais um .submenu-toggle
+  // (ex: virou um link direto, sem submenu), não tenta configurar
+  // o clique — isso travava o script inteiro antes desta correção.
+  if (!toggle) return;
+
   toggle.addEventListener("click", (e) => {
     e.preventDefault();
     if (!submenu) return;
@@ -84,46 +89,68 @@ function setupSubmenuToggle(menuId) {
 
 [
   "financeiro-menu",
-  "boletos-menu",
   "notas-menu",
   "propostas-menu",
   "midias-menu",
   "pontos-menu",
-  "extrato-menu" 
+  "extrato-menu"
 ].forEach(setupSubmenuToggle);
 
 // ==========================
-// MENU POR USUÁRIO
+// MENU POR USUÁRIO (permissão definida pelo SETOR do usuário)
 // ==========================
+// A lista de itens de menu e o mapa de permissões por setor vêm
+// do arquivo permissoes-setor.js (compartilhado com a tela de
+// Cadastro, onde cada setor é configurado).
+
+// Dentro do submenu de Pontos, se o setor não tiver liberado o
+// item de "Consulta" individualmente (algo que pode ser refinado
+// depois), mostramos os dois sub-itens normalmente — a tela de
+// Cadastro hoje configura "pontos-menu" como bloco único.
+function aplicarRegraPontosSubitens() {
+  const itemConfirmacao = document.getElementById("pontos-confirmacao-item");
+  const itemConsulta = document.getElementById("pontos-consulta-item");
+  if (!itemConfirmacao || !itemConsulta) return;
+  itemConfirmacao.style.display = "";
+  itemConsulta.style.display = "";
+}
+
 function updateMenuVisibility() {
   const userId = localStorage.getItem("userId");
-  let userType = localStorage.getItem("userType") || "";
+  let nomeSetor = "";
 
   if (userId) {
     const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
     const found = usuarios.find((u) => String(u.registro) === String(userId));
-    if (found && found.tipo) {
-      userType = found.tipo;
-      localStorage.setItem("userType", userType);
+    if (found && found.setor) {
+      nomeSetor = found.setor;
     }
   }
 
-  userType = (userType || "normal").toLowerCase();
+  // CEO/login fixo do sistema (ver login.js) não tem um setor
+  // cadastrado de verdade — esse caso continua liberando tudo.
+  const userType = (localStorage.getItem("userType") || "").toLowerCase();
+  const ehLoginFixo = userType === "ceo" && !nomeSetor;
 
-  const adminOnlyIds = [
-    "gerenciarcontas-menu",
-    "armazenamento-menu",
-    "financeiro-menu",
-    "boletos-menu",
-    "notas-menu",
-    "propostas-menu",
-  ];
+  const idsPermitidos = ehLoginFixo ? "todos" : getPermissoesDoSetor(nomeSetor);
 
-  adminOnlyIds.forEach((id) => {
-    const el = document.getElementById(id);
+  if (!ehLoginFixo && idsPermitidos.length === 0) {
+    // Setor sem nenhuma permissão configurada ainda (ex: setor
+    // recém-criado). Em vez de esconder tudo silenciosamente,
+    // libera tudo e avisa no console.
+    console.warn(`[home.js] Setor "${nomeSetor}" não tem permissões configuradas. Liberando todos os itens do menu.`);
+  }
+
+  const liberarTudo = idsPermitidos === "todos" || (!ehLoginFixo && idsPermitidos.length === 0);
+
+  ITENS_MENU_DISPONIVEIS.forEach((item) => {
+    const el = document.getElementById(item.id);
     if (!el) return;
-    el.style.display = userType === "admin" ? "" : "none";
+    const permitido = liberarTudo || (Array.isArray(idsPermitidos) && idsPermitidos.includes(item.id));
+    el.style.display = permitido ? "" : "none";
   });
+
+  aplicarRegraPontosSubitens();
 
   const pontosConfirmacaoLink = document.getElementById("pontos-confirmacao-link");
   if (pontosConfirmacaoLink) {
@@ -134,6 +161,7 @@ function updateMenuVisibility() {
 
 window.addEventListener("DOMContentLoaded", updateMenuVisibility);
 window.addEventListener("storage", updateMenuVisibility);
+
 
 // ==========================
 // MONTANTE E OBSERVAÇÃO

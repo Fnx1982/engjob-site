@@ -14,8 +14,9 @@ const obraId = getObraIdDaUrl();
 let obraAtual = buscarObra(obraId);
 
 if (!obraAtual) {
-  alert("Obra não encontrada.");
-  window.location.href = "obras.html";
+  // Redireciona direto, sem popup bloqueante. O parâmetro avisa a
+  // tela de obras para mostrar um aviso discreto, se quiser tratar.
+  window.location.href = "obras.html?erro=obra_nao_encontrada";
 }
 
 const tituloObraEl = document.getElementById("tituloObra");

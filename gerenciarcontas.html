@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="gerenciacontas.css" />
+<script src="confirm-modal.js"></script>
+<script src="validacao.js"></script>
+<script src="permissoes-setor.js"></script>
+<script src="senha-visivel.js"></script>
 <title>Gerenciar Usuários</title>
 
 </head>
@@ -80,11 +84,29 @@
         <thead>
             <tr>
                 <th>Nome do Setor</th>
+                <th>Permissões</th>
                 <th>Ações</th>
             </tr>
         </thead>
         <tbody></tbody>
     </table>
+
+    <!-- Modal: Definir permissões do setor -->
+    <div class="modal-overlay-permissao" id="modalPermissaoSetor">
+        <div class="modal-caixa-permissao">
+            <div class="modal-cabecalho-permissao">
+                <h2 id="tituloModalPermissao">Permissões do setor</h2>
+                <button type="button" class="modal-fechar-permissao" id="fecharModalPermissao">&times;</button>
+            </div>
+            <p class="texto-ajuda-permissao">Marque o que esse setor pode ver no menu. "Sair" e o login sempre ficam disponíveis para todos.</p>
+            <div class="lista-checkbox-permissao" id="listaCheckboxPermissao"></div>
+            <div class="modal-rodape-permissao">
+                <button type="button" class="btn-secundario-permissao" id="btnMarcarTudoPermissao">Marcar tudo</button>
+                <button type="button" class="btn-secundario-permissao" id="btnDesmarcarTudoPermissao">Desmarcar tudo</button>
+                <button type="button" class="btn-salvar-permissao" id="btnSalvarPermissaoSetor">Salvar Permissões</button>
+            </div>
+        </div>
+    </div>
 
     <!-- TABELA USUÁRIOS -->
     <h2>Usuários Cadastrados</h2>
@@ -93,9 +115,8 @@
             <tr>
                 <th>Nome Completo</th>
                 <th>Registro</th>
-                <th>Tipo</th>
+                <th>Setor</th>
                 <th>Editar</th>
-                <th>Permissão</th>
             </tr>
         </thead>
         <tbody></tbody>
@@ -106,6 +127,15 @@
 
 <script>
     // Funções de Setores (mantidas iguais)
+    let setorEmEdicaoPermissao = null;
+
+    function rotuloResumoPermissoes(nomeSetor) {
+        const permissoes = getPermissoesDoSetor(nomeSetor);
+        if (permissoes.length === 0) return "Nenhuma permissão definida";
+        if (permissoes.length === ITENS_MENU_DISPONIVEIS.length) return "Acesso total";
+        return `${permissoes.length} de ${ITENS_MENU_DISPONIVEIS.length} itens`;
+    }
+
     function carregarSetores() {
         const setores = JSON.parse(localStorage.getItem("setores")) || [];
         const selectSetor = document.getElementById("setor");
@@ -125,6 +155,15 @@
             tdNome.textContent = setor;
             tr.appendChild(tdNome);
 
+            const tdPermissoes = document.createElement("td");
+            const btnPermissoes = document.createElement("button");
+            btnPermissoes.textContent = rotuloResumoPermissoes(setor);
+            btnPermissoes.className = "btn-permissoes-setor";
+            btnPermissoes.title = "Clique para configurar o que este setor pode ver";
+            btnPermissoes.addEventListener("click", () => abrirModalPermissao(setor));
+            tdPermissoes.appendChild(btnPermissoes);
+            tr.appendChild(tdPermissoes);
+
             const tdAcoes = document.createElement("td");
             const btnExcluir = document.createElement("button");
             btnExcluir.textContent = "Excluir";
@@ -137,27 +176,83 @@
         });
     }
 
+    // ===== Modal de permissões do setor =====
+    function abrirModalPermissao(nomeSetor) {
+        setorEmEdicaoPermissao = nomeSetor;
+        document.getElementById("tituloModalPermissao").textContent = `Permissões — ${nomeSetor}`;
+
+        const permissoesAtuais = getPermissoesDoSetor(nomeSetor);
+        const lista = document.getElementById("listaCheckboxPermissao");
+        lista.innerHTML = "";
+
+        ITENS_MENU_DISPONIVEIS.forEach((item) => {
+            const linha = document.createElement("label");
+            linha.className = "linha-checkbox-permissao";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.value = item.id;
+            checkbox.checked = permissoesAtuais.includes(item.id);
+            linha.appendChild(checkbox);
+            linha.appendChild(document.createTextNode(item.rotulo));
+            lista.appendChild(linha);
+        });
+
+        document.getElementById("modalPermissaoSetor").classList.add("active");
+    }
+
+    function fecharModalPermissaoFn() {
+        document.getElementById("modalPermissaoSetor").classList.remove("active");
+        setorEmEdicaoPermissao = null;
+    }
+
+    document.getElementById("fecharModalPermissao").addEventListener("click", fecharModalPermissaoFn);
+    document.getElementById("modalPermissaoSetor").addEventListener("click", (e) => {
+        if (e.target.id === "modalPermissaoSetor") fecharModalPermissaoFn();
+    });
+
+    document.getElementById("btnMarcarTudoPermissao").addEventListener("click", () => {
+        document.querySelectorAll("#listaCheckboxPermissao input[type=checkbox]").forEach((cb) => cb.checked = true);
+    });
+    document.getElementById("btnDesmarcarTudoPermissao").addEventListener("click", () => {
+        document.querySelectorAll("#listaCheckboxPermissao input[type=checkbox]").forEach((cb) => cb.checked = false);
+    });
+
+    document.getElementById("btnSalvarPermissaoSetor").addEventListener("click", () => {
+        if (!setorEmEdicaoPermissao) return;
+        const marcados = [...document.querySelectorAll("#listaCheckboxPermissao input[type=checkbox]:checked")].map((cb) => cb.value);
+        salvarPermissoesDoSetor(setorEmEdicaoPermissao, marcados);
+        mostrarToast(`Permissões de "${setorEmEdicaoPermissao}" atualizadas.`);
+        fecharModalPermissaoFn();
+        carregarSetores();
+    });
+
     function salvarNovoSetor(novoSetor) {
         let setores = JSON.parse(localStorage.getItem("setores")) || [];
         if (setores.includes(novoSetor)) {
-            alert("Este setor já existe.");
+            marcarCampoComErro(document.getElementById("novoSetorInput"), "Este setor já existe.");
             return false;
         }
         setores.push(novoSetor);
         localStorage.setItem("setores", JSON.stringify(setores));
+        // Novo setor começa sem nenhuma permissão marcada — o usuário
+        // deve configurar manualmente pelo botão de permissões.
+        salvarPermissoesDoSetor(novoSetor, []);
         carregarSetores();
         return true;
     }
 
     function excluirSetor(index) {
         let setores = JSON.parse(localStorage.getItem("setores")) || [];
+        const nomeSetor = setores[index];
         setores.splice(index, 1);
         localStorage.setItem("setores", JSON.stringify(setores));
+        excluirSetorDasPermissoes(nomeSetor);
         carregarSetores();
     }
 
     document.getElementById("formSetor").addEventListener("submit", function(e) {
         e.preventDefault();
+        limparErroCampo(document.getElementById("novoSetorInput"));
         const novoSetor = document.getElementById("novoSetorInput").value.trim();
         if (novoSetor) {
             if (salvarNovoSetor(novoSetor)) {
@@ -165,6 +260,7 @@
             }
         }
     });
+    limparErroAoEditar(document.getElementById("novoSetorInput"));
 
     // Máscaras (mantidas iguais)
     function mascaraTelefone(event) {
@@ -208,6 +304,7 @@
     document.getElementById("rg").addEventListener("input", mascaraRG);
 
     // Usuários
+
     function carregarUsuarios() {
         const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
         const tbody = document.querySelector("#tabelaUsuarios tbody");
@@ -224,9 +321,9 @@
             tdRegistro.textContent = user.registro;
             tr.appendChild(tdRegistro);
 
-            const tdTipo = document.createElement("td");
-            tdTipo.textContent = user.tipo === "admin" ? "Admin" : user.tipo === "gestor" ? "Gestor" : "Operador";
-            tr.appendChild(tdTipo);
+            const tdSetor = document.createElement("td");
+            tdSetor.textContent = user.setor || "—";
+            tr.appendChild(tdSetor);
 
             const tdEditar = document.createElement("td");
             const btnEditar = document.createElement("button");
@@ -238,22 +335,6 @@
             tdEditar.appendChild(btnEditar);
             tr.appendChild(tdEditar);
 
-            const tdToggle = document.createElement("td");
-            const btnToggle = document.createElement("button");
-            btnToggle.textContent = "Alterar Permissão";
-            btnToggle.className = "btn-toggle-tipo";
-            btnToggle.addEventListener("click", () => {
-                const tipos = ["admin", "gestor", "operador"];
-                let atual = tipos.indexOf(user.tipo);
-                let proximo = (atual + 1) % tipos.length;
-                usuarios[index].tipo = tipos[proximo];
-                localStorage.setItem("usuarios", JSON.stringify(usuarios));
-
-                tdTipo.textContent = usuarios[index].tipo === "admin" ? "Admin" : usuarios[index].tipo === "gestor" ? "Gestor" : "Operador";
-            });
-            tdToggle.appendChild(btnToggle);
-            tr.appendChild(tdToggle);
-
             tbody.appendChild(tr);
         });
     }
@@ -261,32 +342,48 @@
     document.getElementById("formUsuario").addEventListener("submit", function(event) {
         event.preventDefault();
 
-        const nome = document.getElementById("nome").value.trim();
-        const registro = document.getElementById("registro").value.trim();
+        const campoNome = document.getElementById("nome");
+        const campoRegistro = document.getElementById("registro");
+        const campoSexo = document.getElementById("sexo");
+        const campoSenha = document.getElementById("senha");
+        const campoSetor = document.getElementById("setor");
+        const campoTelefone = document.getElementById("telefone");
+
+        limparErrosDoFormulario(this);
+
+        const nome = campoNome.value.trim();
+        const registro = campoRegistro.value.trim();
         const email = document.getElementById("email").value.trim();
-        const telefone = document.getElementById("telefone").value.trim();
-        const sexo = document.getElementById("sexo").value;
+        const telefone = campoTelefone.value.trim();
+        const sexo = campoSexo.value;
         const cpf = document.getElementById("cpf").value.trim();
         const rg = document.getElementById("rg").value.trim();
         const endereco = document.getElementById("endereco").value.trim();
-        const senha = document.getElementById("senha").value;
-        const setor = document.getElementById("setor").value;
+        const senha = campoSenha.value;
+        const setor = campoSetor.value;
 
         // LOG DE DEPURAÇÃO: abra o Console (F12) para ver os valores capturados
         console.log("Dados do formulário:", { nome, registro, email, telefone, sexo, cpf, rg, endereco, senha, setor });
 
         // Campos obrigatórios: Nome, Registro, Sexo, Senha e Setor.
         // Email, Telefone, CPF e Endereço agora são opcionais.
-        if (!nome || !registro || !sexo || !senha || !setor) {
-            alert("Por favor, preencha todos os campos obrigatórios.");
-            return;
-        }
+        let temErro = false;
+        if (!nome) { marcarCampoComErro(campoNome, "Informe o nome completo."); temErro = true; }
+        if (!registro) { marcarCampoComErro(campoRegistro, "Informe o registro."); temErro = true; }
+        if (!sexo) { marcarCampoComErro(campoSexo, "Selecione o sexo."); temErro = true; }
+        if (!senha) { marcarCampoComErro(campoSenha, "Informe uma senha."); temErro = true; }
+        if (!setor) { marcarCampoComErro(campoSetor, "Selecione o setor."); temErro = true; }
 
         // Telefone é opcional, mas se for preenchido, precisa ter um formato válido.
         const telefoneRegex = /^\(\d{2}\)\s?\d{4,5}-\d{4}$/;
         if (telefone && !telefoneRegex.test(telefone)) {
-            alert("Telefone inválido. Use o formato (99) 99999-9999, ou deixe em branco.");
+            marcarCampoComErro(campoTelefone, "Telefone inválido. Use (99) 99999-9999, ou deixe em branco.");
             console.warn("Telefone rejeitado pela regex:", telefone);
+            temErro = true;
+        }
+
+        if (temErro) {
+            focarPrimeiroErro(this);
             return;
         }
 
@@ -299,11 +396,13 @@
         }
 
         if (usuarios.some(u => u.registro === registro)) {
-            alert("Já existe um usuário com este registro.");
+            marcarCampoComErro(campoRegistro, "Já existe um usuário com este registro.");
+            focarPrimeiroErro(this);
             return;
         }
-        if (usuarios.some(u => u.email === email)) {
-            alert("Já existe um usuário com este email.");
+        if (email && usuarios.some(u => u.email === email)) {
+            marcarCampoComErro(document.getElementById("email"), "Já existe um usuário com este email.");
+            focarPrimeiroErro(this);
             return;
         }
 
@@ -318,7 +417,6 @@
             endereco,
             senha,
             setor,
-            tipo: "operador" // padrão inicial
         };
 
         usuarios.push(novoUsuario);
@@ -330,18 +428,31 @@
             console.log("Usuário salvo com sucesso. Total de usuários:", usuarios.length);
         } catch (err) {
             console.error("Erro ao salvar usuario no localStorage:", err);
-            alert("Não foi possível salvar o usuário. Verifique se o armazenamento local do navegador está habilitado (não funciona em modo anônimo/privado em alguns navegadores).");
+            mostrarToast("Não foi possível salvar. Verifique se o armazenamento local está habilitado.", "erro");
             return;
         }
 
         this.reset();
         carregarUsuarios();
-        alert("Usuário cadastrado com sucesso!");
+        mostrarToast("Usuário cadastrado com sucesso!");
     });
+
 
     window.addEventListener("load", () => {
         carregarSetores();
         carregarUsuarios();
+
+        // Trata avisos vindos de outras páginas (ex: editar.html
+        // redirecionando quando o usuário não é encontrado).
+        const paramsUrl = new URLSearchParams(window.location.search);
+        const erro = paramsUrl.get("erro");
+        if (erro === "usuario_nao_especificado") {
+            mostrarToast("Usuário não especificado.", "erro");
+            window.history.replaceState({}, "", "gerenciarcontas.html");
+        } else if (erro === "usuario_nao_encontrado") {
+            mostrarToast("Usuário não encontrado.", "erro");
+            window.history.replaceState({}, "", "gerenciarcontas.html");
+        }
     });
 </script>
 </body>

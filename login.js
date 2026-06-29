@@ -15,6 +15,9 @@ function logar() {
     // o que foi digitado com o que está salvo em "usuarios"
     console.log("Tentativa de login -> registro:", JSON.stringify(registro), "senha:", JSON.stringify(senha));
 
+    var mensagemErroInicio = document.getElementById("mensagemErroLogin");
+    if (mensagemErroInicio) mensagemErroInicio.style.display = "none";
+
     // Defina aqui os admins fixos
     var admins = [
         { registro: "172616320", senha: "123" },
@@ -30,7 +33,7 @@ function logar() {
         } else {
             localStorage.removeItem("registroSalvo");
         }
-        localStorage.setItem("userType", "admin");
+        localStorage.setItem("userType", "ceo");
         localStorage.setItem("userId", registro);
         window.location.href = "home.html";
         return;
@@ -45,17 +48,22 @@ function logar() {
         return String(user.registro).trim() === registro && user.senha === senha;
     });
 
+    var mensagemErro = document.getElementById("mensagemErroLogin");
+
     if (usuarioValido) {
         if (lembrar) {
             localStorage.setItem("registroSalvo", registro);
         } else {
             localStorage.removeItem("registroSalvo");
         }
-        localStorage.setItem("userType", "normal");
+        localStorage.setItem("userType", usuarioValido.tipo || "prestador");
         localStorage.setItem("userId", registro);
         window.location.href = "home.html";
     } else {
         console.warn("Nenhum usuário encontrado com esse registro/senha.");
-        alert("Registro ou senha incorretos. Tente novamente.");
+        if (mensagemErro) {
+            mensagemErro.textContent = "Registro ou senha incorretos. Tente novamente.";
+            mensagemErro.style.display = "block";
+        }
     }
 }

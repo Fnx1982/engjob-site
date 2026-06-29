@@ -97,14 +97,14 @@
         </a>
       </li>
 
-      <li class="lista">
+      <li class="lista" id="obras-menu">
         <a href="obras.html">
           <i class='bx bx-building-house'></i>
           <span class="span-menu">Obras</span>
         </a>
       </li>
 
-      <li class="lista">
+      <li class="lista" id="gestaomaterial-menu">
         <a href="gestaodematerial.html">
           <i class='bx bx-archive'></i>
           <span class="span-menu">Gestão de material</span>
@@ -112,14 +112,14 @@
       </li>
 
       <li class="lista" id="armazenamento-menu">
-        <a href="#">
+        <a href="em-construcao.html?pagina=Reunião">
           <i class='bx bx-store'></i>
           <span class="span-menu">Armazenamento</span>
         </a>
       </li>
 
       <!-- Boletos -->
-      <li class="lista">
+      <li class="lista" id="boletos-menu">
         <a href="boletos.html">
           <i class='bx bx-file'></i>
           <span class="span-menu">Boletos</span>
@@ -135,19 +135,19 @@
         </a>
         <ul class="submenu">
           <li class="lista">
-            <a href="nfse.html">
+            <a href="em-construcao.html?pagina=Reunião">
               <i class='bx bx-wrench'></i>
               <span class="span-menu">Mão de Obra</span>
             </a>
           </li>
           <li class="lista">
-            <a href="nfe.html">
+            <a href="em-construcao.html?pagina=Reunião">
               <i class='bx bx-cube'></i>
               <span class="span-menu">Material</span>
             </a>
           </li>
           <li class="lista">
-            <a href="#">
+            <a href="em-construcao.html?pagina=Reunião">
               <i class='bx bx-search'></i>
               <span class="span-menu">Consulta</span>
             </a>
@@ -184,8 +184,8 @@
         </ul>
       </li>
 
-      <li class="lista">
-        <a href="#">
+      <li class="lista" id="reuniao-menu">
+        <a href="em-construcao.html?pagina=Reunião">
           <i class='bx bx-group'></i>
           <span class="span-menu">Reunião</span>
         </a>
@@ -228,14 +228,14 @@
           <i class='bx bx-chevron-down submenu-arrow'></i>
         </a>
         <ul class="submenu">
-          <li class="lista">
-            <a href="#">
+          <li class="lista" id="pontos-confirmacao-item">
+            <a href="em-construcao.html?pagina=Reunião">
               <i class='bx bx-check-square'></i>
               <span class="span-menu">Confirmação</span>
             </a>
           </li>
-          <li class="lista">
-            <a href="#">
+          <li class="lista" id="pontos-consulta-item">
+            <a href="em-construcao.html?pagina=Reunião">
               <i class='bx bx-search'></i>
               <span class="span-menu">Consulta</span>
             </a>
@@ -296,6 +296,7 @@
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js"></script>
 
 <script src="google-auth.js"></script>
+<script src="permissoes-setor.js"></script>
 <script src="home.js"></script>
 <script>
   window.onload = () => initGoogleAPI();

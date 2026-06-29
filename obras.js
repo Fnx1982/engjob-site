@@ -113,4 +113,13 @@ btnLimparFiltros.addEventListener("click", () => {
   renderLista();
 });
 
+// ====================================================
+// INICIALIZAÇÃO
+// ====================================================
+const paramsUrlObras = new URLSearchParams(window.location.search);
+if (paramsUrlObras.get("erro") === "obra_nao_encontrada") {
+  mostrarToast("Obra não encontrada.", "erro");
+  window.history.replaceState({}, "", "obras.html");
+}
+
 renderLista();
