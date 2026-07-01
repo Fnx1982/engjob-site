@@ -560,7 +560,6 @@ function gerarPdfProposta(proposta) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(200, 0, 0);
-  doc.text("Não nos responsabilizamos por compra particular de material.", margem, y);
   doc.setTextColor(0, 0, 0);
   y += 18;
 

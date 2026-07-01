@@ -32,7 +32,7 @@ function montarModalFormularioProposta() {
           <label>Cliente
             <input type="text" id="campoCliente" placeholder="Nome do cliente" />
           </label>
-          <label>Telefone <span class="texto-opcional-inline">(opcional)</span>
+          <label>Telefone</span>
             <input type="text" id="campoTelefone" placeholder="(99) 9 9999-9999" maxlength="17" />
           </label>
           <label class="campo-largura-total">Local
