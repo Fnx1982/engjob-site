@@ -54,6 +54,7 @@
           <button type="button" data-tipo="materiais" id="btnTipoMateriais">Materiais</button>
           <button type="button" data-tipo="obras" id="btnTipoObras">Obras</button>
           <button type="button" data-tipo="combinado" id="btnTipoCombinado">Combinado</button>
+          <button type="button" data-tipo="apresentacao" id="btnTipoApresentacao">📊 Apresentação</button>
         </div>
         <p class="banco-aviso">"Combinado" reúne Funcionários + Extrato no mesmo PDF. Materiais e Obras são gerados separadamente por enquanto.</p>
       </div>
@@ -148,13 +149,66 @@
         </div>
       </div>
 
+      <!-- Seção: Apresentação -->
+      <div class="secao-filtro" id="secaoApresentacao">
+        <h3>Configurar Apresentação</h3>
+        <p class="banco-aviso">Selecione os slides que deseja incluir. A apresentação será gerada como arquivo .pptx, que pode ser aberto no PowerPoint ou Google Slides e exportado como PDF.</p>
+
+        <div class="linha-campos" style="margin-bottom:14px;">
+          <div class="select-simples" style="flex:1;min-width:140px;">
+            <label class="filtro-label-mini" for="apresentacaoMes">Mês</label>
+            <select id="apresentacaoMes"></select>
+          </div>
+          <div class="select-simples" style="flex:1;min-width:120px;">
+            <label class="filtro-label-mini" for="apresentacaoAno">Ano</label>
+            <select id="apresentacaoAno"></select>
+          </div>
+        </div>
+
+        <p style="font-weight:600;font-size:13px;margin-bottom:10px;">Slides a incluir:</p>
+        <div class="lista-checkbox-permissao" id="checkboxesApresentacao">
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="capa" checked /> Slide de capa (nome da empresa, período, data)
+          </label>
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="resumo_financeiro" checked /> Resumo financeiro (total de pagamentos, obras, extrato)
+          </label>
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="obras" checked /> Obras do período (lista e lucro por obra)
+          </label>
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="propostas" checked /> Propostas (orçamentos, em análise, aprovadas, negadas)
+          </label>
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="materiais" checked /> Gestão de materiais (itens em estoque, valor total)
+          </label>
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="funcionarios" checked /> Funcionários (pagamentos do período)
+          </label>
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="pontos" checked /> Banco de horas (resumo por funcionário)
+          </label>
+          <label class="linha-checkbox-permissao">
+            <input type="checkbox" value="boletos" checked /> Boletos (pendentes, atrasados, pagos)
+          </label>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+          <button type="button" class="btn-secundario-permissao" id="btnMarcarTudoApresentacao">Marcar tudo</button>
+          <button type="button" class="btn-secundario-permissao" id="btnDesmarcarTudoApresentacao">Desmarcar tudo</button>
+        </div>
+      </div>
+
       <div class="modal-rodape">
         <button type="button" class="btn-secundario" id="btnCancelarRelatorio">Cancelar</button>
         <button type="button" class="btn-laranja" id="btnSalvarRelatorio">Salvar e Gerar PDF</button>
+        <button type="button" class="btn-laranja" id="btnGerarApresentacao" style="display:none;">📊 Gerar Apresentação (.pptx)</button>
       </div>
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+  <script src="apresentacao.js"></script>
   <script src="relatorios.js"></script>
 </body>
 </html>

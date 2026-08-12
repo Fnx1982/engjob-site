@@ -37,6 +37,8 @@ const btnTipoExtrato = document.getElementById("btnTipoExtrato");
 const btnTipoMateriais = document.getElementById("btnTipoMateriais");
 const btnTipoObras = document.getElementById("btnTipoObras");
 const btnTipoCombinado = document.getElementById("btnTipoCombinado");
+const btnTipoApresentacao = document.getElementById("btnTipoApresentacao");
+const btnGerarApresentacao = document.getElementById("btnGerarApresentacao");
 const secaoFuncionarios = document.getElementById("secaoFuncionarios");
 const secaoExtrato = document.getElementById("secaoExtrato");
 const secaoMateriais = document.getElementById("secaoMateriais");
@@ -126,25 +128,32 @@ document.addEventListener("keydown", (e) => {
 // ====================================================
 function definirTipo(tipo) {
   tipoSelecionado = tipo;
-  [btnTipoFuncionarios, btnTipoExtrato, btnTipoMateriais, btnTipoObras, btnTipoCombinado].forEach((b) => b.classList.remove("active"));
+  [btnTipoFuncionarios, btnTipoExtrato, btnTipoMateriais, btnTipoObras, btnTipoCombinado, btnTipoApresentacao].forEach((b) => b && b.classList.remove("active"));
   if (tipo === "funcionarios") btnTipoFuncionarios.classList.add("active");
   if (tipo === "extrato") btnTipoExtrato.classList.add("active");
   if (tipo === "materiais") btnTipoMateriais.classList.add("active");
   if (tipo === "obras") btnTipoObras.classList.add("active");
   if (tipo === "combinado") btnTipoCombinado.classList.add("active");
+  if (tipo === "apresentacao") btnTipoApresentacao.classList.add("active");
 
-  // "Combinado" reúne Funcionários + Extrato. Materiais e Obras são
-  // abas próprias, separadas (não entram no Combinado por enquanto).
   secaoFuncionarios.style.display = tipo === "funcionarios" || tipo === "combinado" ? "block" : "none";
   secaoExtrato.style.display = tipo === "extrato" || tipo === "combinado" ? "block" : "none";
   secaoMateriais.style.display = tipo === "materiais" ? "block" : "none";
   secaoObras.style.display = tipo === "obras" ? "block" : "none";
+
+  const secApres = document.getElementById("secaoApresentacao");
+  if (secApres) secApres.style.display = tipo === "apresentacao" ? "block" : "none";
+
+  // Troca os botões do rodapé conforme o tipo
+  if (btnSalvarRelatorio) btnSalvarRelatorio.style.display = tipo === "apresentacao" ? "none" : "inline-block";
+  if (btnGerarApresentacao) btnGerarApresentacao.style.display = tipo === "apresentacao" ? "inline-block" : "none";
 }
 btnTipoFuncionarios.addEventListener("click", () => definirTipo("funcionarios"));
 btnTipoExtrato.addEventListener("click", () => definirTipo("extrato"));
 btnTipoMateriais.addEventListener("click", () => definirTipo("materiais"));
 btnTipoObras.addEventListener("click", () => definirTipo("obras"));
 btnTipoCombinado.addEventListener("click", () => definirTipo("combinado"));
+btnTipoApresentacao.addEventListener("click", () => definirTipo("apresentacao"));
 
 // ====================================================
 // MULTI-SELECT GENÉRICO (reaproveitado)
@@ -900,6 +909,73 @@ function secaoObrasPDF(doc, config, y, margemEsquerda) {
 // INICIALIZAÇÃO
 // ====================================================
 limparErroAoEditar(nomeRelatorioInput);
+
+// Popula filtros de mês/ano da apresentação
+function inicializarFiltrosApresentacao() {
+  const mesEl = document.getElementById("apresentacaoMes");
+  const anoEl = document.getElementById("apresentacaoAno");
+  if (!mesEl || !anoEl) return;
+
+  const nomesMeses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const mesAtual = new Date().getMonth();
+  const anoAtual = new Date().getFullYear();
+
+  mesEl.innerHTML = "";
+  nomesMeses.forEach((nome, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = nome;
+    if (i === mesAtual) opt.selected = true;
+    mesEl.appendChild(opt);
+  });
+
+  anoEl.innerHTML = "";
+  for (let a = anoAtual; a >= anoAtual - 3; a--) {
+    const opt = document.createElement("option");
+    opt.value = a;
+    opt.textContent = a;
+    if (a === anoAtual) opt.selected = true;
+    anoEl.appendChild(opt);
+  }
+}
+inicializarFiltrosApresentacao();
+
+// Marcar/desmarcar tudo nos slides
+const btnMarcarApres = document.getElementById("btnMarcarTudoApresentacao");
+const btnDesmarcarApres = document.getElementById("btnDesmarcarTudoApresentacao");
+if (btnMarcarApres) btnMarcarApres.addEventListener("click", () => {
+  document.querySelectorAll("#checkboxesApresentacao input[type=checkbox]").forEach((cb) => cb.checked = true);
+});
+if (btnDesmarcarApres) btnDesmarcarApres.addEventListener("click", () => {
+  document.querySelectorAll("#checkboxesApresentacao input[type=checkbox]").forEach((cb) => cb.checked = false);
+});
+
+// Botão de gerar apresentação
+if (btnGerarApresentacao) {
+  btnGerarApresentacao.addEventListener("click", async () => {
+    const mes = parseInt(document.getElementById("apresentacaoMes").value);
+    const ano = parseInt(document.getElementById("apresentacaoAno").value);
+    const selecionados = [...document.querySelectorAll("#checkboxesApresentacao input[type=checkbox]:checked")].map((cb) => cb.value);
+
+    if (selecionados.length === 0) {
+      mostrarToast("Selecione ao menos um slide.", "erro");
+      return;
+    }
+
+    btnGerarApresentacao.disabled = true;
+    btnGerarApresentacao.textContent = "Gerando...";
+    try {
+      await gerarApresentacao(mes, ano, selecionados);
+      mostrarToast("Apresentação gerada com sucesso!");
+    } catch (e) {
+      mostrarToast("Erro ao gerar apresentação: " + e.message, "erro");
+      console.error(e);
+    } finally {
+      btnGerarApresentacao.disabled = false;
+      btnGerarApresentacao.textContent = "📊 Gerar Apresentação (.pptx)";
+    }
+  });
+}
 
 definirTipo("funcionarios");
 renderListaRelatorios();
