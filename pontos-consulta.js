@@ -713,6 +713,50 @@ function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario) {
     y = doc.lastAutoTable.finalY + 20;
   }
 
+  // Seção de localização: todas as batidas do mês que têm endereço
+  const batidasComLoc = registros
+    .filter((r) => r.endereco)
+    .sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
+
+  if (batidasComLoc.length > 0) {
+    if (y > doc.internal.pageSize.getHeight() - 120) { doc.addPage(); y = 50; }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text("Registro de Localização", margem, y);
+    y += 4;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text("Endereços registrados automaticamente no momento de cada batida.", margem, y + 8);
+    y += 16;
+
+    doc.autoTable({
+      startY: y,
+      head: [["Data", "Hora", "Tipo", "Endereço", "Coordenadas"]],
+      body: batidasComLoc.map((b) => [
+        formatarDataBR(b.dataHora.slice(0, 10)),
+        formatarHoraBR(b.dataHora),
+        b.tipo === "entrada" ? "Entrada" : "Saída",
+        b.endereco || "—",
+        b.lat && b.lng ? `${b.lat.toFixed(5)}, ${b.lng.toFixed(5)}` : "—",
+      ]),
+      margin: { left: margem, right: margem },
+      styles: { fontSize: 8, overflow: "linebreak" },
+      headStyles: { fillColor: [43, 108, 176] },
+      columnStyles: {
+        0: { cellWidth: 55 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 280 },
+        4: { cellWidth: 90 },
+      },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+  }
+
   // Rodapé com assinatura
   const alturaPagina = doc.internal.pageSize.getHeight();
   doc.setFont("helvetica", "normal");
