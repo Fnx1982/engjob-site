@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consulta de Pontos</title>
+  <link rel="stylesheet" href="pontos.css" />
+  <script src="confirm-modal.js"></script>
+  <script src="validacao.js"></script>
+  <script src="permissoes-setor.js"></script>
+  <script src="pontos-core.js"></script>
+</head>
+<body>
+  <main class="container">
+    <div class="topo-pagina">
+      <div>
+        <h1>Consulta de Pontos</h1>
+        <p>Visualize e gerencie os registros de todos os funcionários.</p>
+      </div>
+      <a href="home.html" class="btn-voltar">Voltar</a>
+    </div>
+
+    <div class="abas">
+      <button type="button" class="aba active" data-aba="funcionarios">Funcionários</button>
+      <button type="button" class="aba" data-aba="lancamentos">Lançamentos</button>
+      <button type="button" class="aba" data-aba="jornadas">Jornadas</button>
+    </div>
+
+    <!-- ABA: FUNCIONÁRIOS -->
+    <div id="abaFuncionarios">
+      <div class="card-filtros">
+        <h2>Filtros</h2>
+        <div class="filtros">
+          <div class="filtro-busca">
+            <label class="filtro-label" for="buscaFuncionario">Buscar</label>
+            <input type="text" id="buscaFuncionario" placeholder="Nome ou registro..." />
+          </div>
+          <div class="select-simples">
+            <label for="filtroMesConsulta">Mês</label>
+            <select id="filtroMesConsulta"></select>
+          </div>
+          <div class="select-simples">
+            <label for="filtroAnoConsulta">Ano</label>
+            <select id="filtroAnoConsulta"></select>
+          </div>
+          <button type="button" class="btn-limpar-filtros" id="btnLimparFiltros">Limpar</button>
+        </div>
+      </div>
+
+      <table class="tabela-funcionarios" id="tabelaFuncionarios">
+        <thead>
+          <tr>
+            <th>Funcionário</th>
+            <th>Registro</th>
+            <th>Jornada</th>
+            <th>Horas Trabalhadas</th>
+            <th>Saldo Banco</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyFuncionarios"></tbody>
+      </table>
+      <div class="sem-resultados" id="semFuncionarios" style="display:none;">
+        Nenhum funcionário encontrado.
+      </div>
+    </div>
+
+    <!-- ABA: LANÇAMENTOS -->
+    <div id="abaLancamentos" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+        <button type="button" class="btn-laranja" id="btnNovoLancamento">+ Novo Lançamento</button>
+      </div>
+      <div class="lista-lancamentos" id="listaLancamentosGestor"></div>
+    </div>
+
+    <!-- ABA: JORNADAS -->
+    <div id="abaJornadas" style="display:none;">
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">Configure a jornada diária de cada funcionário. A jornada padrão é 8h/dia se não configurada.</p>
+      <table class="tabela-funcionarios" id="tabelaJornadas">
+        <thead>
+          <tr>
+            <th>Funcionário</th>
+            <th>Registro</th>
+            <th>Jornada Atual</th>
+            <th>Alterar</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyJornadas"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Modal: detalhe do funcionário (batidas + lançamentos) -->
+  <div class="modal-overlay" id="modalDetalhe">
+    <div class="modal-caixa" style="max-width:720px;">
+      <div class="modal-cabecalho">
+        <h2 id="tituloModalDetalhe">Detalhes</h2>
+        <button type="button" class="modal-fechar" id="fecharModalDetalhe">&times;</button>
+      </div>
+
+      <div class="cards-banco" id="bancoModalCards" style="margin-bottom:20px;"></div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="select-simples" style="min-width:160px;">
+          <label for="modalFiltroMes">Mês</label>
+          <select id="modalFiltroMes"></select>
+        </div>
+        <div class="select-simples" style="min-width:120px;">
+          <label for="modalFiltroAno">Ano</label>
+          <select id="modalFiltroAno"></select>
+        </div>
+        <button type="button" class="btn-laranja" id="btnAdicionarBatida" style="padding:10px 16px;font-size:13px;">+ Batida</button>
+        <button type="button" class="btn-laranja" id="btnAdicionarLancamentoDetalhe" style="padding:10px 16px;font-size:13px;">+ Lançamento</button>
+        <button type="button" class="btn-secundario" id="btnExportarPdfPontos" style="padding:10px 16px;font-size:13px;">📄 Exportar PDF</button>
+      </div>
+
+      <div class="secao-titulo">Batidas do Mês</div>
+      <div id="batidasModalContainer" style="margin-bottom:20px;"></div>
+
+      <div class="secao-titulo">Lançamentos</div>
+      <div id="lancamentosModalContainer"></div>
+    </div>
+  </div>
+
+  <!-- Modal: adicionar/editar batida -->
+  <div class="modal-overlay" id="modalBatida">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <h2 id="tituloModalBatida">Adicionar Batida</h2>
+        <button type="button" class="modal-fechar" id="fecharModalBatida">&times;</button>
+      </div>
+      <div class="form-modal">
+        <label>Data e Hora
+          <input type="datetime-local" id="campoDataHoraBatida" />
+        </label>
+        <label>Tipo
+          <select id="campoTipoBatida">
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saída</option>
+          </select>
+        </label>
+        <label>Observação <span class="texto-opcional">(opcional)</span>
+          <input type="text" id="campoObsBatida" placeholder="Ex: Ajuste manual — horário incorreto" />
+        </label>
+      </div>
+      <div class="modal-rodape">
+        <button type="button" class="btn-secundario" id="cancelarModalBatida">Cancelar</button>
+        <button type="button" class="btn-laranja" id="salvarModalBatida">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: adicionar/editar lançamento -->
+  <div class="modal-overlay" id="modalLancamento">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <h2 id="tituloModalLancamento">Novo Lançamento</h2>
+        <button type="button" class="modal-fechar" id="fecharModalLancamento">&times;</button>
+      </div>
+      <div class="form-modal">
+        <label>Funcionário
+          <select id="campoFuncLancamento"></select>
+        </label>
+        <label>Tipo
+          <select id="campoTipoLancamento">
+            <option value="hora_extra">Hora Extra (crédito)</option>
+            <option value="falta">Falta (débito)</option>
+            <option value="abono">Abono</option>
+            <option value="atestado">Atestado</option>
+            <option value="declaracao">Declaração</option>
+            <option value="ajuste">Ajuste Manual</option>
+          </select>
+        </label>
+        <label>Data
+          <input type="date" id="campoDataLancamento" />
+        </label>
+        <label>Duração <span class="texto-opcional">(horas e minutos)</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="campoHorasLancamento" min="0" max="23" placeholder="Horas" style="flex:1;" />
+            <span style="font-weight:normal;color:#555;">h</span>
+            <input type="number" id="campoMinutosLancamento" min="0" max="59" placeholder="Min" style="flex:1;" />
+            <span style="font-weight:normal;color:#555;">min</span>
+          </div>
+          <span style="font-size:11px;color:#888;margin-top:2px;">Para Ajuste Manual negativo, use valores negativos nas horas.</span>
+        </label>
+        <label>Descrição / Justificativa <span class="texto-opcional">(opcional)</span>
+          <textarea id="campoDescLancamento" rows="2" placeholder="Ex: Atestado médico apresentado em 10/06"></textarea>
+        </label>
+        <label>Documento <span class="texto-opcional">(opcional — PDF, imagem)</span>
+          <input type="file" id="campoArquivoLancamento" accept="application/pdf,image/*" />
+        </label>
+        <div id="docAtualLancamento" style="display:none;font-size:12px;color:#2b6cb0;margin-top:-8px;">
+          Documento atual: <span id="docAtualNome"></span>
+          <button type="button" id="btnRemoverDocLancamento" style="background:none;border:none;color:crimson;cursor:pointer;font-size:12px;margin-left:8px;">Remover</button>
+        </div>
+      </div>
+      <div class="modal-rodape">
+        <button type="button" class="btn-secundario" id="cancelarModalLancamento">Cancelar</button>
+        <button type="button" class="btn-laranja" id="salvarModalLancamento">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="pontos-consulta.js"></script>
+</body>
+</html>

@@ -1,611 +1,319 @@
 // ============================================================
-// propostas-core.js
-// Núcleo de dados compartilhado pelas 3 páginas do módulo de
-// Propostas: orcamento.html, propostas.html e andamento.html.
-// Todas leem/escrevem na MESMA lista (CHAVE_PROPOSTAS) — o que
-// muda entre as páginas é só o filtro de status exibido.
+// pontos-core.js
+// Lógica central do módulo de Pontos. Compartilhado entre
+// pontos-confirmacao.html (funcionário bate ponto) e
+// pontos-consulta.html (gestor consulta e edita).
 //
-// Ciclo de vida de uma proposta (campo "status"):
-//   orcamento -> analise -> aprovada -> andamento -> finalizada
-//                        -> negada
+// Estrutura do localStorage:
+//   "pontos_registros"  → array de registros de batida
+//   "pontos_lancamentos"→ array de lançamentos especiais
+//   "pontos_jornadas"   → objeto { "registro_funcionario": horas }
 // ============================================================
 
-const CHAVE_PROPOSTAS = "propostas_lista";
-const CHAVE_OBRAS = "obras_lista";
+const CHAVE_REGISTROS   = "pontos_registros";
+const CHAVE_LANCAMENTOS = "pontos_lancamentos";
+const CHAVE_JORNADAS    = "pontos_jornadas";
+
+const JORNADA_PADRAO_HORAS = 8; // horas/dia padrão se não configurada
 
 // ====================================================
 // LEITURA / ESCRITA
 // ====================================================
-function lerPropostas() {
-  return JSON.parse(localStorage.getItem(CHAVE_PROPOSTAS)) || [];
+function lerRegistros() {
+  return JSON.parse(localStorage.getItem(CHAVE_REGISTROS)) || [];
 }
-function salvarPropostas(lista) {
-  localStorage.setItem(CHAVE_PROPOSTAS, JSON.stringify(lista));
-}
-
-function buscarProposta(id) {
-  return lerPropostas().find((p) => p.id === id);
+function salvarRegistros(lista) {
+  localStorage.setItem(CHAVE_REGISTROS, JSON.stringify(lista));
 }
 
-function criarPropostaVazia() {
-  return {
-    id: `prop_${Date.now()}`,
-    cliente: "",
-    telefone: "",
-    local: "",
-    servico: "",
-    observacao: "",
-    itensMaoDeObra: [],
-    itensMateriais: [],
-    formaPagamento: "",
-    planejamentoDias: "",
-    validadeDias: "",
-    status: "orcamento",
-    statusExecucao: "", // "andamento" | "finalizada" — só usado depois de aprovada
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
-  };
+function lerLancamentos() {
+  return JSON.parse(localStorage.getItem(CHAVE_LANCAMENTOS)) || [];
+}
+function salvarLancamentos(lista) {
+  localStorage.setItem(CHAVE_LANCAMENTOS, JSON.stringify(lista));
 }
 
-function salvarProposta(proposta) {
-  const lista = lerPropostas();
-  proposta.atualizadoEm = new Date().toISOString();
-  const idx = lista.findIndex((p) => p.id === proposta.id);
-  if (idx !== -1) {
-    lista[idx] = proposta;
-  } else {
-    lista.push(proposta);
-  }
-  salvarPropostas(lista);
+function lerJornadas() {
+  return JSON.parse(localStorage.getItem(CHAVE_JORNADAS)) || {};
 }
-
-function excluirProposta(id) {
-  const lista = lerPropostas().filter((p) => p.id !== id);
-  salvarPropostas(lista);
+function salvarJornadas(obj) {
+  localStorage.setItem(CHAVE_JORNADAS, JSON.stringify(obj));
 }
 
 // ====================================================
-// TRANSIÇÕES DE STATUS
+// JORNADA POR FUNCIONÁRIO
 // ====================================================
-function mudarStatusProposta(id, novoStatus) {
-  const lista = lerPropostas();
-  const proposta = lista.find((p) => p.id === id);
-  if (!proposta) return;
-
-  proposta.status = novoStatus;
-
-  // Ao aprovar, a proposta sai de "Propostas" e entra automaticamente
-  // em "Em Andamento" (com sub-status inicial "andamento"), e cria
-  // uma Obra vinculada na tela de Obras.
-  if (novoStatus === "aprovada") {
-    proposta.status = "andamento";
-    proposta.statusExecucao = "andamento";
-    criarObraAPartirDaProposta(proposta);
-  }
-
-  proposta.atualizadoEm = new Date().toISOString();
-  salvarPropostas(lista);
+function getJornadaFuncionario(registroFuncionario) {
+  const jornadas = lerJornadas();
+  return jornadas[registroFuncionario] || JORNADA_PADRAO_HORAS;
 }
 
-function mudarStatusExecucao(id, novoStatusExecucao) {
-  const lista = lerPropostas();
-  const proposta = lista.find((p) => p.id === id);
-  if (!proposta) return;
-
-  proposta.statusExecucao = novoStatusExecucao;
-  if (novoStatusExecucao === "finalizada") {
-    proposta.status = "finalizada";
-  } else {
-    proposta.status = "andamento";
-  }
-  proposta.atualizadoEm = new Date().toISOString();
-  salvarPropostas(lista);
-}
-
-// Desfaz a aprovação: volta a proposta de "Em Andamento" para
-// "Propostas" (status "analise"), permitindo reavaliar.
-function reverterParaAnalise(id) {
-  const lista = lerPropostas();
-  const proposta = lista.find((p) => p.id === id);
-  if (!proposta) return;
-
-  proposta.status = "analise";
-  proposta.statusExecucao = "";
-  proposta.atualizadoEm = new Date().toISOString();
-  salvarPropostas(lista);
+function setJornadaFuncionario(registroFuncionario, horas) {
+  const jornadas = lerJornadas();
+  jornadas[registroFuncionario] = parseFloat(horas) || JORNADA_PADRAO_HORAS;
+  salvarJornadas(jornadas);
 }
 
 // ====================================================
-// SINCRONIZAÇÃO COM GESTÃO DE MATERIAIS
+// BATIDAS DE PONTO
 // ====================================================
-function lerMateriaisEstoque() {
-  return JSON.parse(localStorage.getItem("materiais_lista")) || [];
-}
-function salvarMateriaisEstoque(lista) {
-  localStorage.setItem("materiais_lista", JSON.stringify(lista));
-}
+// Estrutura de cada registro:
+// {
+//   id, registroFuncionario, nomeFuncionario,
+//   dataHora (ISO string), tipo ("entrada"|"saida"),
+//   obs (opcional, para ajustes manuais)
+// }
 
-// Encontra o índice do material no estoque a partir do índice
-// guardado no item da proposta (materialIndex). Retorna -1 se
-// não encontrar (ex: material foi excluído do estoque depois).
-function encontrarMaterialNoEstoque(materialIndex) {
-  const estoque = lerMateriaisEstoque();
-  if (materialIndex === null || materialIndex === undefined) return null;
-  if (materialIndex < 0 || materialIndex >= estoque.length) return null;
-  return estoque[materialIndex];
-}
+function baterPonto(registroFuncionario, nomeFuncionario) {
+  const registros = lerRegistros();
+  const hoje = dataHoje();
 
-// Pergunta ao usuário se a edição de um item de material vinculado
-// deve ser propagada de volta para o estoque (Gestão de Materiais).
-// Retorna uma Promise<boolean>.
-async function perguntarSincronizarMaterial(nomeMaterial) {
-  return confirmarAcao(
-    `Atualizar "${nomeMaterial}" na Gestão de Materiais também?`,
-    "Isso vai sobrescrever o nome, valor e quantidade desse material no estoque com os novos valores."
+  // Última batida do funcionário hoje
+  const batidasHoje = registros.filter(
+    (r) => r.registroFuncionario === registroFuncionario && r.dataHora.startsWith(hoje)
   );
-}
 
-// Atualiza o material no estoque (Gestão de Materiais) com os
-// novos dados, mantendo o setor original do material.
-function atualizarMaterialNoEstoque(materialIndex, novosDados) {
-  const estoque = lerMateriaisEstoque();
-  if (materialIndex === null || materialIndex < 0 || materialIndex >= estoque.length) return;
-  estoque[materialIndex] = {
-    ...estoque[materialIndex],
-    nome: novosDados.nome,
-    valor: novosDados.valorUnit,
-    quantidade: novosDados.qtd,
-  };
-  salvarMateriaisEstoque(estoque);
-}
+  // Alterna entre entrada e saída
+  const ultimaBatida = batidasHoje[batidasHoje.length - 1];
+  const tipo = (!ultimaBatida || ultimaBatida.tipo === "saida") ? "entrada" : "saida";
 
-// ====================================================
-// CÁLCULOS
-// ====================================================
-function totalMaoDeObra(proposta) {
-  return proposta.itensMaoDeObra.reduce((s, item) => s + item.qtd * item.valorUnit, 0);
-}
-function totalMateriais(proposta) {
-  return proposta.itensMateriais.reduce((s, item) => s + item.qtd * item.valorUnit, 0);
-}
-function totalGeral(proposta) {
-  return totalMaoDeObra(proposta) + totalMateriais(proposta);
-}
-
-function formatarMoeda(valor) {
-  return (valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// ====================================================
-// RÓTULOS E CORES DE STATUS
-// ====================================================
-function rotuloStatus(proposta) {
-  const mapa = {
-    orcamento: "Orçamento",
-    analise: "Em Análise",
-    negada: "Negada",
-    andamento: proposta.statusExecucao === "finalizada" ? "Finalizada" : "Em Andamento",
-    finalizada: "Finalizada",
-  };
-  return mapa[proposta.status] || proposta.status;
-}
-
-function corStatus(proposta) {
-  if (proposta.status === "analise") return "amarelo";
-  if (proposta.status === "negada") return "vermelho";
-  if (proposta.status === "andamento" || proposta.status === "finalizada") return "verde";
-  return "cinza"; // orcamento (ainda não enviado para análise)
-}
-
-// ====================================================
-// OBRAS (criadas automaticamente ao aprovar uma proposta)
-// ====================================================
-function lerObras() {
-  return JSON.parse(localStorage.getItem(CHAVE_OBRAS)) || [];
-}
-function salvarObras(lista) {
-  localStorage.setItem(CHAVE_OBRAS, JSON.stringify(lista));
-}
-function buscarObra(id) {
-  return lerObras().find((o) => o.id === id);
-}
-
-// Cria a obra a partir da proposta aprovada. Se a proposta já tiver
-// uma obra vinculada (ex: aprovação repetida), não duplica.
-function criarObraAPartirDaProposta(proposta) {
-  const obras = lerObras();
-  const jaExiste = obras.some((o) => o.propostaId === proposta.id);
-  if (jaExiste) return;
-
-  const obra = {
-    id: `obra_${Date.now()}`,
-    propostaId: proposta.id,
-    cliente: proposta.cliente,
-    local: proposta.local,
-    servico: proposta.servico,
-    valorMaoDeObraOrcamento: totalMaoDeObra(proposta),
-    valorMateriaisOrcamento: totalMateriais(proposta),
-    observacao: "",
-    funcionarios: [], // { id, nome, valorCobrado, valorPago, pagamentoMes }
-    materiais: [], // { id, nome, codigo, valor, data }
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
+  const novo = {
+    id: `bat_${Date.now()}`,
+    registroFuncionario,
+    nomeFuncionario,
+    dataHora: new Date().toISOString(),
+    tipo,
+    obs: "",
   };
 
-  obras.push(obra);
-  salvarObras(obras);
+  registros.push(novo);
+  salvarRegistros(registros);
+  return novo;
 }
 
-function salvarObra(obra) {
-  const obras = lerObras();
-  obra.atualizadoEm = new Date().toISOString();
-  const idx = obras.findIndex((o) => o.id === obra.id);
-  if (idx !== -1) obras[idx] = obra;
-  else obras.push(obra);
-  salvarObras(obras);
+function editarBatida(id, novosDados) {
+  const registros = lerRegistros();
+  const idx = registros.findIndex((r) => r.id === id);
+  if (idx === -1) return;
+  registros[idx] = { ...registros[idx], ...novosDados };
+  salvarRegistros(registros);
 }
 
-function excluirObra(id) {
-  const obras = lerObras().filter((o) => o.id !== id);
-  salvarObras(obras);
+function excluirBatida(id) {
+  salvarRegistros(lerRegistros().filter((r) => r.id !== id));
 }
 
-// ----- Funcionários da obra (vinculados ao Financeiro) -----
-function lerFuncionariosFinanceiro() {
-  return JSON.parse(localStorage.getItem("financeiro")) || [];
-}
-function salvarFuncionariosFinanceiro(lista) {
-  localStorage.setItem("financeiro", JSON.stringify(lista));
-}
-
-const NOMES_MESES_OBRA = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-
-// Adiciona um funcionário na obra E cria automaticamente o
-// pagamento correspondente no Financeiro de Funcionários, usando
-// o nome da obra (cliente + serviço) como referência de "obra".
-function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-
-  const nomeObraNoFinanceiro = nomeObraParaFinanceiro(obra);
-  const mesAtual = NOMES_MESES_OBRA[new Date().getMonth()];
-  const vinculoId = `vinculo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-  // Garante que essa "obra" existe na lista fixa de obras do
-  // Financeiro de Funcionários (obrasFinanceiro), senão ela não
-  // aparece nos seletores por lá.
-  const obrasFinanceiro = JSON.parse(localStorage.getItem("obrasFinanceiro")) || [];
-  if (!obrasFinanceiro.includes(nomeObraNoFinanceiro)) {
-    obrasFinanceiro.push(nomeObraNoFinanceiro);
-    localStorage.setItem("obrasFinanceiro", JSON.stringify(obrasFinanceiro));
-  }
-
-  // Cria o pagamento no Financeiro de Funcionários, marcado com um
-  // ID de vínculo estável (em vez de depender da posição no array,
-  // que mudaria se outro pagamento fosse excluído antes dele).
-  const financeiro = lerFuncionariosFinanceiro();
-  financeiro.push({
-    nome: dadosFuncionario.nome,
-    obra: nomeObraNoFinanceiro,
-    mes: mesAtual,
-    valor: dadosFuncionario.valorPago,
-    comprovante: null,
-    vinculoObraId: vinculoId,
-  });
-  salvarFuncionariosFinanceiro(financeiro);
-
-  obra.funcionarios.push({
-    id: `func_${Date.now()}`,
-    nome: dadosFuncionario.nome,
-    valorCobrado: dadosFuncionario.valorCobrado,
-    valorPago: dadosFuncionario.valorPago,
-    vinculoObraId: vinculoId,
-  });
-
-  salvarObra(obra);
-}
-
-function nomeObraParaFinanceiro(obra) {
-  const partes = [obra.cliente, obra.servico].filter(Boolean);
-  return partes.join(" — ") || "Obra sem nome";
-}
-
-// Atualiza um funcionário já existente na obra, e sincroniza o
-// valor pago de volta no Financeiro de Funcionários.
-function editarFuncionarioNaObra(obraId, funcionarioId, dadosNovos) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-
-  const func = obra.funcionarios.find((f) => f.id === funcionarioId);
-  if (!func) return;
-
-  func.nome = dadosNovos.nome;
-  func.valorCobrado = dadosNovos.valorCobrado;
-  func.valorPago = dadosNovos.valorPago;
-
-  // Sincroniza com o Financeiro de Funcionários, procurando pelo
-  // ID de vínculo estável (funciona mesmo que outros pagamentos
-  // tenham sido excluídos/reordenados desde a criação).
-  if (func.vinculoObraId) {
-    const financeiro = lerFuncionariosFinanceiro();
-    const pagamento = financeiro.find((p) => p.vinculoObraId === func.vinculoObraId);
-    if (pagamento) {
-      pagamento.nome = dadosNovos.nome;
-      pagamento.valor = dadosNovos.valorPago;
-      salvarFuncionariosFinanceiro(financeiro);
-    }
-  }
-
-  salvarObra(obra);
-}
-
-function excluirFuncionarioDaObra(obraId, funcionarioId) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-
-  const func = obra.funcionarios.find((f) => f.id === funcionarioId);
-  obra.funcionarios = obra.funcionarios.filter((f) => f.id !== funcionarioId);
-  salvarObra(obra);
-
-  // Remove também o pagamento vinculado no Financeiro, se existir
-  // (procurado pelo ID de vínculo, não por posição no array).
-  if (func && func.vinculoObraId) {
-    const financeiro = lerFuncionariosFinanceiro();
-    const novoFinanceiro = financeiro.filter((p) => p.vinculoObraId !== func.vinculoObraId);
-    salvarFuncionariosFinanceiro(novoFinanceiro);
-  }
-}
-
-// ----- Materiais da obra (anotação livre, sem vínculo de estoque) -----
-function adicionarMaterialNaObra(obraId, dadosMaterial) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-  obra.materiais.push({
-    id: `mat_${Date.now()}`,
-    nome: dadosMaterial.nome || "",
-    codigo: dadosMaterial.codigo || "",
-    valor: dadosMaterial.valor || 0,
-    data: dadosMaterial.data || "",
-  });
-  salvarObra(obra);
-}
-
-function editarMaterialNaObra(obraId, materialId, dadosNovos) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-  const mat = obra.materiais.find((m) => m.id === materialId);
-  if (!mat) return;
-  mat.nome = dadosNovos.nome || "";
-  mat.codigo = dadosNovos.codigo || "";
-  mat.valor = dadosNovos.valor || 0;
-  mat.data = dadosNovos.data || "";
-  salvarObra(obra);
-}
-
-function excluirMaterialDaObra(obraId, materialId) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-  obra.materiais = obra.materiais.filter((m) => m.id !== materialId);
-  salvarObra(obra);
-}
-
-// ----- Cálculos de lucro -----
-function totalPagoFuncionariosObra(obra) {
-  return obra.funcionarios.reduce((s, f) => s + (f.valorPago || 0), 0);
-}
-function totalCobradoFuncionariosObra(obra) {
-  return obra.funcionarios.reduce((s, f) => s + (f.valorCobrado || 0), 0);
-}
-function totalGastoMateriaisObra(obra) {
-  return obra.materiais.reduce((s, m) => s + (m.valor || 0), 0);
-}
-function lucroMaoDeObraObra(obra) {
-  return (obra.valorMaoDeObraOrcamento || 0) - totalPagoFuncionariosObra(obra);
-}
-function lucroMaterialObra(obra) {
-  return (obra.valorMateriaisOrcamento || 0) - totalGastoMateriaisObra(obra);
-}
-function lucroTotalObra(obra) {
-  return lucroMaoDeObraObra(obra) + lucroMaterialObra(obra);
+function getBatidasFuncionarioData(registroFuncionario, data) {
+  return lerRegistros()
+    .filter((r) => r.registroFuncionario === registroFuncionario && r.dataHora.startsWith(data))
+    .sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
 }
 
 // ====================================================
-// GERAÇÃO DE PDF
-// ============================================================
-// Layout inspirado na planilha de proposta da empresa: cabeçalho
-// com dados fixos da empresa, dados do cliente/obra, tabela de
-// Mão de Obra, tabela de Materiais, totais, condições de
-// pagamento e situação atual.
-// ============================================================
-const EMPRESA_INFO = {
-  nome: "ENGJOB ENGENHARIA E MANUTENÇÃO",
-  cnpj: "14.426.042/0001-01",
-  endereco: "Rua La Salle, 300 - Casa 7",
-  bairro: "Pinheirinho",
-  cidade: "Curitiba",
-  cep: "81880-400",
-  estado: "Paraná",
-  fone: "(41) 3 3330-8478",
-  email: "contato@engjob.com.br",
+// LANÇAMENTOS ESPECIAIS
+// ====================================================
+// Tipos:
+//   "hora_extra"   → crédito (horas a mais trabalhadas)
+//   "falta"        → débito (dia não trabalhado)
+//   "abono"        → zera débito de uma falta
+//   "atestado"     → abate jornada sem débito (médico)
+//   "declaracao"   → abate jornada sem débito (outro documento)
+//   "ajuste"       → ajuste manual livre (pode ser + ou -)
+//
+// Estrutura:
+// {
+//   id, registroFuncionario, nomeFuncionario,
+//   tipo, data, horas (positivo = crédito, negativo = débito),
+//   descricao, documento (nome do arquivo, opcional)
+// }
+
+const TIPOS_LANCAMENTO = {
+  hora_extra:  { rotulo: "Hora Extra",   efeito: "credito" },
+  falta:       { rotulo: "Falta",        efeito: "debito"  },
+  abono:       { rotulo: "Abono",        efeito: "neutro"  },
+  atestado:    { rotulo: "Atestado",     efeito: "neutro"  },
+  declaracao:  { rotulo: "Declaração",   efeito: "neutro"  },
+  ajuste:      { rotulo: "Ajuste Manual",efeito: "neutro"  },
 };
 
-function gerarPdfProposta(proposta) {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const margem = 40;
-  const larguraUtil = doc.internal.pageSize.getWidth() - margem * 2;
-  let y = 40;
-
-  // ----- Cabeçalho da empresa -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text(EMPRESA_INFO.nome, margem, y);
-  y += 16;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`CNPJ: ${EMPRESA_INFO.cnpj}`, margem, y);
-  doc.text(`Endereço: ${EMPRESA_INFO.endereco}`, margem + 220, y);
-  y += 13;
-  doc.text(`Bairro: ${EMPRESA_INFO.bairro}`, margem, y);
-  doc.text(`CEP: ${EMPRESA_INFO.cep}`, margem + 220, y);
-  y += 13;
-  doc.text(`Cidade: ${EMPRESA_INFO.cidade}`, margem, y);
-  doc.text(`Estado: ${EMPRESA_INFO.estado}`, margem + 220, y);
-  y += 13;
-  doc.text(`Fone: ${EMPRESA_INFO.fone}`, margem, y);
-  doc.text(`E-mail: ${EMPRESA_INFO.email}`, margem + 220, y);
-  y += 20;
-
-  doc.setDrawColor(235, 153, 28);
-  doc.setLineWidth(1.2);
-  doc.line(margem, y, margem + larguraUtil, y);
-  y += 18;
-
-  // ----- Dados do cliente / obra -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("Cliente:", margem, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.cliente || "-", margem + 50, y);
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Fone:", margem + 300, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.telefone || "-", margem + 335, y);
-  y += 16;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Local:", margem, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.local || "-", margem + 50, y);
-  y += 16;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Serviço:", margem, y);
-  doc.setFont("helvetica", "normal");
-  const servicoLinhas = doc.splitTextToSize(proposta.servico || "-", larguraUtil - 55);
-  doc.text(servicoLinhas, margem + 55, y);
-  y += 16 * servicoLinhas.length + 8;
-
-  // ----- Tabela: Mão de Obra -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("MÃO DE OBRA", margem, y);
-  y += 8;
-
-  const linhasMao = (proposta.itensMaoDeObra || []).map((item, i) => [
-    String(i + 1),
-    String(item.qtd),
-    item.unid || "",
-    item.descricao,
-    `R$ ${formatarMoeda(item.valorUnit)}`,
-    `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`,
-  ]);
-
-  doc.autoTable({
-    startY: y,
-    head: [["Item", "Qtd", "Unid", "Descrição", "Valor Unit.", "Total"]],
-    body: linhasMao.length ? linhasMao : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [235, 153, 28] },
-    foot: [["", "", "", "", "Total Mão de Obra", `R$ ${formatarMoeda(totalMaoDeObra(proposta))}`]],
-    footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
-  });
-  y = doc.lastAutoTable.finalY + 24;
-
-  // ----- Tabela: Materiais -----
-  y = garantirEspacoPdf(doc, y, 80);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("MATERIAIS", margem, y);
-  y += 8;
-
-  const linhasMat = (proposta.itensMateriais || []).map((item, i) => [
-    String(i + 1),
-    String(item.qtd),
-    item.unid || "",
-    item.nome,
-    `R$ ${formatarMoeda(item.valorUnit)}`,
-    `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`,
-  ]);
-
-  doc.autoTable({
-    startY: y,
-    head: [["Item", "Qtd", "Unid", "Descrição", "Valor Unit.", "Total"]],
-    body: linhasMat.length ? linhasMat : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [235, 153, 28] },
-    foot: [["", "", "", "", "Total Materiais", `R$ ${formatarMoeda(totalMateriais(proposta))}`]],
-    footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
-  });
-  y = doc.lastAutoTable.finalY + 16;
-
-  // ----- Total geral -----
-  y = garantirEspacoPdf(doc, y, 60);
-  doc.setFillColor(235, 153, 28);
-  doc.rect(margem, y, larguraUtil, 26, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("MATERIAL E MÃO DE OBRA — TOTAL:", margem + 10, y + 17);
-  doc.text(`R$ ${formatarMoeda(totalGeral(proposta))}`, margem + larguraUtil - 10, y + 17, { align: "right" });
-  doc.setTextColor(0, 0, 0);
-  y += 44;
-
-  // ----- Condições / avisos -----
-  y = garantirEspacoPdf(doc, y, 90);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(200, 0, 0);
-  doc.setTextColor(0, 0, 0);
-  y += 18;
-
-  doc.setFont("helvetica", "normal");
-  doc.text(`Forma de pagamento: ${proposta.formaPagamento || "-"}`, margem, y);
-  y += 16;
-  doc.text(`Planejamento: ${proposta.planejamentoDias ? proposta.planejamentoDias + " dias úteis" : "-"}`, margem, y);
-  y += 16;
-  doc.text(`Proposta válida por: ${proposta.validadeDias ? proposta.validadeDias + " dias" : "-"}`, margem, y);
-  y += 16;
-  doc.text(`Início da proposta após aprovação.`, margem, y);
-  y += 20;
-
-  if (proposta.observacao) {
-    const larguraUtilObs = doc.internal.pageSize.getWidth() - margem * 2;
-    doc.setFont("helvetica", "bold");
-    doc.text("Observação:", margem, y);
-    y += 14;
-    doc.setFont("helvetica", "normal");
-    const linhasObs = doc.splitTextToSize(proposta.observacao, larguraUtilObs);
-    doc.text(linhasObs, margem, y);
-    y += 14 * linhasObs.length + 6;
-  }
-
-  doc.setFont("helvetica", "bold");
-  doc.text(`Situação: ${rotuloStatus(proposta)}`, margem, y);
-  y += 24;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(120);
-  doc.text(
-    `${EMPRESA_INFO.cidade}, ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`,
-    margem,
-    y
-  );
-
-  const nomeArquivo = `proposta_${(proposta.cliente || "sem_nome").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.pdf`;
-  doc.save(nomeArquivo);
+function adicionarLancamento(dados) {
+  const lista = lerLancamentos();
+  const novo = {
+    id: `lanc_${Date.now()}`,
+    registroFuncionario: dados.registroFuncionario,
+    nomeFuncionario: dados.nomeFuncionario,
+    tipo: dados.tipo,
+    data: dados.data,
+    horas: parseFloat(dados.horas) || 0,
+    descricao: dados.descricao || "",
+    documento: dados.documento || "",
+    criadoEm: new Date().toISOString(),
+  };
+  lista.push(novo);
+  salvarLancamentos(lista);
+  return novo;
 }
 
-function garantirEspacoPdf(doc, y, minimo) {
-  const alturaPagina = doc.internal.pageSize.getHeight();
-  if (y + minimo > alturaPagina - 40) {
-    doc.addPage();
-    return 50;
-  }
-  return y;
+function editarLancamento(id, novosDados) {
+  const lista = lerLancamentos();
+  const idx = lista.findIndex((l) => l.id === id);
+  if (idx === -1) return;
+  lista[idx] = { ...lista[idx], ...novosDados };
+  salvarLancamentos(lista);
 }
+
+function excluirLancamento(id) {
+  salvarLancamentos(lerLancamentos().filter((l) => l.id !== id));
+}
+
+function getLancamentosFuncionario(registroFuncionario) {
+  return lerLancamentos()
+    .filter((l) => l.registroFuncionario === registroFuncionario)
+    .sort((a, b) => new Date(b.data) - new Date(a.data));
+}
+
+// ====================================================
+// CÁLCULO DE HORAS TRABALHADAS (por dia)
+// ====================================================
+// Calcula as horas trabalhadas somando pares entrada/saída.
+// Batidas ímpares (sem par de saída) são ignoradas no cálculo.
+function calcularHorasTrabalhadasNoDia(batidas) {
+  let totalMinutos = 0;
+  const ordenadas = [...batidas].sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
+
+  for (let i = 0; i + 1 < ordenadas.length; i += 2) {
+    const entrada = ordenadas[i];
+    const saida = ordenadas[i + 1];
+    if (entrada.tipo === "entrada" && saida.tipo === "saida") {
+      const diffMs = new Date(saida.dataHora) - new Date(entrada.dataHora);
+      totalMinutos += diffMs / 60000;
+    }
+  }
+  return totalMinutos / 60; // retorna em horas decimais
+}
+
+// ====================================================
+// BANCO DE HORAS (saldo acumulado)
+// ====================================================
+function calcularBancoHoras(registroFuncionario) {
+  const jornada = getJornadaFuncionario(registroFuncionario);
+  const registros = lerRegistros().filter((r) => r.registroFuncionario === registroFuncionario);
+  const lancamentos = getLancamentosFuncionario(registroFuncionario);
+
+  // Agrupa batidas por data
+  const datasComBatidas = [...new Set(registros.map((r) => r.dataHora.slice(0, 10)))];
+
+  let horasTrabalhadas = 0;
+  let horasEsperadas = 0;
+  let diasTrabalhados = 0;
+
+  datasComBatidas.forEach((data) => {
+    const batidasDia = registros
+      .filter((r) => r.dataHora.startsWith(data))
+      .sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
+
+    const hDia = calcularHorasTrabalhadasNoDia(batidasDia);
+    if (hDia > 0) {
+      horasTrabalhadas += hDia;
+      horasEsperadas += jornada;
+      diasTrabalhados++;
+    }
+  });
+
+  // Aplica lançamentos especiais
+  let creditosExtras = 0;
+  let debitosExtras = 0;
+  let horasAbonadas = 0;
+
+  lancamentos.forEach((l) => {
+    switch (l.tipo) {
+      case "hora_extra":
+        creditosExtras += Math.abs(l.horas);
+        break;
+      case "falta":
+        debitosExtras += Math.abs(l.horas) || jornada;
+        horasEsperadas += Math.abs(l.horas) || jornada;
+        break;
+      case "abono":
+      case "atestado":
+      case "declaracao":
+        horasAbonadas += Math.abs(l.horas);
+        break;
+      case "ajuste":
+        // horas positivas = crédito, negativas = débito
+        if (l.horas > 0) creditosExtras += l.horas;
+        else debitosExtras += Math.abs(l.horas);
+        break;
+    }
+  });
+
+  const saldo = (horasTrabalhadas + creditosExtras + horasAbonadas) - (horasEsperadas + debitosExtras - horasAbonadas);
+
+  return {
+    horasTrabalhadas: horasTrabalhadas + creditosExtras,
+    horasEsperadas: horasEsperadas + debitosExtras,
+    saldo,
+    diasTrabalhados,
+    jornada,
+  };
+}
+
+// ====================================================
+// PERMISSÃO DE ALTERAÇÃO DE PONTOS DE OUTROS
+// ====================================================
+// Verifica se o usuário logado tem permissão para editar
+// registros de outros funcionários (não só os próprios).
+function podeAlterarPontosDeOutros() {
+  const userId = localStorage.getItem("userId");
+  if (!userId) return false;
+
+  // CEO (login fixo do sistema) tem acesso total.
+  const userType = (localStorage.getItem("userType") || "").toLowerCase();
+  if (userType === "ceo") return true;
+
+  const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+  const usuario = usuarios.find((u) => String(u.registro) === String(userId));
+  if (!usuario || !usuario.setor) return false;
+
+  const permissoes = getPermissoesDoSetor(usuario.setor);
+  return permissoes.includes("pontos-alterar-outros");
+}
+
+function getUsuarioLogado() {
+  const userId = localStorage.getItem("userId");
+  if (!userId) return null;
+  const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+  return usuarios.find((u) => String(u.registro) === String(userId)) || null;
+}
+
+// ====================================================
+// UTILITÁRIOS
+// ====================================================
+function dataHoje() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatarHoras(horas) {
+  const sinal = horas < 0 ? "-" : "";
+  const abs = Math.abs(horas);
+  const h = Math.floor(abs);
+  const m = Math.round((abs - h) * 60);
+  return `${sinal}${String(h).padStart(2, "0")}h${String(m).padStart(2, "0")}m`;
+}
+
+function formatarDataBR(isoDate) {
+  if (!isoDate) return "—";
+  const [a, m, d] = isoDate.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+function formatarHoraBR(isoString) {
+  if (!isoString) return "—";
+  const d = new Date(isoString);
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+const NOMES_MESES_PONTO = [
+  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+];
