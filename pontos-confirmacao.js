@@ -60,7 +60,7 @@ document.getElementById("btnBaterPonto").addEventListener("click", async () => {
 // BANCO DE HORAS
 // ====================================================
 function renderBancoHoras() {
-  const banco = calcularBancoHoras(registroUsuario);
+  const banco = calcularBancoHorasCompleto(registroUsuario);
   document.getElementById("cardJornada").textContent = formatarHoras(banco.jornada);
   document.getElementById("cardTrabalhadas").textContent = formatarHoras(banco.horasTrabalhadas);
   document.getElementById("cardDias").textContent = banco.diasTrabalhados;
@@ -157,13 +157,13 @@ function renderHistoricoMes() {
   const datasPorDia = [...new Set(registros.map((r) => r.dataHora.slice(0, 10)))].sort((a, b) => b.localeCompare(a));
 
   if (datasPorDia.length === 0) {
-    container.innerHTML = '<p style="color:#999;font-size:13px;">Nenhum registro neste mês.</p>';
+    container.innerHTML = '<p style="color:var(--texto-3);font-size:13px;padding:4px;">Nenhum registro neste mês.</p>';
     return;
   }
 
   const jornada = getJornadaFuncionario(registroUsuario);
-
   container.innerHTML = "";
+
   datasPorDia.forEach((data) => {
     const batidasDia = registros
       .filter((r) => r.dataHora.startsWith(data))
@@ -171,19 +171,23 @@ function renderHistoricoMes() {
 
     const horasDia = calcularHorasTrabalhadasNoDia(batidasDia);
     const saldoDia = horasDia - jornada;
-    const corSaldo = saldoDia >= 0 ? "#1c8a4b" : "crimson";
+    const classeSeloSaldo = saldoDia > 0 ? "positivo" : saldoDia < 0 ? "negativo" : "neutro";
 
     const div = document.createElement("div");
-    div.style.cssText = "background:rgba(255,255,255,0.9);border-radius:8px;padding:12px 16px;margin-bottom:8px;box-shadow:0 0 8px rgba(0,0,0,0.07);";
+    div.className = "dia-card";
     div.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <strong>${formatarDataBR(data)}</strong>
-        <span style="color:${corSaldo};font-weight:700;">${formatarHoras(horasDia)} trabalhadas (${saldoDia >= 0 ? "+" : ""}${formatarHoras(saldoDia)})</span>
+      <div class="dia-card-topo">
+        <strong style="font-size:13px;">${formatarDataBR(data)}</strong>
+        <span class="selo-saldo ${classeSeloSaldo}">
+          ${formatarHoras(horasDia)} ${saldoDia >= 0 ? "+" : ""}${formatarHoras(saldoDia)}
+        </span>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-        ${batidasDia.map((b, i) => `
-          <span style="font-size:13px;padding:4px 10px;border-radius:10px;background:${b.tipo === "entrada" ? "rgba(28,138,75,0.12)" : "rgba(220,20,60,0.1)"};color:${b.tipo === "entrada" ? "#1c8a4b" : "crimson"};">
-            ${formatarHoraBR(b.dataHora)} ${b.tipo === "entrada" ? "▶" : "■"}
+      <div class="dia-card-chips">
+        ${batidasDia.map((b) => `
+          <span class="chip-batida" style="padding:6px 10px;">
+            <span class="tipo-batida tipo-${b.tipo}">${b.tipo === "entrada" ? "E" : "S"}</span>
+            <span class="horario">${formatarHoraBR(b.dataHora)}</span>
+            ${b.endereco ? `<a href="https://www.google.com/maps?q=${b.lat},${b.lng}" target="_blank" style="font-size:11px;color:var(--azul);text-decoration:none;">📍</a>` : ""}
           </span>
         `).join("")}
       </div>

@@ -24,6 +24,7 @@
       <button type="button" class="aba active" data-aba="funcionarios">Funcionários</button>
       <button type="button" class="aba" data-aba="lancamentos">Lançamentos</button>
       <button type="button" class="aba" data-aba="jornadas">Jornadas</button>
+      <button type="button" class="aba" data-aba="feriados">Feriados</button>
     </div>
 
     <!-- ABA: FUNCIONÁRIOS -->
@@ -75,14 +76,29 @@
 
     <!-- ABA: JORNADAS -->
     <div id="abaJornadas" style="display:none;">
-      <p style="font-size:13px;color:#666;margin-bottom:16px;">Configure a jornada diária de cada funcionário. A jornada padrão é 8h/dia se não configurada.</p>
+      <p style="font-size:13px;color:#666;margin-bottom:16px;">Configure o horário de trabalho de cada funcionário. A jornada diária é calculada automaticamente.</p>
+
+      <div class="card-filtros" style="margin-bottom:16px;">
+        <div class="filtros">
+          <div class="filtro-busca">
+            <label class="filtro-label" for="buscaJornada">Buscar</label>
+            <input type="text" id="buscaJornada" placeholder="Nome ou registro..." />
+          </div>
+          <button type="button" class="btn-limpar-filtros" id="btnLimparBuscaJornada">Limpar</button>
+        </div>
+      </div>
+
       <table class="tabela-funcionarios" id="tabelaJornadas">
         <thead>
           <tr>
             <th>Funcionário</th>
             <th>Registro</th>
-            <th>Jornada Atual</th>
-            <th>Alterar</th>
+            <th>Entrada</th>
+            <th>Saída</th>
+            <th>Início Almoço</th>
+            <th>Fim Almoço</th>
+            <th>Jornada</th>
+            <th>Salvar</th>
           </tr>
         </thead>
         <tbody id="tbodyJornadas"></tbody>
@@ -168,6 +184,8 @@
             <option value="abono">Abono</option>
             <option value="atestado">Atestado</option>
             <option value="declaracao">Declaração</option>
+            <option value="feriado_manual">Feriado (lançamento manual)</option>
+            <option value="ferias">Férias</option>
             <option value="ajuste">Ajuste Manual</option>
           </select>
         </label>
@@ -183,6 +201,31 @@
           </div>
           <span style="font-size:11px;color:#888;margin-top:2px;">Para Ajuste Manual negativo, use valores negativos nas horas.</span>
         </label>
+
+        <!-- Período: mostrado só para abono/atestado/declaração -->
+        <div id="campoPeriodoLancamento" style="display:none;">
+          <label>Período de ausência <span class="texto-opcional">(opcional — preencha no lugar das horas)</span>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+              <input type="time" id="campoHoraInicio" style="flex:1;" />
+              <span style="color:#555;">até</span>
+              <input type="time" id="campoHoraFim" style="flex:1;" />
+            </div>
+            <span style="font-size:11px;color:#888;margin-top:2px;">Ao preencher o período, as horas são calculadas automaticamente.</span>
+          </label>
+        </div>
+
+        <!-- Período de férias -->
+        <div id="campoPeriodoFerias" style="display:none;">
+          <label>Período de férias
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+              <input type="date" id="campoFeriasInicio" style="flex:1;" />
+              <span style="color:#555;">até</span>
+              <input type="date" id="campoFeriasFim" style="flex:1;" />
+            </div>
+          </label>
+          <div id="feriasDiasCalc" style="font-size:12px;color:rgb(180,110,10);font-weight:600;margin-top:4px;"></div>
+          <span style="font-size:11px;color:#888;">Os dias úteis do período são calculados automaticamente (já descontando fins de semana e feriados do funcionário).</span>
+        </div>
         <label>Descrição / Justificativa <span class="texto-opcional">(opcional)</span>
           <textarea id="campoDescLancamento" rows="2" placeholder="Ex: Atestado médico apresentado em 10/06"></textarea>
         </label>
@@ -197,6 +240,123 @@
       <div class="modal-rodape">
         <button type="button" class="btn-secundario" id="cancelarModalLancamento">Cancelar</button>
         <button type="button" class="btn-laranja" id="salvarModalLancamento">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+    <!-- ABA: FERIADOS -->
+    <div id="abaFeriados" style="display:none;">
+      <div id="avisoSemPermissaoFeriados" style="display:none;background:#FBE8EC;border-left:3px solid var(--vermelho);border-radius:var(--radius-sm);padding:12px 16px;font-size:13px;color:var(--vermelho);margin-bottom:16px;">
+        Você não tem permissão para editar feriados. Solicite ao administrador que libere a permissão "Pontos — pode editar feriados" no seu setor.
+      </div>
+
+      <div class="feriados-grid">
+
+        <!-- Feriados nacionais -->
+        <div class="card">
+          <div class="feriados-card-topo">
+            <div>
+              <div class="feriados-card-titulo">Feriados Nacionais</div>
+              <div class="feriados-card-sub">Valem para todos os funcionários — formato MM-DD</div>
+            </div>
+          </div>
+
+          <div id="listaFeriadosNacionais" class="feriados-lista"></div>
+
+          <div class="feriados-add-row">
+            <input type="text" id="novoFeriadoNacional" placeholder="MM-DD" class="feriados-input-pequeno" />
+            <input type="text" id="novoFeriadoNacionalNome" placeholder="Nome do feriado" class="feriados-input-grande" />
+            <button type="button" class="btn-laranja" id="btnAdicionarFeriadoNacional">Adicionar</button>
+          </div>
+        </div>
+
+        <!-- Feriados por funcionário -->
+        <div class="card">
+          <div class="feriados-card-topo">
+            <div>
+              <div class="feriados-card-titulo">Feriados por Funcionário</div>
+              <div class="feriados-card-sub">Municipais e estaduais — específicos por pessoa</div>
+            </div>
+          </div>
+
+          <div class="feriados-select-grupo">
+            <label class="feriados-label" for="selectFuncFeriado">Funcionário</label>
+            <select id="selectFuncFeriado" class="feriados-select"></select>
+          </div>
+
+          <div id="listaFeriadosFuncionario" class="feriados-lista"></div>
+
+          <div class="feriados-add-row">
+            <input type="date" id="novoFeriadoFunc" class="feriados-input-data" />
+            <button type="button" class="btn-laranja" id="btnAdicionarFeriadoFunc">Adicionar</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  <!-- Modal: seleção de seções do PDF (fora dos outros modais para evitar propagação) -->
+  <div class="modal-overlay" id="modalExportarPdf" style="z-index:2000;">
+    <div class="modal-caixa" style="max-width:400px;">
+      <div class="modal-cabecalho">
+        <h2>Exportar PDF</h2>
+        <button type="button" class="modal-fechar" id="fecharModalExportarPdf">&times;</button>
+      </div>
+      <p style="font-size:13px;color:var(--texto-2);margin-bottom:18px;">Selecione o que deseja incluir no relatório:</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;">
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;cursor:pointer;padding:10px 12px;background:var(--card-alt);border-radius:8px;">
+          <input type="checkbox" id="pdfSecDadosFuncionario" checked style="width:16px;height:16px;accent-color:var(--laranja);" />
+          Dados do funcionário e jornada
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;cursor:pointer;padding:10px 12px;background:var(--card-alt);border-radius:8px;">
+          <input type="checkbox" id="pdfSecResumo" checked style="width:16px;height:16px;accent-color:var(--laranja);" />
+          Resumo do mês e banco de horas
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;cursor:pointer;padding:10px 12px;background:var(--card-alt);border-radius:8px;">
+          <input type="checkbox" id="pdfSecEspelho" checked style="width:16px;height:16px;accent-color:var(--laranja);" />
+          Espelho de ponto dia a dia
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;cursor:pointer;padding:10px 12px;background:var(--card-alt);border-radius:8px;">
+          <input type="checkbox" id="pdfSecLancamentos" checked style="width:16px;height:16px;accent-color:var(--laranja);" />
+          Lançamentos especiais
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;cursor:pointer;padding:10px 12px;background:var(--card-alt);border-radius:8px;">
+          <input type="checkbox" id="pdfSecLocalizacao" checked style="width:16px;height:16px;accent-color:var(--laranja);" />
+          Registro de localização (GPS)
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;cursor:pointer;padding:10px 12px;background:var(--card-alt);border-radius:8px;">
+          <input type="checkbox" id="pdfSecAssinatura" checked style="width:16px;height:16px;accent-color:var(--laranja);" />
+          Campo de assinatura
+        </label>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
+        <button type="button" id="btnMarcarTodasSecoes" style="background:none;border:none;font-size:12px;color:var(--azul);cursor:pointer;font-family:inherit;font-weight:600;">Marcar todas</button>
+        <button type="button" id="btnDesmarcarTodasSecoes" style="background:none;border:none;font-size:12px;color:var(--texto-3);cursor:pointer;font-family:inherit;font-weight:600;">Desmarcar todas</button>
+      </div>
+      <div class="modal-rodape">
+        <button type="button" class="btn-secundario" id="cancelarModalExportarPdf">Cancelar</button>
+        <button type="button" class="btn-laranja" id="confirmarExportarPdf">Gerar PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: editar feriado nacional -->
+  <div class="modal-overlay" id="modalEditarFeriado" style="z-index:2000;">
+    <div class="modal-caixa" style="max-width:380px;">
+      <div class="modal-cabecalho">
+        <h2>Editar Feriado</h2>
+        <button type="button" class="modal-fechar" id="fecharModalEditarFeriado">&times;</button>
+      </div>
+      <div class="form-modal">
+        <label>Data (MM-DD)
+          <input type="text" id="editFeriadoMmdd" placeholder="Ex: 04-21" maxlength="5" />
+        </label>
+        <label>Nome do feriado
+          <input type="text" id="editFeriadoNome" placeholder="Ex: Tiradentes" />
+        </label>
+      </div>
+      <div class="modal-rodape">
+        <button type="button" class="btn-secundario" id="cancelarEditarFeriado">Cancelar</button>
+        <button type="button" class="btn-laranja" id="salvarEditarFeriado">Salvar</button>
       </div>
     </div>
   </div>

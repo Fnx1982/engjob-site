@@ -972,10 +972,444 @@ if (btnGerarApresentacao) {
       console.error(e);
     } finally {
       btnGerarApresentacao.disabled = false;
-      btnGerarApresentacao.textContent = "📊 Gerar Apresentação (.pptx)";
+      btnGerarApresentacao.textContent = "📊 Gerar Apresentação (PDF)";
     }
   });
 }
+
+// ====================================================
+// GERADOR DE APRESENTAÇÃO EM PDF (visual de slides)
+// ====================================================
+async function gerarApresentacao(mes, ano, selecionados) {
+  const { jsPDF } = window.jspdf;
+  const W = 841.89; // A4 landscape largura (pt)
+  const H = 595.28; // A4 landscape altura (pt)
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+
+  const LARANJA = [235, 153, 28];
+  const ESCURO  = [30, 30, 30];
+  const CINZA   = [245, 245, 245];
+  const BRANCO  = [255, 255, 255];
+  const VERDE   = [28, 138, 75];
+  const VERMELHO= [220, 20, 60];
+
+  const nomeMes = NOMES_MESES_PT[mes] || "";
+  let primeiroSlide = true;
+
+  function novoSlide(corFundo) {
+    if (!primeiroSlide) doc.addPage([W, H], "landscape");
+    primeiroSlide = false;
+    doc.setFillColor(...(corFundo || BRANCO));
+    doc.rect(0, 0, W, H, "F");
+  }
+
+  function barraLateral(cor) {
+    doc.setFillColor(...(cor || LARANJA));
+    doc.rect(0, 0, 12, H, "F");
+  }
+
+  function titulo(texto, y, cor) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(26);
+    doc.setTextColor(...(cor || ESCURO));
+    doc.text(texto, 40, y);
+  }
+
+  function subtitulo(texto, y, cor) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(13);
+    doc.setTextColor(...(cor || [100, 100, 100]));
+    doc.text(texto, 40, y);
+  }
+
+  function linha(y, cor) {
+    doc.setDrawColor(...(cor || LARANJA));
+    doc.setLineWidth(1.5);
+    doc.line(40, y, W - 40, y);
+  }
+
+  function cardValor(x, y, rotulo, valor, corValor) {
+    doc.setFillColor(...CINZA);
+    doc.roundedRect(x, y, 170, 80, 6, 6, "F");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(120, 120, 120);
+    doc.text(rotulo, x + 85, y + 22, { align: "center" });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(...(corValor || ESCURO));
+    doc.text(String(valor), x + 85, y + 55, { align: "center" });
+  }
+
+  function rodape(texto) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(180, 180, 180);
+    doc.text(texto || `EnJob Engenharia • ${nomeMes} ${ano}`, W / 2, H - 18, { align: "center" });
+  }
+
+  // ── SLIDE 1: Capa ──────────────────────────────────────
+  if (selecionados.includes("capa")) {
+    novoSlide(ESCURO);
+    doc.setFillColor(...LARANJA);
+    doc.rect(0, 0, W, H, "F");
+
+    // Retângulo escuro no lado direito
+    doc.setFillColor(30, 30, 30);
+    doc.rect(W * 0.55, 0, W * 0.45, H, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(42);
+    doc.setTextColor(...BRANCO);
+    doc.text("ENGJOB", 60, 200);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(18);
+    doc.text("Engenharia e Manutenção", 60, 232);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(28);
+    doc.setTextColor(...BRANCO);
+    doc.text("Relatório Gerencial", W * 0.6, 200);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(16);
+    doc.text(`${nomeMes} / ${ano}`, W * 0.6, 230);
+    doc.setFontSize(11);
+    doc.setTextColor(200, 200, 200);
+    doc.text(`Gerado em ${new Date().toLocaleDateString("pt-BR")}`, W * 0.6, 260);
+  }
+
+  // ── SLIDE 2: Resumo Financeiro ─────────────────────────
+  if (selecionados.includes("resumo_financeiro")) {
+    novoSlide();
+    barraLateral();
+
+    titulo("Resumo Financeiro", 70);
+    subtitulo(`Período: ${nomeMes} / ${ano}`, 92);
+    linha(108);
+
+    // Dados do Financeiro de Funcionários
+    const financeiro = JSON.parse(localStorage.getItem("financeiro")) || [];
+    const totalPago = financeiro.reduce((s, f) => s + (parseFloat(f.valor) || 0), 0);
+
+    // Dados do Extrato (soma dos 3 bancos)
+    let totalEntradas = 0, totalSaidas = 0;
+    ["interbanking", "sicredi", "credcrea"].forEach((banco) => {
+      const lancs = JSON.parse(localStorage.getItem(`extrato_${banco}_lancamentos`)) || [];
+      lancs.forEach((l) => {
+        if (l.tipo === "credito") totalEntradas += parseFloat(l.valor) || 0;
+        else totalSaidas += parseFloat(l.valor) || 0;
+      });
+    });
+
+    // Boletos
+    const boletos = JSON.parse(localStorage.getItem("boletos_lista")) || [];
+    const boletosPendentes = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) >= new Date()).length;
+    const boletosAtrasados = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) < new Date()).length;
+    const boletosPagos = boletos.filter((b) => b.pago).length;
+
+    cardValor(40,  130, "Total Pago a Funcionários", `R$ ${fmt(totalPago)}`, ESCURO);
+    cardValor(225, 130, "Entradas (Extrato)", `R$ ${fmt(totalEntradas)}`, VERDE);
+    cardValor(410, 130, "Saídas (Extrato)", `R$ ${fmt(totalSaidas)}`, VERMELHO);
+    cardValor(595, 130, "Boletos Pendentes", boletosPendentes, [43, 108, 176]);
+    cardValor(40,  230, "Boletos Atrasados", boletosAtrasados, VERMELHO);
+    cardValor(225, 230, "Boletos Pagos", boletosPagos, VERDE);
+
+    const saldoExtrato = totalEntradas - totalSaidas;
+    cardValor(410, 230, "Saldo Extrato", `R$ ${fmt(saldoExtrato)}`, saldoExtrato >= 0 ? VERDE : VERMELHO);
+
+    rodape();
+  }
+
+  // ── SLIDE 3: Obras ─────────────────────────────────────
+  if (selecionados.includes("obras")) {
+    novoSlide();
+    barraLateral([28, 138, 75]);
+
+    titulo("Obras", 70);
+    subtitulo(`Obras criadas em ${nomeMes} / ${ano}`, 92);
+    linha(108, [28, 138, 75]);
+
+    const obras = (JSON.parse(localStorage.getItem("obras_lista")) || []).filter((o) => {
+      const d = new Date(o.criadoEm);
+      return d.getMonth() === mes && d.getFullYear() === ano;
+    });
+
+    if (obras.length === 0) {
+      subtitulo("Nenhuma obra neste período.", 200);
+    } else {
+      const linhasObras = obras.map((o) => {
+        const lucro = (o.valorMaoDeObraOrcamento || 0) + (o.valorMateriaisOrcamento || 0)
+          - (o.funcionarios || []).reduce((s, f) => s + (f.valorPago || 0), 0)
+          - (o.materiais || []).reduce((s, m) => s + (m.valor || 0), 0);
+        return [
+          o.cliente || "—",
+          o.servico || "—",
+          `R$ ${fmt(o.valorMaoDeObraOrcamento || 0)}`,
+          `R$ ${fmt(o.valorMateriaisOrcamento || 0)}`,
+          `R$ ${fmt(lucro)}`,
+        ];
+      });
+
+      doc.autoTable({
+        startY: 120,
+        head: [["Cliente", "Serviço", "Orç. M.O.", "Orç. Materiais", "Lucro Total"]],
+        body: linhasObras,
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [28, 138, 75] },
+        tableWidth: W - 80,
+      });
+
+      // Totalizadores
+      const totalLucro = obras.reduce((s, o) => {
+        return s + (o.valorMaoDeObraOrcamento || 0) + (o.valorMateriaisOrcamento || 0)
+          - (o.funcionarios || []).reduce((ss, f) => ss + (f.valorPago || 0), 0)
+          - (o.materiais || []).reduce((ss, m) => ss + (m.valor || 0), 0);
+      }, 0);
+
+      const yFim = doc.lastAutoTable.finalY + 20;
+      cardValor(40,  yFim, "Total de Obras", obras.length, ESCURO);
+      cardValor(225, yFim, "Lucro Total", `R$ ${fmt(totalLucro)}`, totalLucro >= 0 ? VERDE : VERMELHO);
+    }
+
+    rodape();
+  }
+
+  // ── SLIDE 4: Propostas ─────────────────────────────────
+  if (selecionados.includes("propostas")) {
+    novoSlide();
+    barraLateral([43, 108, 176]);
+
+    titulo("Propostas / Orçamentos", 70);
+    subtitulo("Visão geral do ciclo de propostas", 92);
+    linha(108, [43, 108, 176]);
+
+    const propostas = JSON.parse(localStorage.getItem("propostas_lista")) || [];
+    const orcamentos  = propostas.filter((p) => p.status === "orcamento").length;
+    const analise     = propostas.filter((p) => p.status === "analise").length;
+    const aprovadas   = propostas.filter((p) => p.status === "andamento" || p.status === "finalizada").length;
+    const negadas     = propostas.filter((p) => p.status === "negada").length;
+    const total       = propostas.length;
+
+    cardValor(40,  130, "Total de Propostas", total, ESCURO);
+    cardValor(225, 130, "Em Orçamento", orcamentos, [100, 100, 100]);
+    cardValor(410, 130, "Em Análise", analise, [180, 110, 10]);
+    cardValor(595, 130, "Aprovadas / Em Andamento", aprovadas, VERDE);
+    cardValor(40,  230, "Negadas", negadas, VERMELHO);
+
+    const valorTotal = propostas.reduce((s, p) => {
+      const mo  = (p.itensMaoDeObra  || []).reduce((ss, i) => ss + i.qtd * i.valorUnit, 0);
+      const mat = (p.itensMateriais  || []).reduce((ss, i) => ss + i.qtd * i.valorUnit, 0);
+      return s + mo + mat;
+    }, 0);
+    cardValor(225, 230, "Valor Total em Proposta", `R$ ${fmt(valorTotal)}`, [43, 108, 176]);
+
+    rodape();
+  }
+
+  // ── SLIDE 5: Materiais ─────────────────────────────────
+  if (selecionados.includes("materiais")) {
+    novoSlide();
+    barraLateral([92, 64, 14]);
+
+    titulo("Gestão de Materiais", 70);
+    subtitulo("Resumo do estoque atual", 92);
+    linha(108, [92, 64, 14]);
+
+    const materiais = JSON.parse(localStorage.getItem("materiais_lista")) || [];
+    const valorEstoque = materiais.reduce((s, m) => s + (m.valor || 0) * (m.quantidade || 0), 0);
+    const setores = [...new Set(materiais.map((m) => m.setor).filter(Boolean))];
+
+    cardValor(40,  130, "Total de Itens", materiais.length, ESCURO);
+    cardValor(225, 130, "Valor em Estoque", `R$ ${fmt(valorEstoque)}`, [92, 64, 14]);
+    cardValor(410, 130, "Setores", setores.length, ESCURO);
+
+    // Top 5 materiais por valor
+    const top5 = [...materiais].sort((a, b) => (b.valor * b.quantidade) - (a.valor * a.quantidade)).slice(0, 5);
+    if (top5.length > 0) {
+      doc.autoTable({
+        startY: 240,
+        head: [["Material", "Setor", "Qtd", "Valor Unit.", "Total"]],
+        body: top5.map((m) => [
+          m.nome, m.setor || "—",
+          m.quantidade || 0,
+          `R$ ${fmt(m.valor || 0)}`,
+          `R$ ${fmt((m.valor || 0) * (m.quantidade || 0))}`,
+        ]),
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [92, 64, 14] },
+        tableWidth: W - 80,
+      });
+    }
+
+    rodape();
+  }
+
+  // ── SLIDE 6: Funcionários ──────────────────────────────
+  if (selecionados.includes("funcionarios")) {
+    novoSlide();
+    barraLateral(LARANJA);
+
+    titulo("Funcionários", 70);
+    subtitulo(`Pagamentos registrados — ${nomeMes} / ${ano}`, 92);
+    linha(108);
+
+    const financeiro = JSON.parse(localStorage.getItem("financeiro")) || [];
+    const pagsDoMes  = financeiro; // sem filtro de mês (sem campo de data no financeiro)
+    const totalPago  = pagsDoMes.reduce((s, f) => s + (parseFloat(f.valor) || 0), 0);
+    const funcionarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+
+    cardValor(40,  130, "Funcionários Cadastrados", funcionarios.length, ESCURO);
+    cardValor(225, 130, "Registros de Pagamento", pagsDoMes.length, ESCURO);
+    cardValor(410, 130, "Total Pago", `R$ ${fmt(totalPago)}`, LARANJA);
+
+    // Agrupa por funcionário
+    const porFunc = {};
+    pagsDoMes.forEach((p) => {
+      porFunc[p.nome] = (porFunc[p.nome] || 0) + (parseFloat(p.valor) || 0);
+    });
+    const linhasFunc = Object.entries(porFunc).slice(0, 8).map(([nome, total]) => [nome, `R$ ${fmt(total)}`]);
+
+    if (linhasFunc.length > 0) {
+      doc.autoTable({
+        startY: 240,
+        head: [["Funcionário", "Total Pago"]],
+        body: linhasFunc,
+        margin: { left: 40, right: 300 },
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: LARANJA },
+      });
+    }
+
+    rodape();
+  }
+
+  // ── SLIDE 7: Banco de Horas ────────────────────────────
+  if (selecionados.includes("pontos")) {
+    novoSlide();
+    barraLateral([70, 70, 70]);
+
+    titulo("Banco de Horas", 70);
+    subtitulo("Resumo por funcionário (acumulado)", 92);
+    linha(108, [70, 70, 70]);
+
+    const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+
+    const linhasPontos = usuarios.map((u) => {
+      const banco = calcularBancoHoras(u.registro);
+      return [
+        u.nome,
+        u.setor || "—",
+        formatarHorasPDF(banco.jornada),
+        formatarHorasPDF(banco.horasTrabalhadas),
+        (banco.saldo >= 0 ? "+" : "") + formatarHorasPDF(banco.saldo),
+        banco.diasTrabalhados,
+      ];
+    });
+
+    if (linhasPontos.length === 0) {
+      subtitulo("Nenhum registro de ponto encontrado.", 200);
+    } else {
+      doc.autoTable({
+        startY: 120,
+        head: [["Funcionário", "Setor", "Jornada", "Trabalhadas", "Saldo", "Dias"]],
+        body: linhasPontos,
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [70, 70, 70] },
+        tableWidth: W - 80,
+        didParseCell: (data) => {
+          if (data.column.index === 4 && data.section === "body") {
+            const val = data.cell.raw || "";
+            data.cell.styles.textColor = val.startsWith("+") ? VERDE : VERMELHO;
+            data.cell.styles.fontStyle = "bold";
+          }
+        },
+      });
+    }
+
+    rodape();
+  }
+
+  // ── SLIDE 8: Boletos ───────────────────────────────────
+  if (selecionados.includes("boletos")) {
+    novoSlide();
+    barraLateral(VERMELHO);
+
+    titulo("Boletos", 70);
+    subtitulo("Situação geral dos boletos cadastrados", 92);
+    linha(108, VERMELHO);
+
+    const boletos = JSON.parse(localStorage.getItem("boletos_lista")) || [];
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+
+    const pendentes  = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) >= hoje);
+    const atrasados  = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) < hoje);
+    const pagos      = boletos.filter((b) => b.pago);
+
+    const totalPendentes = pendentes.reduce((s, b) => s + (b.valor || 0), 0);
+    const totalAtrasados = atrasados.reduce((s, b) => s + (b.valor || 0), 0);
+    const totalPagos     = pagos.reduce((s, b) => s + (b.valor || 0), 0);
+
+    cardValor(40,  130, "Pendentes", `${pendentes.length} • R$ ${fmt(totalPendentes)}`, [43, 108, 176]);
+    cardValor(270, 130, "Atrasados", `${atrasados.length} • R$ ${fmt(totalAtrasados)}`, VERMELHO);
+    cardValor(500, 130, "Pagos", `${pagos.length} • R$ ${fmt(totalPagos)}`, VERDE);
+
+    // Lista dos atrasados (top 6)
+    if (atrasados.length > 0) {
+      doc.autoTable({
+        startY: 240,
+        head: [["Atrasados — Cliente/Fornecedor", "Vencimento", "Valor"]],
+        body: atrasados.slice(0, 6).map((b) => [
+          b.nome || "—",
+          b.dataVencimento ? new Date(b.dataVencimento + "T00:00:00").toLocaleDateString("pt-BR") : "—",
+          `R$ ${fmt(b.valor || 0)}`,
+        ]),
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: VERMELHO },
+        tableWidth: W - 80,
+      });
+    }
+
+    rodape();
+  }
+
+  // ── SLIDE FINAL: Encerramento ──────────────────────────
+  novoSlide(ESCURO);
+  doc.setFillColor(...LARANJA);
+  doc.rect(0, H * 0.4, W, H * 0.2, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(32);
+  doc.setTextColor(...BRANCO);
+  doc.text("Obrigado", W / 2, H / 2 - 10, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(13);
+  doc.setTextColor(200, 200, 200);
+  doc.text("EnJob Engenharia e Manutenção", W / 2, H / 2 + 20, { align: "center" });
+  doc.text(`Relatório gerado em ${new Date().toLocaleDateString("pt-BR")}`, W / 2, H / 2 + 38, { align: "center" });
+
+  doc.save(`apresentacao_engjob_${nomeMes}_${ano}.pdf`);
+}
+
+function fmt(valor) {
+  return (valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatarHorasPDF(horas) {
+  const sinal = horas < 0 ? "-" : "";
+  const abs = Math.abs(horas);
+  const h = Math.floor(abs);
+  const m = Math.round((abs - h) * 60);
+  return `${sinal}${String(h).padStart(2, "0")}h${String(m).padStart(2, "0")}m`;
+}
+
+// Nomes de meses para o PDF de apresentação
+const NOMES_MESES_PT = [
+  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+];
 
 definirTipo("funcionarios");
 renderListaRelatorios();

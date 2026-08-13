@@ -1,17 +1,11 @@
 // ============================================================
 // propostas-form.js
-// Lógica do modal de criar/editar proposta — compartilhada entre
-// orcamento.html, propostas.html e andamento.html. Cada página
-// inclui este script e chama abrirFormularioProposta(id) para
-// editar, ou abrirFormularioProposta(null) para criar uma nova.
-//
-// Esse arquivo monta o HTML do modal dinamicamente e o insere no
-// final do <body>, então as páginas que o usam não precisam
-// repetir o HTML do formulário inteiro.
+// Modal de criar/editar proposta — compartilhado entre
+// orcamento.html, propostas.html e andamento.html.
 // ============================================================
 
-let propostaEmEdicao = null; // objeto da proposta sendo editada (ou nova)
-let onSalvarPropostaCallback = null; // chamado depois de salvar, para a página atualizar a lista
+let propostaEmEdicao = null;
+let onSalvarPropostaCallback = null;
 
 function montarModalFormularioProposta() {
   if (document.getElementById("modalProposta")) return;
@@ -32,7 +26,7 @@ function montarModalFormularioProposta() {
           <label>Cliente
             <input type="text" id="campoCliente" placeholder="Nome do cliente" />
           </label>
-          <label>Telefone</span>
+          <label>Telefone
             <input type="text" id="campoTelefone" placeholder="(99) 9 9999-9999" maxlength="17" />
           </label>
           <label class="campo-largura-total">Local
@@ -49,14 +43,35 @@ function montarModalFormularioProposta() {
 
       <div class="form-secao">
         <h3>Mão de Obra</h3>
+        <p class="texto-ajuda" style="margin-bottom:8px;">
+          Você pode preencher <strong>Qtd × Valor Unit.</strong> para calcular automaticamente,
+          ou deixar em branco e preencher o <strong>Valor Final</strong> diretamente.
+        </p>
         <table class="itens-tabela" id="tabelaMaoDeObra">
           <thead>
-            <tr><th>Qtd</th><th>Unid</th><th>Descrição</th><th>Valor Unit.</th><th>Total</th><th></th></tr>
+            <tr>
+              <th>Descrição</th>
+              <th>Qtd</th>
+              <th>Unid</th>
+              <th>Valor Unit. <span style="font-weight:normal;font-size:10px;">(opcional)</span></th>
+              <th>Valor Final</th>
+              <th></th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
         <button type="button" class="btn-add-item" id="btnAddMaoDeObra">+ Adicionar item de mão de obra</button>
-        <div class="linha-total-secao">Total Mão de Obra: <span id="totalMaoDeObraTexto">R$ 0,00</span></div>
+        <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
+          <div>Subtotal M.O.: <span id="subtotalMaoDeObraTexto">R$ 0,00</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
+            <label style="font-weight:600;font-size:13px;margin:0;">Ajuste M.O.
+              <span style="font-weight:normal;font-size:11px;color:#888;">(desconto= negativo, acréscimo= positivo)</span>
+            </label>
+            <input type="number" id="ajusteMaoDeObra" step="0.01" placeholder="0,00"
+              style="width:130px;padding:7px 10px;border-radius:6px;border:1px solid #ccc;font-family:inherit;font-size:14px;text-align:right;" />
+          </div>
+          <div style="font-size:16px;font-weight:700;">Total M.O.: <span id="totalMaoDeObraTexto">R$ 0,00</span></div>
+        </div>
       </div>
 
       <div class="form-secao">
@@ -74,14 +89,35 @@ function montarModalFormularioProposta() {
 
       <div class="form-secao">
         <h3>Itens de Materiais no Orçamento</h3>
+        <p class="texto-ajuda" style="margin-bottom:8px;">
+          Você pode preencher <strong>Qtd × Valor Unit.</strong> para calcular automaticamente,
+          ou deixar em branco e preencher o <strong>Valor Final</strong> diretamente.
+        </p>
         <table class="itens-tabela" id="tabelaMateriais">
           <thead>
-            <tr><th>Qtd</th><th>Unid</th><th>Material</th><th>Valor Unit.</th><th>Total</th><th></th></tr>
+            <tr>
+              <th>Material</th>
+              <th>Qtd</th>
+              <th>Unid</th>
+              <th>Valor Unit. <span style="font-weight:normal;font-size:10px;">(opcional)</span></th>
+              <th>Valor Final</th>
+              <th></th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
         <button type="button" class="btn-add-item" id="btnAddMaterial">+ Adicionar item manual (sem vincular ao estoque)</button>
-        <div class="linha-total-secao">Total Materiais: <span id="totalMateriaisTexto">R$ 0,00</span></div>
+        <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
+          <div>Subtotal Materiais: <span id="subtotalMateriaisTexto">R$ 0,00</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
+            <label style="font-weight:600;font-size:13px;margin:0;">Ajuste Materiais
+              <span style="font-weight:normal;font-size:11px;color:#888;">(desconto= negativo, acréscimo= positivo)</span>
+            </label>
+            <input type="number" id="ajusteMateriais" step="0.01" placeholder="0,00"
+              style="width:130px;padding:7px 10px;border-radius:6px;border:1px solid #ccc;font-family:inherit;font-size:14px;text-align:right;" />
+          </div>
+          <div style="font-size:16px;font-weight:700;">Total Materiais: <span id="totalMateriaisTexto">R$ 0,00</span></div>
+        </div>
       </div>
 
       <div class="form-secao">
@@ -123,32 +159,25 @@ function montarModalFormularioProposta() {
   document.getElementById("btnSalvarProposta").addEventListener("click", salvarFormularioProposta);
   document.getElementById("btnCadastroRapidoMaterial").addEventListener("click", cadastrarMaterialRapido);
   document.getElementById("campoTelefone").addEventListener("input", aplicarMascaraTelefoneProposta);
-
+  document.getElementById("ajusteMaoDeObra").addEventListener("input", atualizarTotaisFormulario);
+  document.getElementById("ajusteMateriais").addEventListener("input", atualizarTotaisFormulario);
   limparErroAoEditar(document.getElementById("campoCliente"));
 }
 
-// Máscara (99) 9 9999-9999, igual ao padrão usado no cadastro de usuários
 function aplicarMascaraTelefoneProposta(event) {
   let input = event.target;
   let valor = input.value.replace(/\D/g, "");
   if (valor.length > 11) valor = valor.slice(0, 11);
-
-  if (valor.length > 7) {
-    valor = valor.replace(/^(\d{2})(\d{1})(\d{4})(\d{0,4}).*/, "($1) $2 $3-$4");
-  } else if (valor.length > 3) {
-    valor = valor.replace(/^(\d{2})(\d{1})(\d{0,4})/, "($1) $2 $3");
-  } else if (valor.length > 2) {
-    valor = valor.replace(/^(\d{2})(\d{0,1})/, "($1) $2");
-  } else if (valor.length > 0) {
-    valor = valor.replace(/^(\d{0,2})/, "($1");
-  }
+  if (valor.length > 7) valor = valor.replace(/^(\d{2})(\d{1})(\d{4})(\d{0,4}).*/, "($1) $2 $3-$4");
+  else if (valor.length > 3) valor = valor.replace(/^(\d{2})(\d{1})(\d{0,4})/, "($1) $2 $3");
+  else if (valor.length > 2) valor = valor.replace(/^(\d{2})(\d{0,1})/, "($1) $2");
+  else if (valor.length > 0) valor = valor.replace(/^(\d{0,2})/, "($1");
   input.value = valor.trim();
 }
 
 function abrirFormularioProposta(id, onSalvar) {
   montarModalFormularioProposta();
   onSalvarPropostaCallback = onSalvar || null;
-
   propostaEmEdicao = id ? JSON.parse(JSON.stringify(buscarProposta(id))) : criarPropostaVazia();
 
   document.getElementById("tituloModalProposta").textContent = id ? "Editar Orçamento" : "Novo Orçamento";
@@ -164,12 +193,18 @@ function abrirFormularioProposta(id, onSalvar) {
   renderChecklistMateriaisEstoque();
   renderTabelaMaoDeObra();
   renderTabelaMateriais();
+
+  // Preenche ajustes salvos (ou zera se for nova proposta)
+  const ajusteMOEl = document.getElementById("ajusteMaoDeObra");
+  const ajusteMatEl = document.getElementById("ajusteMateriais");
+  if (ajusteMOEl) ajusteMOEl.value = propostaEmEdicao.ajusteMaoDeObra || "";
+  if (ajusteMatEl) ajusteMatEl.value = propostaEmEdicao.ajusteMateriais || "";
+
   atualizarTotaisFormulario();
 
   document.getElementById("rapidoNomeMaterial").value = "";
   document.getElementById("rapidoValorMaterial").value = "";
   document.getElementById("rapidoSetorMaterial").value = "";
-
   document.getElementById("modalProposta").classList.add("active");
 }
 
@@ -177,6 +212,18 @@ function fecharFormularioProposta() {
   const modal = document.getElementById("modalProposta");
   if (modal) modal.classList.remove("active");
   propostaEmEdicao = null;
+}
+
+// ============================================================
+// Calcula o valor final de um item:
+// - Se valorFinal foi digitado diretamente, usa ele.
+// - Caso contrário, calcula qtd * valorUnit.
+// ============================================================
+function valorFinalItem(item) {
+  if (item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "") {
+    return parseFloat(item.valorFinal) || 0;
+  }
+  return (parseFloat(item.qtd) || 0) * (parseFloat(item.valorUnit) || 0);
 }
 
 // ====================================================
@@ -187,12 +234,37 @@ function renderTabelaMaoDeObra() {
   tbody.innerHTML = "";
   propostaEmEdicao.itensMaoDeObra.forEach((item, index) => {
     const tr = document.createElement("tr");
+    const vf = valorFinalItem(item);
+    // Se valorFinal está preenchido, desabilita Qtd e Valor Unit
+    const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
     tr.innerHTML = `
-      <td><input type="number" min="0" step="0.01" value="${item.qtd}" data-mo-campo="qtd" data-mo-index="${index}" /></td>
-      <td><input type="text" value="${item.unid || ""}" placeholder="un" data-mo-campo="unid" data-mo-index="${index}" /></td>
-      <td class="col-descricao"><input type="text" value="${item.descricao || ""}" placeholder="Descrição do serviço" data-mo-campo="descricao" data-mo-index="${index}" /></td>
-      <td><input type="number" min="0" step="0.01" value="${item.valorUnit}" data-mo-campo="valorUnit" data-mo-index="${index}" /></td>
-      <td class="col-total-linha">R$ ${formatarMoeda(item.qtd * item.valorUnit)}</td>
+      <td class="col-descricao">
+        <input type="text" value="${item.descricao || ""}" placeholder="Descrição do serviço"
+          data-mo-campo="descricao" data-mo-index="${index}" />
+      </td>
+      <td>
+        <input type="number" min="0" step="0.01" value="${item.qtd || ""}"
+          placeholder="Qtd" data-mo-campo="qtd" data-mo-index="${index}"
+          ${bloqueado ? 'disabled style="opacity:0.4;"' : ''} />
+      </td>
+      <td>
+        <input type="text" value="${item.unid || ""}" placeholder="un"
+          data-mo-campo="unid" data-mo-index="${index}" />
+      </td>
+      <td>
+        <input type="number" min="0" step="0.01" value="${item.valorUnit || ""}"
+          placeholder="R$" data-mo-campo="valorUnit" data-mo-index="${index}"
+          ${bloqueado ? 'disabled style="opacity:0.4;"' : ''} />
+      </td>
+      <td>
+        <input type="number" min="0" step="0.01"
+          value="${item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "" ? item.valorFinal : ""}"
+          placeholder="R$ final" data-mo-campo="valorFinal" data-mo-index="${index}"
+          style="font-weight:700;color:rgb(180,110,10);" />
+        <small style="display:block;font-size:10px;color:#aaa;">
+          ${!bloqueado ? "= R$ " + formatarMoeda(vf) : "valor fixo"}
+        </small>
+      </td>
       <td><button type="button" class="btn-remover-item" data-mo-remover="${index}">&times;</button></td>
     `;
     tbody.appendChild(tr);
@@ -202,18 +274,37 @@ function renderTabelaMaoDeObra() {
     input.addEventListener("input", () => {
       const idx = parseInt(input.dataset.moIndex, 10);
       const campo = input.dataset.moCampo;
-      const valor = campo === "qtd" || campo === "valorUnit" ? parseFloat(input.value) || 0 : input.value;
-      propostaEmEdicao.itensMaoDeObra[idx][campo] = valor;
+      if (campo === "qtd" || campo === "valorUnit") {
+        propostaEmEdicao.itensMaoDeObra[idx][campo] = parseFloat(input.value) || 0;
+      } else if (campo === "valorFinal") {
+        // Valor Final preenchido sobrescreve o cálculo automático
+        propostaEmEdicao.itensMaoDeObra[idx].valorFinal = input.value === "" ? null : parseFloat(input.value) || 0;
+        // Rerender só após blur para não perder foco enquanto digita
+      } else {
+        propostaEmEdicao.itensMaoDeObra[idx][campo] = input.value;
+      }
 
-      // Atualiza só o "Total" daquela linha (sem recriar os inputs,
-      // o que faria o campo perder o foco a cada tecla digitada).
       const item = propostaEmEdicao.itensMaoDeObra[idx];
       const linha = input.closest("tr");
-      linha.querySelector(".col-total-linha").textContent = `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`;
+      const vf = valorFinalItem(item);
+      const small = linha.querySelector("small");
+      if (small) {
+        const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
+        small.textContent = bloqueado ? "valor fixo" : "= R$ " + formatarMoeda(vf);
+      }
 
       atualizarTotaisFormulario();
     });
+
+    // Ao sair do campo valorFinal, rerenderiza para habilitar/desabilitar os outros
+    if (input.dataset.moCampo === "valorFinal") {
+      input.addEventListener("blur", () => {
+        renderTabelaMaoDeObra();
+        atualizarTotaisFormulario();
+      });
+    }
   });
+
   tbody.querySelectorAll("[data-mo-remover]").forEach((btn) => {
     btn.addEventListener("click", () => {
       propostaEmEdicao.itensMaoDeObra.splice(parseInt(btn.dataset.moRemover, 10), 1);
@@ -224,7 +315,7 @@ function renderTabelaMaoDeObra() {
 }
 
 function adicionarLinhaMaoDeObra() {
-  propostaEmEdicao.itensMaoDeObra.push({ qtd: 1, unid: "un", descricao: "", valorUnit: 0 });
+  propostaEmEdicao.itensMaoDeObra.push({ qtd: null, unid: "un", descricao: "", valorUnit: null, valorFinal: null });
   renderTabelaMaoDeObra();
   atualizarTotaisFormulario();
 }
@@ -241,8 +332,6 @@ function renderChecklistMateriaisEstoque() {
     return;
   }
 
-  // Marca como "já adicionado" os materiais cujo materialIndex já
-  // está presente entre os itens do orçamento.
   const indicesJaAdicionados = new Set(
     propostaEmEdicao.itensMateriais
       .map((item) => item.materialIndex)
@@ -259,11 +348,8 @@ function renderChecklistMateriaisEstoque() {
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) {
         propostaEmEdicao.itensMateriais.push({
-          qtd: 1,
-          unid: "un",
-          nome: material.nome,
-          valorUnit: material.valor,
-          materialIndex: index,
+          qtd: 1, unid: "un", nome: material.nome,
+          valorUnit: material.valor, valorFinal: null, materialIndex: index,
         });
       } else {
         propostaEmEdicao.itensMateriais = propostaEmEdicao.itensMateriais.filter(
@@ -279,67 +365,41 @@ function renderChecklistMateriaisEstoque() {
   });
 }
 
-// Cadastra um material novo direto no estoque (Gestão de Materiais)
-// e já adiciona como item no orçamento atual.
 function cadastrarMaterialRapido() {
   const campoNome = document.getElementById("rapidoNomeMaterial");
   const campoValor = document.getElementById("rapidoValorMaterial");
   const campoSetor = document.getElementById("rapidoSetorMaterial");
 
-  limparErroCampo(campoNome);
-  limparErroCampo(campoValor);
-  limparErroCampo(campoSetor);
+  limparErroCampo(campoNome); limparErroCampo(campoValor); limparErroCampo(campoSetor);
 
   const nome = campoNome.value.trim();
   const valor = parseFloat(campoValor.value);
   const setor = campoSetor.value.trim();
 
   let temErro = false;
-  if (!nome) {
-    marcarCampoComErro(campoNome, "Informe o nome.");
-    temErro = true;
-  }
-  if (isNaN(valor) || valor < 0) {
-    marcarCampoComErro(campoValor, "Informe um valor válido.");
-    temErro = true;
-  }
-  if (!setor) {
-    marcarCampoComErro(campoSetor, "Informe o setor.");
-    temErro = true;
-  }
+  if (!nome) { marcarCampoComErro(campoNome, "Informe o nome."); temErro = true; }
+  if (isNaN(valor) || valor < 0) { marcarCampoComErro(campoValor, "Informe um valor válido."); temErro = true; }
+  if (!setor) { marcarCampoComErro(campoSetor, "Informe o setor."); temErro = true; }
   if (temErro) return;
 
-  // Garante que o setor exista na lista de setores cadastrados.
   const setores = JSON.parse(localStorage.getItem("materiais_setores")) || [];
-  if (!setores.includes(setor)) {
-    setores.push(setor);
-    localStorage.setItem("materiais_setores", JSON.stringify(setores));
-  }
+  if (!setores.includes(setor)) { setores.push(setor); localStorage.setItem("materiais_setores", JSON.stringify(setores)); }
 
   const estoque = lerMateriaisEstoque();
   estoque.push({ nome, setor, codigo: "", valor, quantidade: 0, observacao: "" });
   salvarMateriaisEstoque(estoque);
 
   const novoIndex = estoque.length - 1;
-  propostaEmEdicao.itensMateriais.push({
-    qtd: 1,
-    unid: "un",
-    nome,
-    valorUnit: valor,
-    materialIndex: novoIndex,
-  });
+  propostaEmEdicao.itensMateriais.push({ qtd: 1, unid: "un", nome, valorUnit: valor, valorFinal: null, materialIndex: novoIndex });
 
-  campoNome.value = "";
-  campoValor.value = "";
-  campoSetor.value = "";
-
+  campoNome.value = ""; campoValor.value = ""; campoSetor.value = "";
   renderChecklistMateriaisEstoque();
   renderTabelaMateriais();
   atualizarTotaisFormulario();
 }
 
 // ====================================================
-// TABELA: MATERIAIS (vinculados ao estoque)
+// TABELA: MATERIAIS
 // ====================================================
 function renderTabelaMateriais() {
   const tbody = document.querySelector("#tabelaMateriais tbody");
@@ -347,59 +407,86 @@ function renderTabelaMateriais() {
 
   propostaEmEdicao.itensMateriais.forEach((item, index) => {
     const tr = document.createElement("tr");
+    const vf = valorFinalItem(item);
     const vinculado = item.materialIndex !== null && item.materialIndex !== undefined;
+    const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
     const rotuloVinculo = vinculado ? '<span class="tag-vinculado">estoque</span>' : "";
 
     tr.innerHTML = `
-      <td><input type="number" min="0" step="0.01" value="${item.qtd}" data-mat-campo="qtd" data-mat-index="${index}" /></td>
-      <td><input type="text" value="${item.unid || ""}" placeholder="un" data-mat-campo="unid" data-mat-index="${index}" /></td>
       <td class="col-descricao">
         ${rotuloVinculo}
-        <input type="text" value="${item.nome || ""}" placeholder="Nome do material" data-mat-campo="nome" data-mat-index="${index}" />
+        <input type="text" value="${item.nome || ""}" placeholder="Nome do material"
+          data-mat-campo="nome" data-mat-index="${index}" />
       </td>
-      <td><input type="number" min="0" step="0.01" value="${item.valorUnit}" data-mat-campo="valorUnit" data-mat-index="${index}" /></td>
-      <td class="col-total-linha">R$ ${formatarMoeda(item.qtd * item.valorUnit)}</td>
+      <td>
+        <input type="number" min="0" step="0.01" value="${item.qtd || ""}"
+          placeholder="Qtd" data-mat-campo="qtd" data-mat-index="${index}"
+          ${bloqueado ? 'disabled style="opacity:0.4;"' : ''} />
+      </td>
+      <td>
+        <input type="text" value="${item.unid || ""}" placeholder="un"
+          data-mat-campo="unid" data-mat-index="${index}" />
+      </td>
+      <td>
+        <input type="number" min="0" step="0.01" value="${item.valorUnit || ""}"
+          placeholder="R$" data-mat-campo="valorUnit" data-mat-index="${index}"
+          ${bloqueado ? 'disabled style="opacity:0.4;"' : ''} />
+      </td>
+      <td>
+        <input type="number" min="0" step="0.01"
+          value="${item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "" ? item.valorFinal : ""}"
+          placeholder="R$ final" data-mat-campo="valorFinal" data-mat-index="${index}"
+          style="font-weight:700;color:rgb(180,110,10);" />
+        <small style="display:block;font-size:10px;color:#aaa;">
+          ${!bloqueado ? "= R$ " + formatarMoeda(vf) : "valor fixo"}
+        </small>
+      </td>
       <td><button type="button" class="btn-remover-item" data-mat-remover="${index}">&times;</button></td>
     `;
     tbody.appendChild(tr);
   });
 
-  // "input" atualiza o estado e o total da linha em tempo real,
-  // sem recriar os campos (evita perder o foco a cada tecla).
   tbody.querySelectorAll("[data-mat-index]").forEach((input) => {
     input.addEventListener("input", () => {
       const idx = parseInt(input.dataset.matIndex, 10);
       const campo = input.dataset.matCampo;
       const item = propostaEmEdicao.itensMateriais[idx];
-      const valorNovo = campo === "qtd" || campo === "valorUnit" ? parseFloat(input.value) || 0 : input.value;
-      item[campo] = valorNovo;
 
-      const linha = input.closest("tr");
-      linha.querySelector(".col-total-linha").textContent = `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`;
+      if (campo === "qtd" || campo === "valorUnit") {
+        item[campo] = parseFloat(input.value) || 0;
+      } else if (campo === "valorFinal") {
+        item.valorFinal = input.value === "" ? null : parseFloat(input.value) || 0;
+      } else {
+        item[campo] = input.value;
+      }
+
+      const vf = valorFinalItem(item);
+      const small = input.closest("tr").querySelector("small");
+      if (small) {
+        const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
+        small.textContent = bloqueado ? "valor fixo" : "= R$ " + formatarMoeda(vf);
+      }
+
       atualizarTotaisFormulario();
     });
 
-    // A pergunta de sincronizar com o estoque só dispara quando o
-    // usuário termina de editar o campo (blur), não a cada tecla.
-    input.addEventListener("blur", async () => {
-      const idx = parseInt(input.dataset.matIndex, 10);
-      const campo = input.dataset.matCampo;
-      const item = propostaEmEdicao.itensMateriais[idx];
-      const vinculado = item.materialIndex !== null && item.materialIndex !== undefined;
-      if (!vinculado) return;
-      if (campo !== "nome" && campo !== "valorUnit" && campo !== "qtd") return;
-
-      const sincronizar = await perguntarSincronizarMaterial(item.nome);
-      if (sincronizar) {
-        atualizarMaterialNoEstoque(item.materialIndex, item);
-      }
-    });
+    if (input.dataset.matCampo === "valorFinal") {
+      input.addEventListener("blur", async () => {
+        const idx = parseInt(input.dataset.matIndex, 10);
+        const item = propostaEmEdicao.itensMateriais[idx];
+        if (item.materialIndex !== null && item.materialIndex !== undefined) {
+          const sincronizar = await perguntarSincronizarMaterial(item.nome);
+          if (sincronizar) atualizarMaterialNoEstoque(item.materialIndex, item);
+        }
+        renderTabelaMateriais();
+        atualizarTotaisFormulario();
+      });
+    }
   });
 
   tbody.querySelectorAll("[data-mat-remover]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const idx = parseInt(btn.dataset.matRemover, 10);
-      propostaEmEdicao.itensMateriais.splice(idx, 1);
+      propostaEmEdicao.itensMateriais.splice(parseInt(btn.dataset.matRemover, 10), 1);
       renderChecklistMateriaisEstoque();
       renderTabelaMateriais();
       atualizarTotaisFormulario();
@@ -408,18 +495,43 @@ function renderTabelaMateriais() {
 }
 
 function adicionarLinhaMaterial() {
-  propostaEmEdicao.itensMateriais.push({ qtd: 1, unid: "un", nome: "", valorUnit: 0, materialIndex: null });
+  propostaEmEdicao.itensMateriais.push({ qtd: null, unid: "un", nome: "", valorUnit: null, valorFinal: null, materialIndex: null });
   renderTabelaMateriais();
   atualizarTotaisFormulario();
 }
 
 // ====================================================
-// TOTAIS DO FORMULÁRIO
+// TOTAIS
 // ====================================================
+function totalMaoDeObraForm(proposta) {
+  return (proposta.itensMaoDeObra || []).reduce((s, item) => s + valorFinalItem(item), 0);
+}
+function totalMateriaisForm(proposta) {
+  return (proposta.itensMateriais || []).reduce((s, item) => s + valorFinalItem(item), 0);
+}
+
 function atualizarTotaisFormulario() {
-  document.getElementById("totalMaoDeObraTexto").textContent = `R$ ${formatarMoeda(totalMaoDeObra(propostaEmEdicao))}`;
-  document.getElementById("totalMateriaisTexto").textContent = `R$ ${formatarMoeda(totalMateriais(propostaEmEdicao))}`;
-  document.getElementById("totalGeralTexto").textContent = `R$ ${formatarMoeda(totalGeral(propostaEmEdicao))}`;
+  const subtotalMO  = totalMaoDeObraForm(propostaEmEdicao);
+  const subtotalMat = totalMateriaisForm(propostaEmEdicao);
+  const ajusteMO    = parseFloat(document.getElementById("ajusteMaoDeObra")?.value) || 0;
+  const ajusteMat   = parseFloat(document.getElementById("ajusteMateriais")?.value) || 0;
+  const totalMO     = subtotalMO + ajusteMO;
+  const totalMat    = subtotalMat + ajusteMat;
+  const totalGeral  = totalMO + totalMat;
+
+  const subtotalMOEl = document.getElementById("subtotalMaoDeObraTexto");
+  if (subtotalMOEl) subtotalMOEl.textContent = `R$ ${formatarMoeda(subtotalMO)}`;
+  document.getElementById("totalMaoDeObraTexto").textContent = `R$ ${formatarMoeda(totalMO)}`;
+
+  const subtotalMatEl = document.getElementById("subtotalMateriaisTexto");
+  if (subtotalMatEl) subtotalMatEl.textContent = `R$ ${formatarMoeda(subtotalMat)}`;
+  document.getElementById("totalMateriaisTexto").textContent = `R$ ${formatarMoeda(totalMat)}`;
+
+  document.getElementById("totalGeralTexto").textContent = `R$ ${formatarMoeda(totalGeral)}`;
+
+  // Salva os ajustes na proposta para serem gravados
+  propostaEmEdicao.ajusteMaoDeObra = ajusteMO;
+  propostaEmEdicao.ajusteMateriais = ajusteMat;
 }
 
 // ====================================================

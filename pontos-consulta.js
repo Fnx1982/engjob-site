@@ -30,8 +30,10 @@ document.querySelectorAll("[data-aba]").forEach((btn) => {
     document.getElementById("abaFuncionarios").style.display = abaAtiva === "funcionarios" ? "block" : "none";
     document.getElementById("abaLancamentos").style.display = abaAtiva === "lancamentos" ? "block" : "none";
     document.getElementById("abaJornadas").style.display = abaAtiva === "jornadas" ? "block" : "none";
+    document.getElementById("abaFeriados").style.display = abaAtiva === "feriados" ? "block" : "none";
     if (abaAtiva === "lancamentos") renderLancamentosGestor();
     if (abaAtiva === "jornadas") renderJornadas();
+    if (abaAtiva === "feriados") renderAbaFeriados();
   });
 });
 
@@ -83,7 +85,7 @@ function renderTabelaFuncionarios() {
   semEl.style.display = "none";
 
   funcionarios.forEach((f) => {
-    const banco = calcularBancoHoras(f.registro);
+    const banco = calcularBancoHorasCompleto(f.registro);
     const tr = document.createElement("tr");
     const corSaldo = banco.saldo >= 0 ? "#1c8a4b" : "crimson";
     tr.innerHTML = `
@@ -164,7 +166,7 @@ function popularFiltrosModal() {
 
 function renderModalBanco() {
   if (!funcSelecionado) return;
-  const banco = calcularBancoHoras(funcSelecionado.registro);
+  const banco = calcularBancoHorasCompleto(funcSelecionado.registro);
   const container = document.getElementById("bancoModalCards");
   const corSaldo = banco.saldo >= 0 ? "positivo" : "negativo";
   container.innerHTML = `
@@ -270,7 +272,7 @@ function renderModalLancamentos() {
     item.innerHTML = `
       <div class="lancamento-info">
         <span class="lancamento-tipo tipo-${info.efeito}">${info.rotulo}</span>
-        <div class="lancamento-descricao">${formatarDataBR(l.data)} ${l.descricao ? "— " + l.descricao : ""} ${renderDocumentoLanc(l)}</div>
+        <div class="lancamento-descricao">${formatarDataBR(l.data)}${l.horaInicio && l.horaFim ? " (" + l.horaInicio + " às " + l.horaFim + ")" : ""}${l.feriasInicio && l.feriasFim ? " (férias: " + formatarDataBR(l.feriasInicio) + " a " + formatarDataBR(l.feriasFim) + ")" : ""} ${l.descricao ? "— " + l.descricao : ""} ${renderDocumentoLanc(l)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="lancamento-horas">${info.efeito === "credito" ? "+" : info.efeito === "debito" ? "-" : ""}${formatarHoras(Math.abs(l.horas))}</div>
@@ -301,7 +303,43 @@ function renderModalLancamentos() {
 document.getElementById("btnAdicionarBatida").addEventListener("click", () => abrirModalBatida(null));
 document.getElementById("btnAdicionarLancamentoDetalhe").addEventListener("click", () => abrirModalLancamento(null));
 document.getElementById("btnExportarPdfPontos").addEventListener("click", () => {
-  if (funcSelecionado) gerarPdfMensalPontos(funcSelecionado.registro, funcSelecionado.nome);
+  if (funcSelecionado) document.getElementById("modalExportarPdf").classList.add("active");
+});
+
+document.getElementById("fecharModalExportarPdf").addEventListener("click", () =>
+  document.getElementById("modalExportarPdf").classList.remove("active"));
+document.getElementById("cancelarModalExportarPdf").addEventListener("click", () =>
+  document.getElementById("modalExportarPdf").classList.remove("active"));
+document.getElementById("modalExportarPdf").addEventListener("click", (e) => {
+  if (e.target.id === "modalExportarPdf") document.getElementById("modalExportarPdf").classList.remove("active");
+});
+
+document.getElementById("btnMarcarTodasSecoes").addEventListener("click", () => {
+  ["pdfSecDadosFuncionario","pdfSecResumo","pdfSecEspelho","pdfSecLancamentos","pdfSecLocalizacao","pdfSecAssinatura"]
+    .forEach((id) => { document.getElementById(id).checked = true; });
+});
+document.getElementById("btnDesmarcarTodasSecoes").addEventListener("click", () => {
+  ["pdfSecDadosFuncionario","pdfSecResumo","pdfSecEspelho","pdfSecLancamentos","pdfSecLocalizacao","pdfSecAssinatura"]
+    .forEach((id) => { document.getElementById(id).checked = false; });
+});
+
+document.getElementById("confirmarExportarPdf").addEventListener("click", () => {
+  const secoes = {
+    dadosFuncionario: document.getElementById("pdfSecDadosFuncionario").checked,
+    resumo:          document.getElementById("pdfSecResumo").checked,
+    espelho:         document.getElementById("pdfSecEspelho").checked,
+    lancamentos:     document.getElementById("pdfSecLancamentos").checked,
+    localizacao:     document.getElementById("pdfSecLocalizacao").checked,
+    assinatura:      document.getElementById("pdfSecAssinatura").checked,
+  };
+
+  if (!Object.values(secoes).some(Boolean)) {
+    mostrarToast("Selecione ao menos uma seção.", "erro");
+    return;
+  }
+
+  document.getElementById("modalExportarPdf").classList.remove("active");
+  if (funcSelecionado) gerarPdfMensalPontos(funcSelecionado.registro, funcSelecionado.nome, secoes);
 });
 
 // ====================================================
@@ -391,6 +429,13 @@ function abrirModalLancamento(id) {
   document.getElementById("campoDataLancamento").value = dataHoje();
   document.getElementById("campoArquivoLancamento").value = "";
   document.getElementById("docAtualLancamento").style.display = "none";
+  document.getElementById("campoHoraInicio").value = "";
+  document.getElementById("campoHoraFim").value = "";
+  document.getElementById("campoPeriodoLancamento").style.display = "none";
+  document.getElementById("campoFeriasInicio").value = "";
+  document.getElementById("campoFeriasFim").value = "";
+  document.getElementById("feriasDiasCalc").textContent = "";
+  document.getElementById("campoPeriodoFerias").style.display = "none";
 
   if (id) {
     const l = lerLancamentos().find((x) => x.id === id);
@@ -401,6 +446,18 @@ function abrirModalLancamento(id) {
       document.getElementById("campoHorasLancamento").value = Math.trunc(l.horas);
       document.getElementById("campoMinutosLancamento").value = Math.round((Math.abs(l.horas) % 1) * 60);
       document.getElementById("campoDescLancamento").value = l.descricao || "";
+      // Preenche período se existir
+      if (l.horaInicio) document.getElementById("campoHoraInicio").value = l.horaInicio;
+      if (l.horaFim) document.getElementById("campoHoraFim").value = l.horaFim;
+      if (TIPOS_COM_PERIODO.includes(l.tipo)) {
+        document.getElementById("campoPeriodoLancamento").style.display = "block";
+      }
+      if (l.tipo === "ferias") {
+        document.getElementById("campoPeriodoFerias").style.display = "block";
+        if (l.feriasInicio) document.getElementById("campoFeriasInicio").value = l.feriasInicio;
+        if (l.feriasFim) document.getElementById("campoFeriasFim").value = l.feriasFim;
+        calcularDiasUteisFerias();
+      }
       if (l.documentoUrl) {
         _urlDocumentoAtual = l.documentoUrl;
         document.getElementById("docAtualNome").textContent = l.documentoNome || "documento";
@@ -424,6 +481,76 @@ document.getElementById("btnRemoverDocLancamento").addEventListener("click", () 
   _urlDocumentoAtual = null;
   document.getElementById("docAtualLancamento").style.display = "none";
 });
+
+// Mostra campo de período para tipos que têm ausência com hora início/fim
+const TIPOS_COM_PERIODO = ["abono", "atestado", "declaracao"];
+document.getElementById("campoTipoLancamento").addEventListener("change", (e) => {
+  const tipo = e.target.value;
+  const temPeriodo = TIPOS_COM_PERIODO.includes(tipo);
+  const ehFerias = tipo === "ferias";
+  document.getElementById("campoPeriodoLancamento").style.display = temPeriodo ? "block" : "none";
+  document.getElementById("campoPeriodoFerias").style.display = ehFerias ? "block" : "none";
+  if (ehFerias) {
+    document.getElementById("campoHorasLancamento").value = "";
+    document.getElementById("campoMinutosLancamento").value = "";
+  }
+});
+
+function calcularDiasUteisFerias() {
+  const inicio = document.getElementById("campoFeriasInicio").value;
+  const fim = document.getElementById("campoFeriasFim").value;
+  const regFunc = document.getElementById("campoFuncLancamento").value;
+  const calcEl = document.getElementById("feriasDiasCalc");
+
+  if (!inicio || !fim) { calcEl.textContent = ""; return; }
+
+  const d1 = new Date(inicio + "T12:00:00");
+  const d2 = new Date(fim + "T12:00:00");
+  if (d2 < d1) { calcEl.textContent = "Data fim deve ser após a data início."; return; }
+
+  let diasUteis = 0;
+  let totalDias = 0;
+  const cur = new Date(d1);
+  while (cur <= d2) {
+    const iso = cur.toISOString().slice(0, 10);
+    totalDias++;
+    if (ehDiaUtil(iso, regFunc)) diasUteis++;
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Converte dias úteis em horas
+  const jornadaFunc = getJornadaFuncionario(regFunc);
+  const totalHoras = diasUteis * jornadaFunc;
+  const h = Math.floor(totalHoras);
+  const m = Math.round((totalHoras - h) * 60);
+
+  calcEl.textContent = `${totalDias} dias corridos → ${diasUteis} dias úteis → ${h}h${String(m).padStart(2,"0")}min`;
+
+  // Preenche automaticamente os campos de horas e minutos
+  document.getElementById("campoHorasLancamento").value = h;
+  document.getElementById("campoMinutosLancamento").value = m;
+
+  // Preenche a data do lançamento com a data início
+  document.getElementById("campoDataLancamento").value = inicio;
+}
+
+document.getElementById("campoFeriasInicio").addEventListener("change", calcularDiasUteisFerias);
+document.getElementById("campoFeriasFim").addEventListener("change", calcularDiasUteisFerias);
+
+// Calcula automaticamente as horas a partir do período
+function calcularHorasDoPeriodo() {
+  const inicio = document.getElementById("campoHoraInicio").value;
+  const fim = document.getElementById("campoHoraFim").value;
+  if (!inicio || !fim) return;
+  const [hi, mi] = inicio.split(":").map(Number);
+  const [hf, mf] = fim.split(":").map(Number);
+  const totalMin = (hf * 60 + mf) - (hi * 60 + mi);
+  if (totalMin <= 0) return;
+  document.getElementById("campoHorasLancamento").value = Math.floor(totalMin / 60);
+  document.getElementById("campoMinutosLancamento").value = totalMin % 60;
+}
+document.getElementById("campoHoraInicio").addEventListener("change", calcularHorasDoPeriodo);
+document.getElementById("campoHoraFim").addEventListener("change", calcularHorasDoPeriodo);
 
 document.getElementById("salvarModalLancamento").addEventListener("click", () => {
   const registroFunc = document.getElementById("campoFuncLancamento").value;
@@ -457,7 +584,13 @@ document.getElementById("salvarModalLancamento").addEventListener("click", () =>
     documentoNome = l ? l.documentoNome : null;
   }
 
-  const dadosLanc = { tipo, data, horas, descricao, documentoUrl, documentoNome };
+  const dadosLanc = {
+    tipo, data, horas, descricao, documentoUrl, documentoNome,
+    horaInicio: document.getElementById("campoHoraInicio").value || null,
+    horaFim: document.getElementById("campoHoraFim").value || null,
+    feriasInicio: document.getElementById("campoFeriasInicio").value || null,
+    feriasFim: document.getElementById("campoFeriasFim").value || null,
+  };
 
   if (lancamentoEditandoId) {
     editarLancamento(lancamentoEditandoId, dadosLanc);
@@ -492,7 +625,7 @@ function renderLancamentosGestor() {
     item.innerHTML = `
       <div class="lancamento-info">
         <span class="lancamento-tipo tipo-${info.efeito}">${info.rotulo}</span>
-        <div class="lancamento-descricao"><strong>${l.nomeFuncionario}</strong> — ${formatarDataBR(l.data)} ${l.descricao ? "— " + l.descricao : ""} ${renderDocumentoLanc(l)}</div>
+        <div class="lancamento-descricao"><strong>${l.nomeFuncionario}</strong> — ${formatarDataBR(l.data)}${l.horaInicio && l.horaFim ? " (" + l.horaInicio + " às " + l.horaFim + ")" : ""}${l.feriasInicio && l.feriasFim ? " (férias: " + formatarDataBR(l.feriasInicio) + " a " + formatarDataBR(l.feriasFim) + ")" : ""} ${l.descricao ? "— " + l.descricao : ""} ${renderDocumentoLanc(l)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="lancamento-horas">${info.efeito === "credito" ? "+" : info.efeito === "debito" ? "-" : ""}${formatarHoras(Math.abs(l.horas))}</div>
@@ -528,42 +661,282 @@ document.getElementById("btnNovoLancamento").addEventListener("click", () => {
 // ABA JORNADAS
 // ====================================================
 function renderJornadas() {
+  const termo = (document.getElementById("buscaJornada")?.value || "").trim().toLowerCase();
   const tbody = document.getElementById("tbodyJornadas");
-  const funcionarios = listarFuncionarios();
+  const funcionarios = listarFuncionarios().filter((f) =>
+    termo === "" || f.nome.toLowerCase().includes(termo) || String(f.registro).includes(termo)
+  );
   tbody.innerHTML = "";
 
+  if (funcionarios.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Nenhum funcionário encontrado.</td></tr>';
+    return;
+  }
+
   funcionarios.forEach((f) => {
-    const jornada = getJornadaFuncionario(f.registro);
+    const jornada = getJornadaCompleta(f.registro);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${f.nome}</td>
       <td>${f.registro}</td>
-      <td id="jornadaValor_${f.registro}">${formatarHoras(jornada)}/dia</td>
-      <td>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="number" min="1" max="24" step="0.5" value="${jornada}"
-            id="jornadaInput_${f.registro}"
-            style="width:70px;padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;"
-            placeholder="horas"
-          />
-          <button class="btn-editar-mini" data-salvar-jornada="${f.registro}">Salvar</button>
-        </div>
+      <td><input type="time" id="entrada_${f.registro}" value="${jornada.horaEntrada || ""}"
+        style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
+      <td><input type="time" id="saida_${f.registro}" value="${jornada.horaSaida || ""}"
+        style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
+      <td><input type="time" id="almoco_inicio_${f.registro}" value="${jornada.inicioAlmoco || ""}"
+        style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
+      <td><input type="time" id="almoco_fim_${f.registro}" value="${jornada.fimAlmoco || ""}"
+        style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
+      <td id="jornadaCalc_${f.registro}" style="font-weight:700;color:rgb(180,110,10);">
+        ${jornada.horasDia ? formatarHoras(jornada.horasDia) + "/dia" : "—"}
       </td>
+      <td><button class="btn-editar-mini" data-salvar-jornada="${f.registro}">Salvar</button></td>
     `;
     tbody.appendChild(tr);
+
+    const entradaEl = document.getElementById(`entrada_${f.registro}`);
+    const saidaEl = document.getElementById(`saida_${f.registro}`);
+    const almocoInicioEl = document.getElementById(`almoco_inicio_${f.registro}`);
+    const almocoFimEl = document.getElementById(`almoco_fim_${f.registro}`);
+    const calcEl = document.getElementById(`jornadaCalc_${f.registro}`);
+
+    function atualizarCalc() {
+      const e = entradaEl.value;
+      const s = saidaEl.value;
+      if (!e || !s) { calcEl.textContent = "—"; return; }
+      const [he, me] = e.split(":").map(Number);
+      const [hs, ms] = s.split(":").map(Number);
+      let totalMin = (hs * 60 + ms) - (he * 60 + me);
+      const ai = almocoInicioEl.value;
+      const af = almocoFimEl.value;
+      if (ai && af) {
+        const [ha1, ma1] = ai.split(":").map(Number);
+        const [ha2, ma2] = af.split(":").map(Number);
+        const almoco = (ha2 * 60 + ma2) - (ha1 * 60 + ma1);
+        if (almoco > 0) totalMin -= almoco;
+      }
+      calcEl.textContent = totalMin > 0 ? formatarHoras(totalMin / 60) + "/dia" : "Horário inválido";
+    }
+
+    entradaEl.addEventListener("change", atualizarCalc);
+    saidaEl.addEventListener("change", atualizarCalc);
+    almocoInicioEl.addEventListener("change", atualizarCalc);
+    almocoFimEl.addEventListener("change", atualizarCalc);
   });
 
   tbody.querySelectorAll("[data-salvar-jornada]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const reg = btn.dataset.salvarJornada;
-      const horas = parseFloat(document.getElementById(`jornadaInput_${reg}`).value);
-      if (!horas || horas <= 0) { mostrarToast("Informe um valor válido.", "erro"); return; }
-      setJornadaFuncionario(reg, horas);
-      document.getElementById(`jornadaValor_${reg}`).textContent = formatarHoras(horas) + "/dia";
+      const entrada = document.getElementById(`entrada_${reg}`).value;
+      const saida = document.getElementById(`saida_${reg}`).value;
+      const almocoInicio = document.getElementById(`almoco_inicio_${reg}`).value;
+      const almocoFim = document.getElementById(`almoco_fim_${reg}`).value;
+      if (!entrada || !saida) { mostrarToast("Informe entrada e saída.", "erro"); return; }
+      const horasDia = setJornadaFuncionario(reg, entrada, saida, almocoInicio, almocoFim);
+      document.getElementById(`jornadaCalc_${reg}`).textContent = formatarHoras(horasDia) + "/dia";
       mostrarToast("Jornada salva.");
       renderTabelaFuncionarios();
     });
   });
+}
+
+// Listener do filtro de busca na aba jornada
+document.getElementById("buscaJornada").addEventListener("input", renderJornadas);
+document.getElementById("btnLimparBuscaJornada").addEventListener("click", () => {
+  document.getElementById("buscaJornada").value = "";
+  renderJornadas();
+});
+
+// ====================================================
+// ABA FERIADOS
+// ====================================================
+const NOMES_FERIADOS_PADRAO = {
+  "01-01": "Confraternização Universal",
+  "04-21": "Tiradentes",
+  "05-01": "Dia do Trabalho",
+  "09-07": "Independência do Brasil",
+  "10-12": "Nossa Senhora Aparecida",
+  "11-02": "Finados",
+  "11-15": "Proclamação da República",
+  "11-20": "Consciência Negra",
+  "12-25": "Natal",
+};
+
+function renderAbaFeriados() {
+  const podeEditar = podeEditarFeriados();
+  renderFeriadosNacionais(podeEditar);
+  popularSelectFuncFeriado(podeEditar);
+
+  // Mostra/oculta os controles de adicionar
+  const addRows = document.querySelectorAll(".feriados-add-row");
+  addRows.forEach((r) => r.style.display = podeEditar ? "flex" : "none");
+
+  if (!podeEditar) {
+    const aviso = document.getElementById("avisoSemPermissaoFeriados");
+    if (aviso) aviso.style.display = "block";
+  }
+}
+
+function renderFeriadosNacionais(podeEditar) {
+  const lista = lerFeriadosNacionais();
+  const container = document.getElementById("listaFeriadosNacionais");
+  container.innerHTML = "";
+
+  if (lista.length === 0) {
+    container.innerHTML = '<p style="color:var(--texto-3);font-size:12px;padding:4px;">Nenhum feriado cadastrado.</p>';
+    return;
+  }
+
+  lista.forEach((mmdd) => {
+    const nome = NOMES_FERIADOS_PADRAO[mmdd] || "Feriado";
+    const linha = document.createElement("div");
+    linha.className = "feriado-item";
+    linha.innerHTML = `
+      <div class="feriado-item-info">
+        <span class="feriado-mmdd">${mmdd}</span>
+        <span class="feriado-nome">${nome}</span>
+      </div>
+      ${podeEditar ? `
+        <div style="display:flex;gap:6px;">
+          <button class="btn-editar-mini" data-edit-feriado="${mmdd}" title="Editar">Editar</button>
+          <button class="btn-del-feriado" data-del-feriado="${mmdd}" title="Remover">&times;</button>
+        </div>
+      ` : ""}
+    `;
+    container.appendChild(linha);
+  });
+
+  if (podeEditar) {
+    container.querySelectorAll("[data-edit-feriado]").forEach((btn) => {
+      btn.addEventListener("click", () => abrirModalEditarFeriadoNacional(btn.dataset.editFeriado));
+    });
+    container.querySelectorAll("[data-del-feriado]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const ok = await confirmarAcao("Remover este feriado?", "Valerá para todos os funcionários.");
+        if (!ok) return;
+        const nova = lista.filter((d) => d !== btn.dataset.delFeriado);
+        salvarFeriadosNacionais(nova);
+        renderFeriadosNacionais(podeEditar);
+      });
+    });
+  }
+}
+
+let _feriadoEditando = null;
+
+function abrirModalEditarFeriadoNacional(mmdd) {
+  _feriadoEditando = mmdd;
+  document.getElementById("editFeriadoMmdd").value = mmdd;
+  document.getElementById("editFeriadoNome").value = NOMES_FERIADOS_PADRAO[mmdd] || "";
+  document.getElementById("modalEditarFeriado").classList.add("active");
+}
+
+// Delegation para modal de editar feriado (elementos sempre presentes no DOM)
+document.addEventListener("click", (e) => {
+  if (e.target.id === "fecharModalEditarFeriado" || e.target.id === "cancelarEditarFeriado") {
+    document.getElementById("modalEditarFeriado").classList.remove("active");
+  }
+  if (e.target.id === "salvarEditarFeriado") {
+    const novoMmdd = document.getElementById("editFeriadoMmdd").value.trim();
+    const novoNome = document.getElementById("editFeriadoNome").value.trim();
+    if (!/^\d{2}-\d{2}$/.test(novoMmdd)) { mostrarToast("Formato inválido. Use MM-DD.", "erro"); return; }
+    let lista = lerFeriadosNacionais();
+    lista = lista.filter((d) => d !== _feriadoEditando);
+    if (!lista.includes(novoMmdd)) lista.push(novoMmdd);
+    lista.sort();
+    salvarFeriadosNacionais(lista);
+    if (novoNome) NOMES_FERIADOS_PADRAO[novoMmdd] = novoNome;
+    if (_feriadoEditando !== novoMmdd) delete NOMES_FERIADOS_PADRAO[_feriadoEditando];
+    document.getElementById("modalEditarFeriado").classList.remove("active");
+    renderFeriadosNacionais(podeEditarFeriados());
+    mostrarToast("Feriado atualizado.");
+  }
+});
+
+// Event delegation — funciona mesmo com elementos dentro de abas ocultas
+document.addEventListener("click", (e) => {
+  // Adicionar feriado nacional
+  if (e.target.id === "btnAdicionarFeriadoNacional") {
+    const val = document.getElementById("novoFeriadoNacional").value.trim();
+    if (!/^\d{2}-\d{2}$/.test(val)) { mostrarToast("Use o formato MM-DD (ex: 06-19)", "erro"); return; }
+    const lista = lerFeriadosNacionais();
+    if (lista.includes(val)) { mostrarToast("Feriado já cadastrado.", "erro"); return; }
+    lista.push(val);
+    lista.sort();
+    salvarFeriadosNacionais(lista);
+    NOMES_FERIADOS_PADRAO[val] = document.getElementById("novoFeriadoNacionalNome").value.trim() || "Feriado";
+    document.getElementById("novoFeriadoNacional").value = "";
+    document.getElementById("novoFeriadoNacionalNome").value = "";
+    renderFeriadosNacionais(podeEditarFeriados());
+    mostrarToast("Feriado adicionado.");
+  }
+
+  // Adicionar feriado por funcionário
+  if (e.target.id === "btnAdicionarFeriadoFunc") {
+    const reg = document.getElementById("selectFuncFeriado").value;
+    const data = document.getElementById("novoFeriadoFunc").value;
+    if (!reg || !data) { mostrarToast("Selecione o funcionário e a data.", "erro"); return; }
+    const lista = lerFeriadosFuncionario(reg);
+    if (lista.includes(data)) { mostrarToast("Data já cadastrada.", "erro"); return; }
+    lista.push(data);
+    lista.sort();
+    salvarFeriadosFuncionario(reg, lista);
+    document.getElementById("novoFeriadoFunc").value = "";
+    renderFeriadosFuncionario(podeEditarFeriados());
+    mostrarToast("Feriado adicionado.");
+  }
+});
+
+function popularSelectFuncFeriado(podeEditar) {
+  const select = document.getElementById("selectFuncFeriado");
+  const funcionarios = listarFuncionarios();
+  select.innerHTML = "";
+  funcionarios.forEach((f) => {
+    const opt = document.createElement("option");
+    opt.value = f.registro;
+    opt.textContent = f.nome + " (" + f.registro + ")";
+    select.appendChild(opt);
+  });
+  select.addEventListener("change", () => renderFeriadosFuncionario(podeEditar));
+  renderFeriadosFuncionario(podeEditar);
+}
+
+function renderFeriadosFuncionario(podeEditar) {
+  const reg = document.getElementById("selectFuncFeriado").value;
+  if (!reg) return;
+  const lista = lerFeriadosFuncionario(reg);
+  const container = document.getElementById("listaFeriadosFuncionario");
+  container.innerHTML = "";
+
+  if (lista.length === 0) {
+    container.innerHTML = '<p style="color:var(--texto-3);font-size:12px;padding:4px;">Nenhum feriado específico cadastrado.</p>';
+    return;
+  }
+
+  lista.sort().forEach((data) => {
+    const dataFormatada = new Date(data + "T12:00:00").toLocaleDateString("pt-BR", {
+      weekday: "short", day: "2-digit", month: "long", year: "numeric"
+    });
+    const linha = document.createElement("div");
+    linha.className = "feriado-item";
+    linha.innerHTML = `
+      <span class="feriado-data-completa">${dataFormatada}</span>
+      ${podeEditar ? `<button class="btn-del-feriado" data-del-func-feriado="${data}" title="Remover">&times;</button>` : ""}
+    `;
+    container.appendChild(linha);
+  });
+
+  if (podeEditar) {
+    container.querySelectorAll("[data-del-func-feriado]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const ok = await confirmarAcao("Remover este feriado?", "");
+        if (!ok) return;
+        const nova = lista.filter((d) => d !== btn.dataset.delFuncFeriado);
+        salvarFeriadosFuncionario(reg, nova);
+        renderFeriadosFuncionario(podeEditar);
+      });
+    });
+  }
 }
 
 // ====================================================
@@ -575,195 +948,425 @@ renderTabelaFuncionarios();
 // ====================================================
 // PDF MENSAL DE PONTOS
 // ====================================================
-function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario) {
+function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario, secoes) {
+  if (!secoes) {
+    secoes = { dadosFuncionario:true, resumo:true, espelho:true,
+               lancamentos:true, localizacao:true, assinatura:true };
+  }
+
   const mes = parseInt(document.getElementById("modalFiltroMes").value);
   const ano = parseInt(document.getElementById("modalFiltroAno").value);
   const nomeMes = NOMES_MESES_PONTO[mes];
-  const jornada = getJornadaFuncionario(registroFuncionario);
-  const banco = calcularBancoHoras(registroFuncionario);
+  const jornadaHoras = getJornadaFuncionario(registroFuncionario);
+  const jornadaCompleta = getJornadaCompleta(registroFuncionario);
+  const banco = calcularBancoHorasCompleto(registroFuncionario);
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const margem = 40;
-  let y = 50;
+  const PW = doc.internal.pageSize.getWidth();
+  const PH = doc.internal.pageSize.getHeight();
+  const ML = 40;
+  const MR = 40;
+  let y = 0;
 
-  // Cabeçalho
+  const LARANJA = [235, 153, 28];
+  const ESCURO  = [30, 30, 30];
+  const CINZA   = [245, 245, 245];
+  const VERDE   = [28, 138, 75];
+  const VERMELHO= [220, 20, 60];
+  const AZUL    = [43, 108, 176];
+
+  function novaSecao(titulo) {
+    if (y > PH - 100) { doc.addPage(); y = 50; }
+    doc.setFillColor(...LARANJA);
+    doc.rect(ML, y, PW - ML - MR, 18, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text(titulo.toUpperCase(), ML + 6, y + 12);
+    doc.setTextColor(0);
+    y += 24;
+  }
+
+  function garantirEspaco(min) {
+    if (y + min > PH - 50) { doc.addPage(); y = 50; }
+  }
+
+  function rodape(n) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7);
+    doc.setTextColor(160);
+    doc.text(
+      "EnJob Engenharia e Manutenção — Extrato de Ponto — " + nomeFuncionario + " — " + nomeMes + "/" + ano + " — Pág. " + n,
+      PW / 2, PH - 18, { align: "center" }
+    );
+    doc.setTextColor(0);
+  }
+
+  // ── CABEÇALHO
+  doc.setFillColor(...ESCURO);
+  doc.rect(0, 0, PW, 55, "F");
+  doc.setFillColor(...LARANJA);
+  doc.rect(0, 55, PW, 4, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text("RELATÓRIO DE PONTO MENSAL", margem, y);
-  y += 22;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(`Funcionário: ${nomeFuncionario}`, margem, y);
-  doc.text(`Período: ${nomeMes} / ${ano}`, margem + 280, y);
-  y += 14;
-  doc.text(`Jornada diária: ${formatarHoras(jornada)}`, margem, y);
-  doc.text(`Gerado em: ${new Date().toLocaleDateString("pt-BR")}`, margem + 280, y);
-  y += 22;
-
-  doc.setDrawColor(235, 153, 28);
-  doc.setLineWidth(1);
-  doc.line(margem, y, doc.internal.pageSize.getWidth() - margem, y);
-  y += 18;
-
-  // Resumo do banco de horas
-  doc.autoTable({
-    startY: y,
-    head: [["Horas Trabalhadas", "Horas Esperadas", "Saldo do Banco", "Dias Trabalhados"]],
-    body: [[
-      formatarHoras(banco.horasTrabalhadas),
-      formatarHoras(banco.horasEsperadas),
-      (banco.saldo >= 0 ? "+" : "") + formatarHoras(banco.saldo),
-      String(banco.diasTrabalhados),
-    ]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 10, halign: "center" },
-    headStyles: { fillColor: [235, 153, 28] },
-  });
-  y = doc.lastAutoTable.finalY + 20;
-
-  // Batidas do mês agrupadas por dia
-  const registros = lerRegistros().filter((r) => {
-    if (r.registroFuncionario !== registroFuncionario) return false;
-    const d = new Date(r.dataHora);
-    return d.getMonth() === mes && d.getFullYear() === ano;
-  });
-
-  const dias = [...new Set(registros.map((r) => r.dataHora.slice(0, 10)))].sort();
-
-  const linhasBatidas = [];
-  let totalHorasMes = 0;
-
-  dias.forEach((data) => {
-    const batidasDia = registros
-      .filter((r) => r.dataHora.startsWith(data))
-      .sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
-
-    const horasDia = calcularHorasTrabalhadasNoDia(batidasDia);
-    const saldoDia = horasDia - jornada;
-    totalHorasMes += horasDia;
-
-    const horarios = batidasDia.map((b) =>
-      `${formatarHoraBR(b.dataHora)} (${b.tipo === "entrada" ? "E" : "S"})${b.endereco ? " 📍" : ""}`
-    ).join("  |  ");
-
-    const enderecos = batidasDia
-      .filter((b) => b.endereco)
-      .map((b) => `${formatarHoraBR(b.dataHora)}: ${b.endereco}`)
-      .join(" | ");
-
-    linhasBatidas.push([
-      formatarDataBR(data),
-      horarios || "—",
-      enderecos || "—",
-      formatarHoras(horasDia),
-      (saldoDia >= 0 ? "+" : "") + formatarHoras(saldoDia),
-    ]);
-  });
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Registro de Batidas", margem, y);
-  y += 8;
-
-  doc.autoTable({
-    startY: y,
-    head: [["Data", "Batidas (E=Entrada / S=Saída)", "Localização", "Horas", "Saldo dia"]],
-    body: linhasBatidas.length ? linhasBatidas : [["—", "Sem registros neste mês", "—", "—"]],
-    foot: [["", "TOTAL DO MÊS", "", formatarHoras(totalHorasMes), ""]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [235, 153, 28] },
-    footStyles: { fillColor: [245, 245, 245], fontStyle: "bold" },
-  });
-  y = doc.lastAutoTable.finalY + 20;
-
-  // Lançamentos do mês
-  const lancamentos = getLancamentosFuncionario(registroFuncionario).filter((l) => {
-    const d = new Date(l.data);
-    return d.getMonth() === mes && d.getFullYear() === ano;
-  });
-
-  if (lancamentos.length > 0) {
-    if (y > doc.internal.pageSize.getHeight() - 120) { doc.addPage(); y = 50; }
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("Lançamentos Especiais", margem, y);
-    y += 8;
-
-    doc.autoTable({
-      startY: y,
-      head: [["Data", "Tipo", "Horas", "Descrição", "Documento"]],
-      body: lancamentos.map((l) => {
-        const info = TIPOS_LANCAMENTO[l.tipo] || { rotulo: l.tipo };
-        return [
-          formatarDataBR(l.data),
-          info.rotulo,
-          formatarHoras(Math.abs(l.horas)),
-          l.descricao || "—",
-          l.documentoNome || "—",
-        ];
-      }),
-      margin: { left: margem, right: margem },
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [70, 70, 70] },
-    });
-    y = doc.lastAutoTable.finalY + 20;
-  }
-
-  // Seção de localização: todas as batidas do mês que têm endereço
-  const batidasComLoc = registros
-    .filter((r) => r.endereco)
-    .sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
-
-  if (batidasComLoc.length > 0) {
-    if (y > doc.internal.pageSize.getHeight() - 120) { doc.addPage(); y = 50; }
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(0);
-    doc.text("Registro de Localização", margem, y);
-    y += 4;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(100);
-    doc.text("Endereços registrados automaticamente no momento de cada batida.", margem, y + 8);
-    y += 16;
-
-    doc.autoTable({
-      startY: y,
-      head: [["Data", "Hora", "Tipo", "Endereço", "Coordenadas"]],
-      body: batidasComLoc.map((b) => [
-        formatarDataBR(b.dataHora.slice(0, 10)),
-        formatarHoraBR(b.dataHora),
-        b.tipo === "entrada" ? "Entrada" : "Saída",
-        b.endereco || "—",
-        b.lat && b.lng ? `${b.lat.toFixed(5)}, ${b.lng.toFixed(5)}` : "—",
-      ]),
-      margin: { left: margem, right: margem },
-      styles: { fontSize: 8, overflow: "linebreak" },
-      headStyles: { fillColor: [43, 108, 176] },
-      columnStyles: {
-        0: { cellWidth: 55 },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 40 },
-        3: { cellWidth: 280 },
-        4: { cellWidth: 90 },
-      },
-    });
-    y = doc.lastAutoTable.finalY + 20;
-  }
-
-  // Rodapé com assinatura
-  const alturaPagina = doc.internal.pageSize.getHeight();
-  doc.setFont("helvetica", "normal");
+  doc.setTextColor(255, 255, 255);
+  doc.text("EXTRATO DE PONTO MENSAL", ML, 30);
   doc.setFontSize(9);
-  doc.setTextColor(150);
-  doc.text(`EnJob Engenharia e Manutenção — Relatório gerado em ${new Date().toLocaleString("pt-BR")}`, margem, alturaPagina - 30);
+  doc.setFont("helvetica", "normal");
+  doc.text("EnJob Engenharia e Manutenção", ML, 46);
+  doc.setTextColor(0);
+  y = 75;
 
-  const nomeArquivo = `ponto_${nomeFuncionario.replace(/\s+/g, "_").toLowerCase()}_${nomeMes}_${ano}.pdf`;
+  // ── DADOS DO FUNCIONÁRIO
+  if (secoes.dadosFuncionario) {
+    const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+    const dadosFunc = usuarios.find((u) => String(u.registro) === String(registroFuncionario)) || {};
+    doc.autoTable({
+      startY: y,
+      body: [
+        ["Funcionário", nomeFuncionario, "Registro", registroFuncionario],
+        ["CPF", dadosFunc.cpf || "—", "Setor", dadosFunc.setor || "—"],
+        ["Período", nomeMes + " / " + ano, "Gerado em", new Date().toLocaleDateString("pt-BR")],
+      ],
+      margin: { left: ML, right: MR },
+      styles: { fontSize: 9, cellPadding: 4 },
+      columnStyles: {
+        0: { fontStyle: "bold", fillColor: CINZA, cellWidth: 90 },
+        1: { cellWidth: 160 },
+        2: { fontStyle: "bold", fillColor: CINZA, cellWidth: 90 },
+        3: { cellWidth: 160 },
+      },
+      theme: "grid",
+    });
+    y = doc.lastAutoTable.finalY + 16;
+
+    novaSecao("Jornada Contratual");
+    doc.autoTable({
+      startY: y,
+      body: [[
+        jornadaCompleta.horaEntrada || "—",
+        jornadaCompleta.horaSaida || "—",
+        (jornadaCompleta.inicioAlmoco && jornadaCompleta.fimAlmoco)
+          ? jornadaCompleta.inicioAlmoco + " às " + jornadaCompleta.fimAlmoco
+          : "Flexível",
+        formatarHoras(jornadaHoras) + "/dia",
+      ]],
+      head: [["Entrada", "Saída", "Intervalo Almoço", "Horas/Dia"]],
+      margin: { left: ML, right: MR },
+      styles: { fontSize: 9, halign: "center" },
+      headStyles: { fillColor: ESCURO },
+      theme: "grid",
+    });
+    y = doc.lastAutoTable.finalY + 16;
+  }
+
+  // ── RESUMO DO MÊS
+  if (secoes.resumo) {
+    const registrosMes = lerRegistros().filter((r) => {
+      if (r.registroFuncionario !== registroFuncionario) return false;
+      const d = new Date(r.dataHora);
+      return d.getMonth() === mes && d.getFullYear() === ano;
+    });
+    const lancamentosMes = getLancamentosFuncionario(registroFuncionario).filter((l) => {
+      const d = new Date(l.data + "T00:00:00");
+      return d.getMonth() === mes && d.getFullYear() === ano;
+    });
+    const diasComBatida = [...new Set(registrosMes.map((r) => r.dataHora.slice(0, 10)))];
+    let htMes = 0;
+    let extrasFds = 0;
+    diasComBatida.forEach((data) => {
+      const b = registrosMes.filter((r) => r.dataHora.startsWith(data))
+        .sort((a, bx) => new Date(a.dataHora) - new Date(bx.dataHora));
+      const hd = calcularHorasTrabalhadasNoDia(b);
+      if (ehFimDeSemana(data) || ehFeriado(data, registroFuncionario)) {
+        extrasFds += hd;
+      } else {
+        htMes += hd;
+      }
+    });
+    let extrasMes=0, faltasMes=0, abonosMes=0, atestadosMes=0, decMes=0, feriasMes=0, ajustesMes=0;
+    lancamentosMes.forEach((l) => {
+      if (l.tipo === "hora_extra") extrasMes += Math.abs(l.horas);
+      else if (l.tipo === "falta") faltasMes += Math.abs(l.horas);
+      else if (l.tipo === "abono") abonosMes += Math.abs(l.horas);
+      else if (l.tipo === "atestado") atestadosMes += Math.abs(l.horas);
+      else if (l.tipo === "declaracao") decMes += Math.abs(l.horas);
+      else if (l.tipo === "ferias") feriasMes += Math.abs(l.horas);
+      else if (l.tipo === "ajuste") ajustesMes += l.horas;
+    });
+    const heEsp = diasComBatida.filter((d) => ehDiaUtil(d, registroFuncionario)).length * jornadaHoras + faltasMes;
+    const saldoMes = (htMes + extrasMes + abonosMes + atestadosMes + decMes + feriasMes + extrasFds)
+                   - heEsp + (ajustesMes > 0 ? ajustesMes : 0) - (ajustesMes < 0 ? Math.abs(ajustesMes) : 0);
+
+    novaSecao("Resumo do Mês");
+    doc.autoTable({
+      startY: y,
+      body: [
+        ["Dias com registro", String(diasComBatida.length), "Horas trabalhadas", formatarHoras(htMes)],
+        ["Horas extras (fim de semana/feriado)", formatarHoras(extrasFds), "Horas extras lançadas", formatarHoras(extrasMes)],
+        ["Faltas lançadas", formatarHoras(faltasMes), "Abonos", formatarHoras(abonosMes)],
+        ["Atestados", formatarHoras(atestadosMes), "Férias", formatarHoras(feriasMes)],
+        ["Declarações", formatarHoras(decMes), "Ajustes manuais", (ajustesMes>=0?"+":"") + formatarHoras(ajustesMes)],
+        ["Horas esperadas", formatarHoras(heEsp), "SALDO DO MÊS", (saldoMes>=0?"+":"") + formatarHoras(saldoMes)],
+      ],
+      margin: { left: ML, right: MR },
+      styles: { fontSize: 9, cellPadding: 4 },
+      columnStyles: {
+        0: { fontStyle:"bold", fillColor:CINZA, cellWidth:185 },
+        1: { cellWidth:75, halign:"right" },
+        2: { fontStyle:"bold", fillColor:CINZA, cellWidth:185 },
+        3: { cellWidth:75, halign:"right" },
+      },
+      didParseCell: (data) => {
+        if (data.row.index === 5 && data.column.index === 3) {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fontSize = 11;
+          data.cell.styles.textColor = saldoMes >= 0 ? VERDE : VERMELHO;
+        }
+      },
+      theme: "grid",
+    });
+    y = doc.lastAutoTable.finalY + 16;
+
+    novaSecao("Banco de Horas Acumulado");
+    doc.autoTable({
+      startY: y,
+      body: [[
+        formatarHoras(banco.horasTrabalhadas),
+        formatarHoras(banco.horasEsperadas),
+        String(banco.diasTrabalhados),
+        (banco.saldo>=0?"+":"") + formatarHoras(banco.saldo),
+      ]],
+      head: [["Total Trabalhado","Total Esperado","Dias Trabalhados","Saldo Acumulado"]],
+      margin: { left: ML, right: MR },
+      styles: { fontSize: 10, halign:"center" },
+      headStyles: { fillColor: ESCURO },
+      didParseCell: (data) => {
+        if (data.row.index === 0 && data.column.index === 3 && data.section === "body") {
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fontSize = 12;
+          data.cell.styles.textColor = banco.saldo >= 0 ? VERDE : VERMELHO;
+        }
+      },
+      theme: "grid",
+    });
+    y = doc.lastAutoTable.finalY + 16;
+    rodape(1);
+  }
+
+  // ── ESPELHO DE PONTO
+  if (secoes.espelho) {
+    doc.addPage(); y = 50;
+    novaSecao("Espelho de Ponto — " + nomeMes + " / " + ano);
+
+    const registrosMesEsp = lerRegistros().filter((r) => {
+      if (r.registroFuncionario !== registroFuncionario) return false;
+      const d = new Date(r.dataHora);
+      return d.getMonth() === mes && d.getFullYear() === ano;
+    });
+
+    const DIAS_SEMANA = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+    const todosDiasMes = diasDoMes(mes, ano);
+    const hoje2 = new Date(); hoje2.setHours(23,59,59,0);
+    const linhasDia = [];
+    const coresPorLinha = [];
+    let totalHMes = 0, totalSaldo = 0;
+
+    todosDiasMes.forEach((data) => {
+      const dataObj = new Date(data + "T12:00:00");
+      const fds = ehFimDeSemana(data);
+      const feriado = ehFeriado(data, registroFuncionario);
+      const diaUtil = !fds && !feriado;
+      const futuro = dataObj > hoje2;
+      const batidasDia = registrosMesEsp
+        .filter((r) => r.dataHora.startsWith(data))
+        .sort((a,b) => new Date(a.dataHora)-new Date(b.dataHora));
+      const hd = calcularHorasTrabalhadasNoDia(batidasDia);
+      const temBatida = batidasDia.length > 0;
+      let saldoDia = 0, corLinha = null, obs = "";
+
+      if (fds || feriado) {
+        obs = hd > 0 ? "Hora Extra" : (feriado ? "Feriado" : "Fim de Semana");
+        corLinha = hd > 0 ? "extra" : "fds";
+        saldoDia = hd;
+      } else if (!temBatida && !futuro) {
+        obs = "Falta"; corLinha = "falta"; saldoDia = -jornadaHoras;
+      } else if (!temBatida && futuro) {
+        obs = "—"; corLinha = "futuro"; saldoDia = 0;
+      } else {
+        saldoDia = hd - jornadaHoras;
+        corLinha = saldoDia >= 0 ? "ok" : "parcial";
+      }
+
+      if (!futuro) {
+        totalHMes += hd;
+        totalSaldo += saldoDia;
+      }
+
+      const diaSemana = DIAS_SEMANA[dataObj.getDay()];
+      const horarios = batidasDia.map((b) =>
+        formatarHoraBR(b.dataHora) + (b.tipo==="entrada"?"E":"S")
+      ).join("  ") || (futuro ? "" : obs);
+
+      linhasDia.push([
+        formatarDataBR(data), diaSemana, horarios,
+        hd>0 ? formatarHoras(hd) : "—",
+        diaUtil ? formatarHoras(jornadaHoras) : "—",
+        futuro ? "—" : (saldoDia>=0?"+":"") + formatarHoras(saldoDia),
+      ]);
+      coresPorLinha.push(corLinha);
+    });
+
+    doc.autoTable({
+      startY: y,
+      head: [["Data","Dia","Registros","Trabalhado","Esperado","Saldo"]],
+      body: linhasDia.length ? linhasDia : [["—","—","Sem registros","—","—","—"]],
+      foot: [["TOTAL","","",formatarHoras(totalHMes),formatarHoras(todosDiasMes.filter(d=>ehDiaUtil(d,registroFuncionario)).length * jornadaHoras),(totalSaldo>=0?"+":"") + formatarHoras(totalSaldo)]],
+      margin: { left: ML, right: MR },
+      styles: { fontSize: 8.5, cellPadding: 3 },
+      headStyles: { fillColor: LARANJA },
+      footStyles: { fillColor: CINZA, fontStyle:"bold" },
+      columnStyles: {
+        0: { cellWidth: 58 },
+        1: { cellWidth: 28, halign:"center" },
+        2: { cellWidth: 230 },
+        3: { cellWidth: 60, halign:"right" },
+        4: { cellWidth: 60, halign:"right" },
+        5: { cellWidth: 60, halign:"right" },
+      },
+      didParseCell: (data) => {
+        if (data.section !== "body") return;
+        const cor = coresPorLinha[data.row.index];
+        if (cor === "fds" || cor === "feriado") {
+          data.cell.styles.fillColor = [240,240,240];
+          data.cell.styles.textColor = [150,150,150];
+        } else if (cor === "falta") {
+          data.cell.styles.fillColor = [255,235,235];
+          if (data.column.index === 5) { data.cell.styles.textColor = VERMELHO; data.cell.styles.fontStyle = "bold"; }
+        } else if (cor === "extra") {
+          data.cell.styles.fillColor = [235,255,235];
+          if (data.column.index === 5) { data.cell.styles.textColor = VERDE; data.cell.styles.fontStyle = "bold"; }
+        } else if (cor === "ok" || cor === "parcial") {
+          if (data.column.index === 5) {
+            data.cell.styles.textColor = String(data.cell.raw || "").startsWith("+") ? VERDE : VERMELHO;
+            data.cell.styles.fontStyle = "bold";
+          }
+        } else if (cor === "futuro") {
+          data.cell.styles.textColor = [200,200,200];
+        }
+      },
+      theme: "striped",
+    });
+    y = doc.lastAutoTable.finalY + 16;
+    rodape(2);
+  }
+
+  // ── LANÇAMENTOS ESPECIAIS
+  if (secoes.lancamentos) {
+    const lancamentosMesL = getLancamentosFuncionario(registroFuncionario).filter((l) => {
+      const d = new Date(l.data + "T00:00:00");
+      return d.getMonth() === mes && d.getFullYear() === ano;
+    });
+    if (lancamentosMesL.length > 0) {
+      garantirEspaco(80);
+      novaSecao("Lançamentos Especiais — " + nomeMes + " / " + ano);
+      doc.autoTable({
+        startY: y,
+        head: [["Data","Tipo","Período","Horas","Efeito","Descrição","Documento"]],
+        body: lancamentosMesL.map((l) => {
+          const info = TIPOS_LANCAMENTO[l.tipo] || { rotulo: l.tipo, efeito:"neutro" };
+          const periodo = l.horaInicio && l.horaFim ? l.horaInicio + " às " + l.horaFim : "—";
+          return [
+            formatarDataBR(l.data), info.rotulo, periodo,
+            formatarHoras(Math.abs(l.horas)),
+            info.efeito==="credito"?"Crédito":info.efeito==="debito"?"Débito":"Neutro",
+            l.descricao || "—", l.documentoNome || "—",
+          ];
+        }),
+        margin: { left: ML, right: MR },
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: ESCURO },
+        columnStyles: {
+          0:{cellWidth:50}, 1:{cellWidth:65}, 2:{cellWidth:70},
+          3:{cellWidth:42,halign:"right"}, 4:{cellWidth:42},
+          5:{cellWidth:145}, 6:{cellWidth:90},
+        },
+        didParseCell: (data) => {
+          if (data.column.index === 4 && data.section === "body") {
+            if (data.cell.raw === "Crédito") data.cell.styles.textColor = VERDE;
+            else if (data.cell.raw === "Débito") data.cell.styles.textColor = VERMELHO;
+            else data.cell.styles.textColor = AZUL;
+            data.cell.styles.fontStyle = "bold";
+          }
+        },
+        theme: "striped",
+      });
+      y = doc.lastAutoTable.finalY + 16;
+    }
+  }
+
+  // ── LOCALIZAÇÃO
+  if (secoes.localizacao) {
+    const registrosMesLoc = lerRegistros().filter((r) => {
+      if (r.registroFuncionario !== registroFuncionario) return false;
+      const d = new Date(r.dataHora);
+      return d.getMonth() === mes && d.getFullYear() === ano;
+    });
+    const batidasComLoc = registrosMesLoc
+      .filter((r) => r.lat || r.endereco)
+      .sort((a,b) => new Date(a.dataHora)-new Date(b.dataHora));
+    if (batidasComLoc.length > 0) {
+      garantirEspaco(80);
+      novaSecao("Registro de Localização");
+      doc.autoTable({
+        startY: y,
+        head: [["Data","Hora","Tipo","Endereço","Coordenadas"]],
+        body: batidasComLoc.map((b) => [
+          formatarDataBR(b.dataHora.slice(0,10)),
+          formatarHoraBR(b.dataHora),
+          b.tipo==="entrada"?"Entrada":"Saída",
+          b.endereco || "Não disponível",
+          b.lat && b.lng ? b.lat.toFixed(5) + ", " + b.lng.toFixed(5) : "—",
+        ]),
+        margin: { left: ML, right: MR },
+        styles: { fontSize: 8, overflow:"linebreak", cellPadding: 3 },
+        headStyles: { fillColor: AZUL },
+        columnStyles: {
+          0:{cellWidth:55}, 1:{cellWidth:38}, 2:{cellWidth:40},
+          3:{cellWidth:272}, 4:{cellWidth:107},
+        },
+        theme: "striped",
+      });
+      y = doc.lastAutoTable.finalY + 16;
+    }
+  }
+
+  // ── ASSINATURAS
+  if (secoes.assinatura) {
+    garantirEspaco(100);
+    if (y > PH - 140) { doc.addPage(); y = 50; }
+    y += 20;
+    const largAssin = (PW - ML - MR - 40) / 2;
+    doc.setDrawColor(0); doc.setLineWidth(0.5);
+    doc.line(ML, y+40, ML+largAssin, y+40);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(0);
+    doc.text(nomeFuncionario, ML+largAssin/2, y+52, {align:"center"});
+    doc.text("Funcionário", ML+largAssin/2, y+63, {align:"center"});
+    const xResp = ML+largAssin+40;
+    doc.line(xResp, y+40, xResp+largAssin, y+40);
+    doc.text("Responsável / Gestor", xResp+largAssin/2, y+52, {align:"center"});
+    doc.text("EnJob Engenharia", xResp+largAssin/2, y+63, {align:"center"});
+    y += 80;
+    doc.setFontSize(7); doc.setTextColor(160);
+    doc.text(
+      "Documento gerado em " + new Date().toLocaleString("pt-BR") + " — Sistema EnJob — Dados extraídos do registro eletrônico de ponto",
+      PW/2, y, {align:"center"}
+    );
+  }
+
+  const nomeArquivo = "extrato_ponto_" + nomeFuncionario.replace(/\s+/g,"_").toLowerCase() + "_" + nomeMes + "_" + ano + ".pdf";
   doc.save(nomeArquivo);
 }
+
+const NOMES_MESES_PT = NOMES_MESES_PONTO;

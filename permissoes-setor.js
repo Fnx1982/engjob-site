@@ -29,6 +29,7 @@ const ITENS_MENU_DISPONIVEIS = [
   { id: "pontos-menu", rotulo: "Pontos (Confirmação + Consulta)" },
   { id: "calendario-menu", rotulo: "Calendário" },
   { id: "pontos-alterar-outros", rotulo: "Pontos — pode alterar registros de outros" },
+  { id: "pontos-editar-feriados", rotulo: "Pontos — pode editar feriados" },
 ];
 
 function lerSetoresPermissoes() {
