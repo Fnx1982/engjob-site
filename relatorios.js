@@ -38,7 +38,9 @@ const btnTipoMateriais = document.getElementById("btnTipoMateriais");
 const btnTipoObras = document.getElementById("btnTipoObras");
 const btnTipoCombinado = document.getElementById("btnTipoCombinado");
 const btnTipoApresentacao = document.getElementById("btnTipoApresentacao");
-const btnGerarApresentacao = document.getElementById("btnGerarApresentacao");
+const btnGerarApresentacao = document.getElementById("btnGerarApresentacaoDemanda"); // compatibilidade
+const btnGerarApresentacaoDemanda = document.getElementById("btnGerarApresentacaoDemanda");
+const btnGerarApresentacaoFinanceiro = document.getElementById("btnGerarApresentacaoFinanceiro");
 const secaoFuncionarios = document.getElementById("secaoFuncionarios");
 const secaoExtrato = document.getElementById("secaoExtrato");
 const secaoMateriais = document.getElementById("secaoMateriais");
@@ -146,7 +148,9 @@ function definirTipo(tipo) {
 
   // Troca os botões do rodapé conforme o tipo
   if (btnSalvarRelatorio) btnSalvarRelatorio.style.display = tipo === "apresentacao" ? "none" : "inline-block";
-  if (btnGerarApresentacao) btnGerarApresentacao.style.display = tipo === "apresentacao" ? "inline-block" : "none";
+  if (btnGerarApresentacaoDemanda) btnGerarApresentacaoDemanda.style.display = tipo === "apresentacao" ? "inline-block" : "none";
+  if (btnGerarApresentacaoFinanceiro) btnGerarApresentacaoFinanceiro.style.display = tipo === "apresentacao" ? "inline-block" : "none";
+  if (tipo === "apresentacao") { inicializarGridMeses(); }
 }
 btnTipoFuncionarios.addEventListener("click", () => definirTipo("funcionarios"));
 btnTipoExtrato.addEventListener("click", () => definirTipo("extrato"));
@@ -950,466 +954,520 @@ if (btnDesmarcarApres) btnDesmarcarApres.addEventListener("click", () => {
   document.querySelectorAll("#checkboxesApresentacao input[type=checkbox]").forEach((cb) => cb.checked = false);
 });
 
-// Botão de gerar apresentação
-if (btnGerarApresentacao) {
-  btnGerarApresentacao.addEventListener("click", async () => {
-    const mes = parseInt(document.getElementById("apresentacaoMes").value);
-    const ano = parseInt(document.getElementById("apresentacaoAno").value);
-    const selecionados = [...document.querySelectorAll("#checkboxesApresentacao input[type=checkbox]:checked")].map((cb) => cb.value);
 
-    if (selecionados.length === 0) {
-      mostrarToast("Selecione ao menos um slide.", "erro");
-      return;
-    }
+// ====================================================
+// GRID DE MESES PARA APRESENTAÇÃO
+// ====================================================
+const NOMES_MESES_GRID = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                           "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
-    btnGerarApresentacao.disabled = true;
-    btnGerarApresentacao.textContent = "Gerando...";
-    try {
-      await gerarApresentacao(mes, ano, selecionados);
-      mostrarToast("Apresentação gerada com sucesso!");
-    } catch (e) {
-      mostrarToast("Erro ao gerar apresentação: " + e.message, "erro");
-      console.error(e);
-    } finally {
-      btnGerarApresentacao.disabled = false;
-      btnGerarApresentacao.textContent = "📊 Gerar Apresentação (PDF)";
-    }
+function inicializarGridMeses() {
+  const grid = document.getElementById("gridMeses");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const mesAtual = new Date().getMonth();
+  NOMES_MESES_GRID.forEach((nome, i) => {
+    const label = document.createElement("label");
+    label.style.cssText = "display:flex;align-items:center;gap:6px;padding:7px 10px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;";
+    label.innerHTML = `<input type="checkbox" data-mes="${i}" ${i <= mesAtual ? "checked" : ""}
+      style="width:14px;height:14px;accent-color:#EB991C;" />${nome.slice(0,3)}`;
+    grid.appendChild(label);
+  });
+
+  document.getElementById("btnMarcarTodosMeses")?.addEventListener("click", () =>
+    grid.querySelectorAll("input").forEach(cb => cb.checked = true));
+  document.getElementById("btnDesmarcarTodosMeses")?.addEventListener("click", () =>
+    grid.querySelectorAll("input").forEach(cb => cb.checked = false));
+}
+
+document.getElementById("apresentacaoAnual")?.addEventListener("change", (e) => {
+  const seletor = document.getElementById("seletorMeses");
+  if (seletor) seletor.style.display = e.target.checked ? "none" : "block";
+});
+
+function getMesesSelecionados() {
+  const anual = document.getElementById("apresentacaoAnual")?.checked;
+  if (anual) return [0,1,2,3,4,5,6,7,8,9,10,11];
+  const grid = document.getElementById("gridMeses");
+  if (!grid) return [new Date().getMonth()];
+  return [...grid.querySelectorAll("input:checked")].map(cb => parseInt(cb.dataset.mes));
+}
+function getCheckboxesSelecionados() {
+  return [...document.querySelectorAll("#checkboxesApresentacao input[type=checkbox]:checked")].map(cb => cb.value);
+}
+
+function getMesAnoApresentacao() {
+  return {
+    meses: getMesesSelecionados(),
+    ano: parseInt(document.getElementById("apresentacaoAno").value),
+  };
+}
+
+async function executarGeracaoApresentacao(btn, labelOriginal, fn) {
+  const selecionados = getCheckboxesSelecionados();
+  if (selecionados.length === 0) { mostrarToast("Selecione ao menos um slide.", "erro"); return; }
+  const { meses, ano } = getMesAnoApresentacao();
+  if (meses.length === 0) { mostrarToast("Selecione ao menos um mês.", "erro"); return; }
+  btn.disabled = true;
+  btn.textContent = "Gerando...";
+  try {
+    await fn(meses, ano, selecionados);
+    mostrarToast("Apresentação gerada com sucesso!");
+  } catch(e) {
+    mostrarToast("Erro ao gerar: " + e.message, "erro");
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = labelOriginal;
+  }
+}
+
+if (btnGerarApresentacaoDemanda) {
+  btnGerarApresentacaoDemanda.addEventListener("click", () => {
+    executarGeracaoApresentacao(btnGerarApresentacaoDemanda, "📊 Apresentação Demanda",
+      (meses, ano, sel) => gerarApresentacaoDemandaPptx(meses, ano, sel));
+  });
+}
+
+if (btnGerarApresentacaoFinanceiro) {
+  btnGerarApresentacaoFinanceiro.addEventListener("click", () => {
+    executarGeracaoApresentacao(btnGerarApresentacaoFinanceiro, "📊 Apresentação Financeiro",
+      (meses, ano, sel) => gerarApresentacaoFinanceiroPptx(meses, ano, sel));
   });
 }
 
 // ====================================================
-// GERADOR DE APRESENTAÇÃO EM PDF (visual de slides)
+// HELPERS COMUNS
 // ====================================================
-async function gerarApresentacao(mes, ano, selecionados) {
-  const { jsPDF } = window.jspdf;
-  const W = 841.89; // A4 landscape largura (pt)
-  const H = 595.28; // A4 landscape altura (pt)
-  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+function fmtR(v) {
+  return "R$ " + (v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtH(h) {
+  const s = h < 0 ? "-" : "+";
+  const a = Math.abs(h);
+  return s + String(Math.floor(a)).padStart(2,"0") + "h" + String(Math.round((a%1)*60)).padStart(2,"0") + "m";
+}
+const MESES_NOMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                     "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const MESES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-  const LARANJA = [235, 153, 28];
-  const ESCURO  = [30, 30, 30];
-  const CINZA   = [245, 245, 245];
-  const BRANCO  = [255, 255, 255];
-  const VERDE   = [28, 138, 75];
-  const VERMELHO= [220, 20, 60];
+function lerPropostas2() { return JSON.parse(localStorage.getItem("propostas_lista")) || []; }
+function lerFinanceiro2() { return JSON.parse(localStorage.getItem("financeiro")) || []; }
+function lerObras2()      { return JSON.parse(localStorage.getItem("obras_lista")) || []; }
+function lerUsuarios2()   { console.warn("[relatorios.js] lerUsuarios2() está obsoleta — use await lerUsuariosDoServidor()."); return []; }
+async function lerUsuariosDoServidor() {
+  const r = await apiListarUsuariosBasico();
+  return r.ok ? r.usuarios : [];
+}
+function lerBoletos2()    { return JSON.parse(localStorage.getItem("boletos_lista")) || []; }
 
-  const nomeMes = NOMES_MESES_PT[mes] || "";
-  let primeiroSlide = true;
+function totalProposta(p) {
+  const mo  = (p.itensMaoDeObra  || []).reduce((s,i) => s + (parseFloat(i.valorFinal) || i.qtd * i.valorUnit || 0), 0);
+  const mat = (p.itensMateriais  || []).reduce((s,i) => s + (parseFloat(i.valorFinal) || i.qtd * i.valorUnit || 0), 0);
+  const ajMO  = parseFloat(p.ajusteMaoDeObra  || 0);
+  const ajMat = parseFloat(p.ajusteMateriais  || 0);
+  return mo + mat + ajMO + ajMat;
+}
 
-  function novoSlide(corFundo) {
-    if (!primeiroSlide) doc.addPage([W, H], "landscape");
-    primeiroSlide = false;
-    doc.setFillColor(...(corFundo || BRANCO));
-    doc.rect(0, 0, W, H, "F");
-  }
+// ====================================================
+// APRESENTAÇÃO 1 — DEMANDA (branco / laranja)
+// ====================================================
+async function gerarApresentacaoDemandaPptx(mesesArr, ano, selecionados) {
+  // Suporta mês único (retrocompatível) ou array de meses
+  const mesesSel = Array.isArray(mesesArr) ? mesesArr : [mesesArr];
+  // Para apresentação demanda, usa o primeiro mês selecionado como referência,
+  // mas inclui dados acumulados de todos os meses selecionados
+  const mes = mesesSel[0];
+  const nomePeriodo = mesesSel.length === 12 ? "Anual " + ano
+    : mesesSel.length === 1 ? MESES_NOMES[mes] + " / " + ano
+    : MESES_NOMES[mesesSel[0]] + " a " + MESES_NOMES[mesesSel[mesesSel.length-1]] + " / " + ano;
+  const PG = window.PptxGenJS || pptxgen;
+  const pres = new PG();
+  pres.layout = "LAYOUT_16x9";
+  const D = {
+    bg:"FFFFFF", laranja:"EB991C", escuro:"1A1A1A",
+    cinza:"F5F5F5", verde:"1C8A4B", azul:"2B6CB0",
+    texto:"333333", texto2:"777777",
+  };
 
-  function barraLateral(cor) {
-    doc.setFillColor(...(cor || LARANJA));
-    doc.rect(0, 0, 12, H, "F");
-  }
+  const propostas = lerPropostas2();
+  const nomeMes = MESES_NOMES[mes];
+  const doMes = propostas.filter(p => {
+    const d = new Date(p.criadoEm);
+    return d.getMonth() === mes && d.getFullYear() === ano;
+  });
 
-  function titulo(texto, y, cor) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(26);
-    doc.setTextColor(...(cor || ESCURO));
-    doc.text(texto, 40, y);
-  }
-
-  function subtitulo(texto, y, cor) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(13);
-    doc.setTextColor(...(cor || [100, 100, 100]));
-    doc.text(texto, 40, y);
-  }
-
-  function linha(y, cor) {
-    doc.setDrawColor(...(cor || LARANJA));
-    doc.setLineWidth(1.5);
-    doc.line(40, y, W - 40, y);
-  }
-
-  function cardValor(x, y, rotulo, valor, corValor) {
-    doc.setFillColor(...CINZA);
-    doc.roundedRect(x, y, 170, 80, 6, 6, "F");
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(120, 120, 120);
-    doc.text(rotulo, x + 85, y + 22, { align: "center" });
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    doc.setTextColor(...(corValor || ESCURO));
-    doc.text(String(valor), x + 85, y + 55, { align: "center" });
-  }
-
-  function rodape(texto) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(180, 180, 180);
-    doc.text(texto || `EnJob Engenharia • ${nomeMes} ${ano}`, W / 2, H - 18, { align: "center" });
-  }
-
-  // ── SLIDE 1: Capa ──────────────────────────────────────
+  // ── CAPA
   if (selecionados.includes("capa")) {
-    novoSlide(ESCURO);
-    doc.setFillColor(...LARANJA);
-    doc.rect(0, 0, W, H, "F");
-
-    // Retângulo escuro no lado direito
-    doc.setFillColor(30, 30, 30);
-    doc.rect(W * 0.55, 0, W * 0.45, H, "F");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(42);
-    doc.setTextColor(...BRANCO);
-    doc.text("ENGJOB", 60, 200);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(18);
-    doc.text("Engenharia e Manutenção", 60, 232);
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(28);
-    doc.setTextColor(...BRANCO);
-    doc.text("Relatório Gerencial", W * 0.6, 200);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(16);
-    doc.text(`${nomeMes} / ${ano}`, W * 0.6, 230);
-    doc.setFontSize(11);
-    doc.setTextColor(200, 200, 200);
-    doc.text(`Gerado em ${new Date().toLocaleDateString("pt-BR")}`, W * 0.6, 260);
+    const s = pres.addSlide();
+    s.addShape(pres.ShapeType.rect, {x:0,y:0,w:5,h:5.625,fill:{color:D.laranja}});
+    s.addShape(pres.ShapeType.rect, {x:5,y:0,w:5,h:5.625,fill:{color:D.bg}});
+    s.addText("ENGJOB", {x:0.4,y:1.8,w:4.2,h:0.7,fontSize:40,bold:true,color:"FFFFFF",fontFace:"Montserrat",margin:0});
+    s.addText("Engenharia e Manutenção", {x:0.4,y:2.5,w:4.2,h:0.4,fontSize:14,color:"FFFFFF",fontFace:"Montserrat",margin:0});
+    s.addText("Acompanhamento de", {x:5.3,y:1.5,w:4.4,h:0.4,fontSize:14,color:D.texto2,fontFace:"Montserrat",margin:0});
+    s.addText("Demanda", {x:5.3,y:1.95,w:4.4,h:0.85,fontSize:44,bold:true,color:D.escuro,fontFace:"Montserrat",margin:0});
+    s.addText(nomeMes + " / " + ano, {x:5.3,y:2.85,w:4.4,h:0.4,fontSize:15,color:D.texto2,fontFace:"Montserrat",margin:0});
   }
 
-  // ── SLIDE 2: Resumo Financeiro ─────────────────────────
-  if (selecionados.includes("resumo_financeiro")) {
-    novoSlide();
-    barraLateral();
-
-    titulo("Resumo Financeiro", 70);
-    subtitulo(`Período: ${nomeMes} / ${ano}`, 92);
-    linha(108);
-
-    // Dados do Financeiro de Funcionários
-    const financeiro = JSON.parse(localStorage.getItem("financeiro")) || [];
-    const totalPago = financeiro.reduce((s, f) => s + (parseFloat(f.valor) || 0), 0);
-
-    // Dados do Extrato (soma dos 3 bancos)
-    let totalEntradas = 0, totalSaidas = 0;
-    ["interbanking", "sicredi", "credcrea"].forEach((banco) => {
-      const lancs = JSON.parse(localStorage.getItem(`extrato_${banco}_lancamentos`)) || [];
-      lancs.forEach((l) => {
-        if (l.tipo === "credito") totalEntradas += parseFloat(l.valor) || 0;
-        else totalSaidas += parseFloat(l.valor) || 0;
-      });
-    });
-
-    // Boletos
-    const boletos = JSON.parse(localStorage.getItem("boletos_lista")) || [];
-    const boletosPendentes = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) >= new Date()).length;
-    const boletosAtrasados = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) < new Date()).length;
-    const boletosPagos = boletos.filter((b) => b.pago).length;
-
-    cardValor(40,  130, "Total Pago a Funcionários", `R$ ${fmt(totalPago)}`, ESCURO);
-    cardValor(225, 130, "Entradas (Extrato)", `R$ ${fmt(totalEntradas)}`, VERDE);
-    cardValor(410, 130, "Saídas (Extrato)", `R$ ${fmt(totalSaidas)}`, VERMELHO);
-    cardValor(595, 130, "Boletos Pendentes", boletosPendentes, [43, 108, 176]);
-    cardValor(40,  230, "Boletos Atrasados", boletosAtrasados, VERMELHO);
-    cardValor(225, 230, "Boletos Pagos", boletosPagos, VERDE);
-
-    const saldoExtrato = totalEntradas - totalSaidas;
-    cardValor(410, 230, "Saldo Extrato", `R$ ${fmt(saldoExtrato)}`, saldoExtrato >= 0 ? VERDE : VERMELHO);
-
-    rodape();
-  }
-
-  // ── SLIDE 3: Obras ─────────────────────────────────────
-  if (selecionados.includes("obras")) {
-    novoSlide();
-    barraLateral([28, 138, 75]);
-
-    titulo("Obras", 70);
-    subtitulo(`Obras criadas em ${nomeMes} / ${ano}`, 92);
-    linha(108, [28, 138, 75]);
-
-    const obras = (JSON.parse(localStorage.getItem("obras_lista")) || []).filter((o) => {
-      const d = new Date(o.criadoEm);
-      return d.getMonth() === mes && d.getFullYear() === ano;
-    });
-
-    if (obras.length === 0) {
-      subtitulo("Nenhuma obra neste período.", 200);
-    } else {
-      const linhasObras = obras.map((o) => {
-        const lucro = (o.valorMaoDeObraOrcamento || 0) + (o.valorMateriaisOrcamento || 0)
-          - (o.funcionarios || []).reduce((s, f) => s + (f.valorPago || 0), 0)
-          - (o.materiais || []).reduce((s, m) => s + (m.valor || 0), 0);
-        return [
-          o.cliente || "—",
-          o.servico || "—",
-          `R$ ${fmt(o.valorMaoDeObraOrcamento || 0)}`,
-          `R$ ${fmt(o.valorMateriaisOrcamento || 0)}`,
-          `R$ ${fmt(lucro)}`,
-        ];
-      });
-
-      doc.autoTable({
-        startY: 120,
-        head: [["Cliente", "Serviço", "Orç. M.O.", "Orç. Materiais", "Lucro Total"]],
-        body: linhasObras,
-        margin: { left: 40, right: 40 },
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: [28, 138, 75] },
-        tableWidth: W - 80,
-      });
-
-      // Totalizadores
-      const totalLucro = obras.reduce((s, o) => {
-        return s + (o.valorMaoDeObraOrcamento || 0) + (o.valorMateriaisOrcamento || 0)
-          - (o.funcionarios || []).reduce((ss, f) => ss + (f.valorPago || 0), 0)
-          - (o.materiais || []).reduce((ss, m) => ss + (m.valor || 0), 0);
-      }, 0);
-
-      const yFim = doc.lastAutoTable.finalY + 20;
-      cardValor(40,  yFim, "Total de Obras", obras.length, ESCURO);
-      cardValor(225, yFim, "Lucro Total", `R$ ${fmt(totalLucro)}`, totalLucro >= 0 ? VERDE : VERMELHO);
-    }
-
-    rodape();
-  }
-
-  // ── SLIDE 4: Propostas ─────────────────────────────────
+  // ── RESUMO DE PROPOSTAS DO MÊS
   if (selecionados.includes("propostas")) {
-    novoSlide();
-    barraLateral([43, 108, 176]);
+    const s = pres.addSlide();
+    s.background = {color:D.bg};
+    s.addText("Propostas — " + nomeMes, {x:0.5,y:0.25,w:9,h:0.6,fontSize:26,bold:true,color:D.escuro,fontFace:"Montserrat",margin:0});
+    s.addText("Resumo dos orçamentos do período",{x:0.5,y:0.85,w:9,h:0.32,fontSize:12,color:D.texto2,fontFace:"Montserrat",margin:0});
 
-    titulo("Propostas / Orçamentos", 70);
-    subtitulo("Visão geral do ciclo de propostas", 92);
-    linha(108, [43, 108, 176]);
+    const aprov   = doMes.filter(p => p.status==="andamento"||p.status==="finalizada").length;
+    const reprov  = doMes.filter(p => p.status==="negada").length;
+    const analise = doMes.filter(p => p.status==="analise").length;
+    const orcam   = doMes.filter(p => p.status==="orcamento").length;
+    const total   = doMes.length;
+    const valorTotal = doMes.reduce((s,p) => s + totalProposta(p), 0);
 
-    const propostas = JSON.parse(localStorage.getItem("propostas_lista")) || [];
-    const orcamentos  = propostas.filter((p) => p.status === "orcamento").length;
-    const analise     = propostas.filter((p) => p.status === "analise").length;
-    const aprovadas   = propostas.filter((p) => p.status === "andamento" || p.status === "finalizada").length;
-    const negadas     = propostas.filter((p) => p.status === "negada").length;
-    const total       = propostas.length;
+    const cards = [
+      {rot:"Total",       val:String(total),  cor:D.escuro},
+      {rot:"Aprovadas",   val:String(aprov),  cor:D.verde},
+      {rot:"Em Análise",  val:String(analise),cor:"E8A000"},
+      {rot:"Negadas",     val:String(reprov), cor:"E74C3C"},
+    ];
+    cards.forEach((c,i) => {
+      const x = 0.5 + i*2.3;
+      s.addShape(pres.ShapeType.rect,{x,y:1.45,w:2.1,h:1.3,fill:{color:D.cinza},line:{color:D.cinza,width:0}});
+      s.addText(c.val,{x,y:1.55,w:2.1,h:0.65,fontSize:34,bold:true,color:c.cor,fontFace:"Montserrat",align:"center",margin:0});
+      s.addText(c.rot,{x,y:2.22,w:2.1,h:0.3,fontSize:10,color:D.texto2,fontFace:"Montserrat",align:"center",margin:0});
+    });
 
-    cardValor(40,  130, "Total de Propostas", total, ESCURO);
-    cardValor(225, 130, "Em Orçamento", orcamentos, [100, 100, 100]);
-    cardValor(410, 130, "Em Análise", analise, [180, 110, 10]);
-    cardValor(595, 130, "Aprovadas / Em Andamento", aprovadas, VERDE);
-    cardValor(40,  230, "Negadas", negadas, VERMELHO);
+    // Card de valor total
+    s.addShape(pres.ShapeType.rect,{x:0.5,y:2.95,w:4.7,h:0.9,fill:{color:D.laranja},line:{color:D.laranja,width:0}});
+    s.addText("Montante do Período",{x:0.6,y:3.0,w:4.5,h:0.3,fontSize:11,color:"FFFFFF",fontFace:"Montserrat",margin:0});
+    s.addText(fmtR(valorTotal),{x:0.6,y:3.3,w:4.5,h:0.45,fontSize:22,bold:true,color:"FFFFFF",fontFace:"Montserrat",margin:0});
 
-    const valorTotal = propostas.reduce((s, p) => {
-      const mo  = (p.itensMaoDeObra  || []).reduce((ss, i) => ss + i.qtd * i.valorUnit, 0);
-      const mat = (p.itensMateriais  || []).reduce((ss, i) => ss + i.qtd * i.valorUnit, 0);
-      return s + mo + mat;
-    }, 0);
-    cardValor(225, 230, "Valor Total em Proposta", `R$ ${fmt(valorTotal)}`, [43, 108, 176]);
-
-    rodape();
-  }
-
-  // ── SLIDE 5: Materiais ─────────────────────────────────
-  if (selecionados.includes("materiais")) {
-    novoSlide();
-    barraLateral([92, 64, 14]);
-
-    titulo("Gestão de Materiais", 70);
-    subtitulo("Resumo do estoque atual", 92);
-    linha(108, [92, 64, 14]);
-
-    const materiais = JSON.parse(localStorage.getItem("materiais_lista")) || [];
-    const valorEstoque = materiais.reduce((s, m) => s + (m.valor || 0) * (m.quantidade || 0), 0);
-    const setores = [...new Set(materiais.map((m) => m.setor).filter(Boolean))];
-
-    cardValor(40,  130, "Total de Itens", materiais.length, ESCURO);
-    cardValor(225, 130, "Valor em Estoque", `R$ ${fmt(valorEstoque)}`, [92, 64, 14]);
-    cardValor(410, 130, "Setores", setores.length, ESCURO);
-
-    // Top 5 materiais por valor
-    const top5 = [...materiais].sort((a, b) => (b.valor * b.quantidade) - (a.valor * a.quantidade)).slice(0, 5);
-    if (top5.length > 0) {
-      doc.autoTable({
-        startY: 240,
-        head: [["Material", "Setor", "Qtd", "Valor Unit.", "Total"]],
-        body: top5.map((m) => [
-          m.nome, m.setor || "—",
-          m.quantidade || 0,
-          `R$ ${fmt(m.valor || 0)}`,
-          `R$ ${fmt((m.valor || 0) * (m.quantidade || 0))}`,
-        ]),
-        margin: { left: 40, right: 40 },
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: [92, 64, 14] },
-        tableWidth: W - 80,
+    // Donut
+    if (total > 0) {
+      s.addChart(pres.ChartType.doughnut, [
+        {name:"Propostas",labels:["Aprovadas","Em Análise","Orçamento","Negadas"],
+         values:[aprov,analise,orcam,reprov]}
+      ], {
+        x:5.4,y:1.35,w:4.3,h:3.9,
+        chartColors:[D.verde,"E8A000",D.azul,"E74C3C"],
+        showLegend:true,legendPos:"b",legendFontSize:10,
+        showValue:true,dataLabelFontSize:11,dataLabelColor:"FFFFFF",
+        showTitle:false,holeSize:40,
       });
     }
-
-    rodape();
   }
 
-  // ── SLIDE 6: Funcionários ──────────────────────────────
+  // ── PROPOSTAS POR STATUS AO LONGO DOS MESES DO ANO
+  if (selecionados.includes("propostas_mes")) {
+    const todas = lerPropostas2().filter(p => new Date(p.criadoEm).getFullYear() === ano);
+    const s = pres.addSlide();
+    s.background = {color:D.bg};
+    s.addText("Propostas por Mês — " + ano, {x:0.5,y:0.25,w:9,h:0.6,fontSize:26,bold:true,color:D.escuro,fontFace:"Montserrat",margin:0});
+
+    const labels = MESES_ABREV;
+    const aprov  = labels.map((_,i) => todas.filter(p => new Date(p.criadoEm).getMonth()===i && (p.status==="andamento"||p.status==="finalizada")).length);
+    const reprov = labels.map((_,i) => todas.filter(p => new Date(p.criadoEm).getMonth()===i && p.status==="negada").length);
+    const semRet = labels.map((_,i) => todas.filter(p => new Date(p.criadoEm).getMonth()===i && p.status==="orcamento").length);
+
+    s.addChart(pres.ChartType.bar, [
+      {name:"Aprovadas",   labels, values:aprov},
+      {name:"Negadas",     labels, values:reprov},
+      {name:"Em Orçamento",labels, values:semRet},
+    ], {
+      x:0.5,y:1.1,w:9,h:4.2,
+      chartColors:[D.verde,"E74C3C",D.laranja],
+      barGrouping:"clustered",
+      showValue:true,dataLabelPosition:"outEnd",dataLabelFontSize:9,
+      catAxisLabelFontSize:11,valAxisLabelFontSize:10,
+      showTitle:false,showLegend:true,legendPos:"b",legendFontSize:10,
+      valGridLine:{color:"EEEEEE",size:0.5},
+    });
+  }
+
+  // ── SLIDE ENCERRAMENTO
+  {
+    const s = pres.addSlide();
+    s.addShape(pres.ShapeType.rect,{x:0,y:0,w:5,h:5.625,fill:{color:D.laranja}});
+    s.addShape(pres.ShapeType.rect,{x:5,y:0,w:5,h:5.625,fill:{color:D.bg}});
+    s.addText("ENGJOB", {x:0.4,y:2.2,w:4.2,h:0.7,fontSize:36,bold:true,color:"FFFFFF",fontFace:"Montserrat",margin:0});
+    s.addText("Engenharia e Manutenção", {x:0.4,y:3.0,w:4.2,h:0.4,fontSize:13,color:"FFFFFF",fontFace:"Montserrat",margin:0});
+    s.addText("Obrigado", {x:5.3,y:2.0,w:4.4,h:0.8,fontSize:40,bold:true,color:D.escuro,fontFace:"Montserrat",margin:0});
+    s.addText(new Date().toLocaleDateString("pt-BR"), {x:5.3,y:2.9,w:4.4,h:0.4,fontSize:13,color:D.texto2,fontFace:"Montserrat",margin:0});
+  }
+
+  await pres.writeFile({fileName: "apresentacao-demanda-" + nomeMes + "-" + ano + ".pptx"});
+}
+
+// ====================================================
+// APRESENTAÇÃO 2 — FINANCEIRO (preto / laranja)
+// ====================================================
+async function gerarApresentacaoFinanceiroPptx(mesesArr, ano, selecionados) {
+  const mesesSel = Array.isArray(mesesArr) ? mesesArr : [mesesArr];
+  const mes = mesesSel[0];
+  const nomePeriodo = mesesSel.length === 12 ? "Anual " + ano
+    : mesesSel.length === 1 ? MESES_NOMES[mes] + " / " + ano
+    : MESES_NOMES[mesesSel[0]] + " a " + MESES_NOMES[mesesSel[mesesSel.length-1]] + " / " + ano;
+  const PG = window.PptxGenJS || pptxgen;
+  const pres = new PG();
+  pres.layout = "LAYOUT_16x9";
+  const F = {
+    bg:"111111", laranja:"EB991C", card:"222222",
+    texto:"FFFFFF", texto2:"AAAAAA",
+    verde:"2ECC71", vermelho:"E74C3C",
+  };
+  const nomeMes = nomePeriodo;
+
+  // Dados reais do localStorage
+  const financeiro  = lerFinanceiro2();
+  const obras       = lerObras2();
+  const usuarios    = await lerUsuariosDoServidor();
+  const boletos     = lerBoletos2();
+  const propostas   = lerPropostas2();
+
+  // Extrato (3 bancos)
+  let totalEntradas = 0, totalSaidas = 0;
+  ["interbanking","sicredi","credcrea"].forEach(b => {
+    const lancs = JSON.parse(localStorage.getItem("extrato_" + b + "_lancamentos")) || [];
+    lancs.forEach(l => {
+      if (l.tipo==="credito") totalEntradas += parseFloat(l.valor)||0;
+      else totalSaidas += parseFloat(l.valor)||0;
+    });
+  });
+
+  // ── CAPA
+  if (selecionados.includes("capa")) {
+    const s = pres.addSlide();
+    s.background = {color:F.bg};
+    s.addShape(pres.ShapeType.ellipse,{x:6.5,y:-1.5,w:5,h:5,fill:{color:F.laranja},line:{color:F.laranja,width:0},transparency:85});
+    s.addShape(pres.ShapeType.ellipse,{x:7.5,y:3.0,w:3,h:3,fill:{color:F.laranja},line:{color:F.laranja,width:0},transparency:90});
+    s.addText("ENGJOB",{x:0.5,y:1.3,w:9,h:1,fontSize:52,bold:true,color:F.laranja,fontFace:"Montserrat",margin:0});
+    s.addText("Engenharia e Manutenção",{x:0.5,y:2.35,w:6,h:0.45,fontSize:15,color:F.texto2,fontFace:"Montserrat",margin:0});
+    s.addText("Relatório Financeiro",{x:0.5,y:3.0,w:6,h:0.65,fontSize:28,bold:true,color:F.texto,fontFace:"Montserrat",margin:0});
+    s.addText(nomeMes + " / " + ano,{x:0.5,y:3.7,w:6,h:0.4,fontSize:13,color:F.texto2,fontFace:"Montserrat",margin:0});
+  }
+
+  // ── FLUXO DE CAIXA
+  if (selecionados.includes("resumo_financeiro")) {
+    const s = pres.addSlide();
+    s.background = {color:F.bg};
+    s.addText("Fluxo de Caixa",{x:0.5,y:0.2,w:9,h:0.55,fontSize:24,bold:true,color:F.laranja,fontFace:"Montserrat",margin:0});
+    s.addText("Entradas × Saídas × Saldo",{x:0.5,y:0.75,w:9,h:0.32,fontSize:12,color:F.texto2,fontFace:"Montserrat",margin:0});
+
+    const saldo = totalEntradas - totalSaidas;
+    const cardsF = [
+      {rot:"Total Entradas",val:fmtR(totalEntradas),cor:F.verde},
+      {rot:"Total Saídas",  val:fmtR(totalSaidas),  cor:F.vermelho},
+      {rot:"Saldo",         val:fmtR(saldo),         cor:saldo>=0?F.verde:F.vermelho},
+    ];
+    cardsF.forEach((c,i) => {
+      const x = 0.5 + i*3.1;
+      s.addShape(pres.ShapeType.rect,{x,y:1.35,w:2.9,h:1.2,fill:{color:F.card},line:{color:F.card,width:0}});
+      s.addText(c.val,{x,y:1.48,w:2.9,h:0.55,fontSize:17,bold:true,color:c.cor,fontFace:"Montserrat",align:"center",margin:0});
+      s.addText(c.rot,{x,y:2.05,w:2.9,h:0.3,fontSize:10,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
+    });
+
+    // Barras por banco
+    const bancos = ["Interbanking","Sicredi","Credcrea"];
+    const entradasPorBanco = bancos.map((_,i) => {
+      const chave = ["interbanking","sicredi","credcrea"][i];
+      const lancs = JSON.parse(localStorage.getItem("extrato_"+chave+"_lancamentos")) || [];
+      return lancs.filter(l=>l.tipo==="credito").reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+    });
+    const saidasPorBanco = bancos.map((_,i) => {
+      const chave = ["interbanking","sicredi","credcrea"][i];
+      const lancs = JSON.parse(localStorage.getItem("extrato_"+chave+"_lancamentos")) || [];
+      return lancs.filter(l=>l.tipo==="debito"||l.tipo==="saida").reduce((s,l)=>s+(parseFloat(l.valor)||0),0);
+    });
+
+    s.addChart(pres.ChartType.bar,[
+      {name:"Entradas",labels:bancos,values:entradasPorBanco},
+      {name:"Saídas",  labels:bancos,values:saidasPorBanco},
+    ],{
+      x:0.5,y:2.7,w:9,h:2.65,
+      chartColors:[F.verde,F.vermelho],
+      barGrouping:"clustered",
+      showValue:true,dataLabelPosition:"inEnd",dataLabelFontSize:9,dataLabelColor:"FFFFFF",
+      catAxisLabelFontSize:11,catAxisLabelColor:F.texto2,
+      valAxisLabelFontSize:9,valAxisLabelColor:F.texto2,
+      showTitle:false,showLegend:true,legendPos:"b",legendFontSize:10,legendColor:F.texto2,
+      valGridLine:{color:"333333",size:0.5},
+    });
+  }
+
+  // ── FUNCIONÁRIOS
   if (selecionados.includes("funcionarios")) {
-    novoSlide();
-    barraLateral(LARANJA);
+    const s = pres.addSlide();
+    s.background = {color:F.bg};
+    s.addText("Funcionários",{x:0.5,y:0.2,w:9,h:0.55,fontSize:24,bold:true,color:F.laranja,fontFace:"Montserrat",margin:0});
+    s.addText("Pagamentos registrados no período",{x:0.5,y:0.75,w:9,h:0.32,fontSize:12,color:F.texto2,fontFace:"Montserrat",margin:0});
 
-    titulo("Funcionários", 70);
-    subtitulo(`Pagamentos registrados — ${nomeMes} / ${ano}`, 92);
-    linha(108);
+    const totalPago = financeiro.reduce((s,f)=>s+(parseFloat(f.valor)||0),0);
 
-    const financeiro = JSON.parse(localStorage.getItem("financeiro")) || [];
-    const pagsDoMes  = financeiro; // sem filtro de mês (sem campo de data no financeiro)
-    const totalPago  = pagsDoMes.reduce((s, f) => s + (parseFloat(f.valor) || 0), 0);
-    const funcionarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+    // Agrupa por nome para o gráfico
+    const porNome = {};
+    financeiro.forEach(f => { porNome[f.nome] = (porNome[f.nome]||0)+(parseFloat(f.valor)||0); });
+    const nomesFunc = Object.keys(porNome);
+    const valoresFunc = nomesFunc.map(n => porNome[n]);
 
-    cardValor(40,  130, "Funcionários Cadastrados", funcionarios.length, ESCURO);
-    cardValor(225, 130, "Registros de Pagamento", pagsDoMes.length, ESCURO);
-    cardValor(410, 130, "Total Pago", `R$ ${fmt(totalPago)}`, LARANJA);
-
-    // Agrupa por funcionário
-    const porFunc = {};
-    pagsDoMes.forEach((p) => {
-      porFunc[p.nome] = (porFunc[p.nome] || 0) + (parseFloat(p.valor) || 0);
+    // Cards topo
+    const cf = [
+      {rot:"Funcionários",  val:String(usuarios.length),      cor:F.laranja},
+      {rot:"Registros Pag.",val:String(financeiro.length),    cor:F.texto2},
+      {rot:"Total Pago",    val:fmtR(totalPago),              cor:F.verde},
+    ];
+    cf.forEach((c,i) => {
+      const x = 0.5+i*3.1;
+      s.addShape(pres.ShapeType.rect,{x,y:1.35,w:2.9,h:1.1,fill:{color:F.card},line:{color:F.card,width:0}});
+      s.addText(c.val,{x,y:1.45,w:2.9,h:0.5,fontSize:c.val.length>9?14:20,bold:true,color:c.cor,fontFace:"Montserrat",align:"center",margin:0});
+      s.addText(c.rot,{x,y:1.95,w:2.9,h:0.28,fontSize:10,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
     });
-    const linhasFunc = Object.entries(porFunc).slice(0, 8).map(([nome, total]) => [nome, `R$ ${fmt(total)}`]);
 
-    if (linhasFunc.length > 0) {
-      doc.autoTable({
-        startY: 240,
-        head: [["Funcionário", "Total Pago"]],
-        body: linhasFunc,
-        margin: { left: 40, right: 300 },
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: LARANJA },
+    if (nomesFunc.length > 0) {
+      s.addChart(pres.ChartType.doughnut,[
+        {name:"Pagamentos",labels:nomesFunc,values:valoresFunc}
+      ],{
+        x:0.5,y:2.6,w:4.5,h:2.7,
+        chartColors:[F.laranja,"E8A000",F.verde,"9B59B6","2B6CB0","E74C3C"],
+        showLegend:true,legendPos:"b",legendFontSize:9,legendColor:F.texto2,
+        showValue:true,dataLabelFontSize:10,dataLabelColor:"FFFFFF",
+        showTitle:false,holeSize:40,
       });
     }
 
-    rodape();
+    // Barras por funcionário
+    if (nomesFunc.length > 0) {
+      s.addChart(pres.ChartType.bar,[
+        {name:"Pago",labels:nomesFunc,values:valoresFunc}
+      ],{
+        x:5.2,y:2.6,w:4.5,h:2.7,
+        chartColors:[F.laranja],
+        barDir:"bar",
+        showValue:true,dataLabelPosition:"inEnd",dataLabelFontSize:9,dataLabelColor:"FFFFFF",
+        catAxisLabelFontSize:10,catAxisLabelColor:F.texto2,
+        valAxisLabelFontSize:9,valAxisLabelColor:F.texto2,
+        showTitle:false,showLegend:false,
+        valGridLine:{color:"333333",size:0.5},
+      });
+    }
   }
 
-  // ── SLIDE 7: Banco de Horas ────────────────────────────
-  if (selecionados.includes("pontos")) {
-    novoSlide();
-    barraLateral([70, 70, 70]);
+  // ── OBRAS DETALHAMENTO
+  if (selecionados.includes("obras")) {
+    // Slide 1: Tabela
+    const s = pres.addSlide();
+    s.background = {color:F.bg};
+    s.addText("Obras — Detalhamento",{x:0.5,y:0.2,w:9,h:0.55,fontSize:24,bold:true,color:F.laranja,fontFace:"Montserrat",margin:0});
+    s.addText("M.O. e Materiais: valor cobrado × gasto e lucro por obra",{x:0.5,y:0.75,w:9,h:0.32,fontSize:12,color:F.texto2,fontFace:"Montserrat",margin:0});
 
-    titulo("Banco de Horas", 70);
-    subtitulo("Resumo por funcionário (acumulado)", 92);
-    linha(108, [70, 70, 70]);
+    const obrasComDados = obras.filter(o => o.valorMaoDeObraOrcamento || o.valorMateriaisOrcamento || (o.funcionarios||[]).length || (o.materiais||[]).length);
 
-    const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
+    const cols = [
+      {x:0.3,w:2.0,label:"Obra",     align:"l"},
+      {x:2.4,w:1.4,label:"M.O. Cobr.",align:"r"},
+      {x:3.9,w:1.4,label:"M.O. Gasto",align:"r"},
+      {x:5.4,w:1.4,label:"Mat. Cobr.",align:"r"},
+      {x:6.9,w:1.4,label:"Mat. Gasto",align:"r"},
+      {x:8.4,w:1.35,label:"Lucro",    align:"r"},
+    ];
 
-    const linhasPontos = usuarios.map((u) => {
-      const banco = calcularBancoHoras(u.registro);
-      return [
-        u.nome,
-        u.setor || "—",
-        formatarHorasPDF(banco.jornada),
-        formatarHorasPDF(banco.horasTrabalhadas),
-        (banco.saldo >= 0 ? "+" : "") + formatarHorasPDF(banco.saldo),
-        banco.diasTrabalhados,
+    s.addShape(pres.ShapeType.rect,{x:0.3,y:1.15,w:9.4,h:0.36,fill:{color:F.laranja},line:{color:F.laranja,width:0}});
+    cols.forEach(c => s.addText(c.label,{x:c.x+0.06,y:1.18,w:c.w,h:0.3,fontSize:9,bold:true,color:"111111",fontFace:"Montserrat",align:c.align,margin:0}));
+
+    const maxLinhas = Math.min(obrasComDados.length, 6);
+    let totalMoCob=0,totalMoGasto=0,totalMatCob=0,totalMatGasto=0;
+
+    obrasComDados.slice(0, maxLinhas).forEach((o,i) => {
+      const moCob   = parseFloat(o.valorMaoDeObraOrcamento)||0;
+      const moGasto = (o.funcionarios||[]).reduce((s,f)=>s+(parseFloat(f.valorPago)||0),0);
+      const matCob  = parseFloat(o.valorMateriaisOrcamento)||0;
+      const matGasto= (o.materiais||[]).reduce((s,m)=>s+(parseFloat(m.valor)||0),0);
+      const lucro   = (moCob-moGasto)+(matCob-matGasto);
+      totalMoCob+=moCob; totalMoGasto+=moGasto; totalMatCob+=matCob; totalMatGasto+=matGasto;
+
+      const y = 1.56 + i*0.62;
+      s.addShape(pres.ShapeType.rect,{x:0.3,y,w:9.4,h:0.55,fill:{color:i%2===0?F.card:"1C1C1C"},line:{color:F.card,width:0}});
+      const vals = [
+        {x:cols[0].x,w:cols[0].w,txt:o.cliente||o.servico||"Obra",bold:true,cor:F.texto,align:"l"},
+        {x:cols[1].x,w:cols[1].w,txt:fmtR(moCob),  bold:false,cor:F.laranja,align:"r"},
+        {x:cols[2].x,w:cols[2].w,txt:fmtR(moGasto),bold:false,cor:F.vermelho,align:"r"},
+        {x:cols[3].x,w:cols[3].w,txt:fmtR(matCob), bold:false,cor:F.laranja,align:"r"},
+        {x:cols[4].x,w:cols[4].w,txt:fmtR(matGasto),bold:false,cor:F.vermelho,align:"r"},
+        {x:cols[5].x,w:cols[5].w,txt:fmtR(lucro),  bold:true,cor:lucro>=0?F.verde:F.vermelho,align:"r"},
       ];
+      vals.forEach(v=>s.addText(v.txt,{x:v.x+0.06,y:y+0.1,w:v.w,h:0.35,fontSize:9,bold:v.bold,color:v.cor,fontFace:"Montserrat",align:v.align,margin:0}));
     });
 
-    if (linhasPontos.length === 0) {
-      subtitulo("Nenhum registro de ponto encontrado.", 200);
-    } else {
-      doc.autoTable({
-        startY: 120,
-        head: [["Funcionário", "Setor", "Jornada", "Trabalhadas", "Saldo", "Dias"]],
-        body: linhasPontos,
-        margin: { left: 40, right: 40 },
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: [70, 70, 70] },
-        tableWidth: W - 80,
-        didParseCell: (data) => {
-          if (data.column.index === 4 && data.section === "body") {
-            const val = data.cell.raw || "";
-            data.cell.styles.textColor = val.startsWith("+") ? VERDE : VERMELHO;
-            data.cell.styles.fontStyle = "bold";
-          }
-        },
-      });
-    }
-
-    rodape();
+    // Linha de total
+    const totalLucro=(totalMoCob-totalMoGasto)+(totalMatCob-totalMatGasto);
+    const yTot = 1.56 + maxLinhas*0.62;
+    s.addShape(pres.ShapeType.rect,{x:0.3,y:yTot,w:9.4,h:0.36,fill:{color:"333333"},line:{color:"333333",width:0}});
+    [
+      {x:cols[0].x,w:cols[0].w,txt:"TOTAL",             align:"l"},
+      {x:cols[1].x,w:cols[1].w,txt:fmtR(totalMoCob),   align:"r"},
+      {x:cols[2].x,w:cols[2].w,txt:fmtR(totalMoGasto), align:"r"},
+      {x:cols[3].x,w:cols[3].w,txt:fmtR(totalMatCob),  align:"r"},
+      {x:cols[4].x,w:cols[4].w,txt:fmtR(totalMatGasto),align:"r"},
+      {x:cols[5].x,w:cols[5].w,txt:fmtR(totalLucro),   align:"r"},
+    ].forEach((v,i)=>s.addText(v.txt,{x:v.x+0.06,y:yTot+0.04,w:v.w,h:0.28,fontSize:9,bold:true,
+      color:i===5?(totalLucro>=0?F.verde:F.vermelho):F.texto,fontFace:"Montserrat",align:v.align,margin:0}));
   }
 
-  // ── SLIDE 8: Boletos ───────────────────────────────────
+  // ── BOLETOS
   if (selecionados.includes("boletos")) {
-    novoSlide();
-    barraLateral(VERMELHO);
+    const s = pres.addSlide();
+    s.background = {color:F.bg};
+    s.addText("Boletos",{x:0.5,y:0.2,w:9,h:0.55,fontSize:24,bold:true,color:F.laranja,fontFace:"Montserrat",margin:0});
+    s.addText("Situação geral dos boletos cadastrados",{x:0.5,y:0.75,w:9,h:0.32,fontSize:12,color:F.texto2,fontFace:"Montserrat",margin:0});
 
-    titulo("Boletos", 70);
-    subtitulo("Situação geral dos boletos cadastrados", 92);
-    linha(108, VERMELHO);
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const pend = boletos.filter(b=>!b.pago&&b.dataVencimento&&new Date(b.dataVencimento+"T00:00:00")>=hoje);
+    const atras= boletos.filter(b=>!b.pago&&b.dataVencimento&&new Date(b.dataVencimento+"T00:00:00")<hoje);
+    const pagos = boletos.filter(b=>b.pago);
 
-    const boletos = JSON.parse(localStorage.getItem("boletos_lista")) || [];
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const cb = [
+      {rot:"Pendentes",val:String(pend.length)+" — "+fmtR(pend.reduce((s,b)=>s+(b.valor||0),0)),cor:"2B6CB0"},
+      {rot:"Atrasados",val:String(atras.length)+" — "+fmtR(atras.reduce((s,b)=>s+(b.valor||0),0)),cor:F.vermelho},
+      {rot:"Pagos",    val:String(pagos.length)+" — "+fmtR(pagos.reduce((s,b)=>s+(b.valor||0),0)),cor:F.verde},
+    ];
+    cb.forEach((c,i)=>{
+      const x=0.5+i*3.1;
+      s.addShape(pres.ShapeType.rect,{x,y:1.35,w:2.9,h:1.1,fill:{color:F.card},line:{color:F.card,width:0}});
+      s.addText(c.val,{x,y:1.45,w:2.9,h:0.5,fontSize:12,bold:true,color:c.cor,fontFace:"Montserrat",align:"center",margin:0});
+      s.addText(c.rot,{x,y:1.97,w:2.9,h:0.28,fontSize:10,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
+    });
 
-    const pendentes  = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) >= hoje);
-    const atrasados  = boletos.filter((b) => !b.pago && b.dataVencimento && new Date(b.dataVencimento) < hoje);
-    const pagos      = boletos.filter((b) => b.pago);
-
-    const totalPendentes = pendentes.reduce((s, b) => s + (b.valor || 0), 0);
-    const totalAtrasados = atrasados.reduce((s, b) => s + (b.valor || 0), 0);
-    const totalPagos     = pagos.reduce((s, b) => s + (b.valor || 0), 0);
-
-    cardValor(40,  130, "Pendentes", `${pendentes.length} • R$ ${fmt(totalPendentes)}`, [43, 108, 176]);
-    cardValor(270, 130, "Atrasados", `${atrasados.length} • R$ ${fmt(totalAtrasados)}`, VERMELHO);
-    cardValor(500, 130, "Pagos", `${pagos.length} • R$ ${fmt(totalPagos)}`, VERDE);
-
-    // Lista dos atrasados (top 6)
-    if (atrasados.length > 0) {
-      doc.autoTable({
-        startY: 240,
-        head: [["Atrasados — Cliente/Fornecedor", "Vencimento", "Valor"]],
-        body: atrasados.slice(0, 6).map((b) => [
-          b.nome || "—",
-          b.dataVencimento ? new Date(b.dataVencimento + "T00:00:00").toLocaleDateString("pt-BR") : "—",
-          `R$ ${fmt(b.valor || 0)}`,
-        ]),
-        margin: { left: 40, right: 40 },
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: VERMELHO },
-        tableWidth: W - 80,
+    if (atras.length > 0) {
+      const linhas = atras.slice(0,6).map(b=>[
+        b.nome||"—",
+        b.dataVencimento ? new Date(b.dataVencimento+"T00:00:00").toLocaleDateString("pt-BR") : "—",
+        fmtR(b.valor||0),
+      ]);
+      s.addText("Atrasados:",{x:0.5,y:2.65,w:9,h:0.3,fontSize:11,bold:true,color:F.vermelho,fontFace:"Montserrat",margin:0});
+      // Cabeçalho mini tabela
+      s.addShape(pres.ShapeType.rect,{x:0.5,y:3.0,w:9.2,h:0.3,fill:{color:"333333"},line:{color:"333333",width:0}});
+      [{x:0.56,w:5.5,t:"Nome"},{x:6.1,w:1.8,t:"Vencimento"},{x:8.0,w:1.6,t:"Valor"}].forEach(h=>
+        s.addText(h.t,{x:h.x,y:3.02,w:h.w,h:0.26,fontSize:9,bold:true,color:F.texto,fontFace:"Montserrat",margin:0}));
+      linhas.forEach((l,i)=>{
+        const y=3.32+i*0.38;
+        s.addShape(pres.ShapeType.rect,{x:0.5,y,w:9.2,h:0.34,fill:{color:i%2===0?F.card:"1C1C1C"},line:{color:F.card,width:0}});
+        [{x:0.56,w:5.5,t:l[0]},{x:6.1,w:1.8,t:l[1]},{x:8.0,w:1.6,t:l[2]}].forEach(c=>
+          s.addText(c.t,{x:c.x,y:y+0.05,w:c.w,h:0.24,fontSize:9,color:F.texto,fontFace:"Montserrat",margin:0}));
       });
     }
-
-    rodape();
   }
 
-  // ── SLIDE FINAL: Encerramento ──────────────────────────
-  novoSlide(ESCURO);
-  doc.setFillColor(...LARANJA);
-  doc.rect(0, H * 0.4, W, H * 0.2, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(32);
-  doc.setTextColor(...BRANCO);
-  doc.text("Obrigado", W / 2, H / 2 - 10, { align: "center" });
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(13);
-  doc.setTextColor(200, 200, 200);
-  doc.text("EnJob Engenharia e Manutenção", W / 2, H / 2 + 20, { align: "center" });
-  doc.text(`Relatório gerado em ${new Date().toLocaleDateString("pt-BR")}`, W / 2, H / 2 + 38, { align: "center" });
+  // ── ENCERRAMENTO
+  {
+    const s = pres.addSlide();
+    s.background = {color:F.bg};
+    s.addShape(pres.ShapeType.ellipse,{x:-0.5,y:3.5,w:4,h:4,fill:{color:F.laranja},line:{color:F.laranja,width:0},transparency:88});
+    s.addText("Obrigado",{x:1,y:1.6,w:8,h:1.2,fontSize:54,bold:true,color:F.texto,fontFace:"Montserrat",align:"center",margin:0});
+    s.addText("EnJob Engenharia e Manutenção",{x:1,y:2.9,w:8,h:0.5,fontSize:16,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
+    s.addText(new Date().toLocaleDateString("pt-BR"),{x:1,y:3.5,w:8,h:0.4,fontSize:12,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
+  }
 
-  doc.save(`apresentacao_engjob_${nomeMes}_${ano}.pdf`);
+  await pres.writeFile({fileName: "apresentacao-financeiro-" + nomeMes + "-" + ano + ".pptx"});
 }
 
-function fmt(valor) {
-  return (valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatarHorasPDF(horas) {
-  const sinal = horas < 0 ? "-" : "";
-  const abs = Math.abs(horas);
-  const h = Math.floor(abs);
-  const m = Math.round((abs - h) * 60);
-  return `${sinal}${String(h).padStart(2, "0")}h${String(m).padStart(2, "0")}m`;
-}
-
-// Nomes de meses para o PDF de apresentação
-const NOMES_MESES_PT = [
-  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
-];
 
 definirTipo("funcionarios");
 renderListaRelatorios();

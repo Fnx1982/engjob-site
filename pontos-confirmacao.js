@@ -4,16 +4,12 @@
 // histórico do mês e lançamentos especiais próprios.
 // ============================================================
 
+// auth-guard.js já garantiu que existe uma sessão válida e já
+// sincronizou nome/registro/tipo em localStorage antes deste script
+// rodar — não é mais necessário procurar numa lista local de
+// usuários (que agora vive no servidor, não no navegador).
 const userId = localStorage.getItem("userId");
-const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
-const usuarioLogado = usuarios.find((u) => String(u.registro) === String(userId)) || null;
-
-if (!usuarioLogado && (localStorage.getItem("userType") || "").toLowerCase() !== "ceo") {
-  mostrarToast("Faça login para acessar o ponto.", "erro");
-  setTimeout(() => window.location.href = "login.html", 1500);
-}
-
-const nomeUsuario = usuarioLogado ? usuarioLogado.nome : "CEO";
+const nomeUsuario = localStorage.getItem("userNome") || "Usuário";
 const registroUsuario = userId;
 
 document.getElementById("nomeUsuarioLogado").textContent = `Olá, ${nomeUsuario}`;

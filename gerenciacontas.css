@@ -254,6 +254,46 @@
         accent-color: rgb(235, 153, 28);
     }
 
+    .lista-chips-setor {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .chip-setor {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border: 1px solid #ddd;
+        border-radius: 100px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 13px;
+        color: #333;
+        user-select: none;
+        transition: background .15s, border-color .15s;
+        white-space: nowrap;
+    }
+
+    .chip-setor:hover {
+        background-color: rgba(235, 153, 28, 0.08);
+    }
+
+    .chip-setor.marcado {
+        background-color: rgba(235, 153, 28, 0.14);
+        border-color: rgb(235, 153, 28);
+        font-weight: 600;
+    }
+
+    .chip-setor input {
+        width: 14px;
+        height: 14px;
+        cursor: pointer;
+        accent-color: rgb(235, 153, 28);
+    }
+
     .modal-rodape-permissao {
         display: flex;
         flex-wrap: wrap;

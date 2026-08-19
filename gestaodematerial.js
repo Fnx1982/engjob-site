@@ -1,5 +1,6 @@
 // ====================================================
-// CHAVES DE ARMAZENAMENTO
+// CHAVES DE ARMAZENAMENTO (localStorage é usado só como origem
+// da migração única para a nuvem — depois disso, a nuvem manda)
 // ====================================================
 const CHAVE_SETORES = "materiais_setores";
 const CHAVE_MATERIAIS = "materiais_lista";
@@ -43,8 +44,8 @@ const totalValorValor = document.getElementById("totalValorValor");
 // ====================================================
 // ESTADO
 // ====================================================
-let setores = JSON.parse(localStorage.getItem(CHAVE_SETORES)) || [];
-let materiais = JSON.parse(localStorage.getItem(CHAVE_MATERIAIS)) || [];
+let setores = [];
+let materiais = [];
 
 let visaoAtual = "setor"; // "setor" ou "material"
 let indiceEditando = null;
@@ -70,6 +71,9 @@ modalSetor.addEventListener("click", (e) => {
 btnAbrirMaterial.addEventListener("click", () => {
   if (indiceEditando === null) {
     form.reset();
+    document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
+    document.getElementById("origemMaterial").value = "0";
+    document.getElementById("unidadeMaterial").value = "UN";
     tituloModalMaterial.textContent = "Novo Material";
     btnSubmitMaterial.textContent = "Adicionar";
   }
@@ -90,7 +94,8 @@ document.addEventListener("keydown", (e) => {
 // SETORES (cadastro fixo)
 // ====================================================
 function salvarSetores() {
-  localStorage.setItem(CHAVE_SETORES, JSON.stringify(setores));
+  localStorage.setItem(CHAVE_SETORES, JSON.stringify(setores)); // mantém uma cópia local de segurança
+  apiDataSet("materiaisSetores", setores).catch((e) => console.warn("Falha ao salvar setores de material na nuvem:", e));
 }
 
 function renderSetores() {
@@ -167,11 +172,34 @@ limparErroAoEditar(novoSetorInput);
 // ====================================================
 // MATERIAIS (cadastro / edição)
 // ====================================================
-function salvarMateriais() {
-  localStorage.setItem(CHAVE_MATERIAIS, JSON.stringify(materiais));
+// (o "salvarMateriais()" antigo, que regravava o array inteiro no
+// localStorage, foi substituído por salvar/excluir POR ITEM
+// diretamente na nuvem — ver submit/excluir abaixo)
+
+// ── Campos extras (livres, key/valor) ────────────────────────────
+function adicionarLinhaExtraMaterial(campo) {
+  campo = campo || { nome: "", valor: "" };
+  const container = document.getElementById("listaCamposExtrasMaterial");
+  const linha = document.createElement("div");
+  linha.style.cssText = "display:flex; gap:8px;";
+  linha.innerHTML = `
+    <input type="text" class="extra-nome-material" placeholder="Nome do código (ex: cÉnq IPI)" value="${campo.nome || ""}" style="flex:1;" />
+    <input type="text" class="extra-valor-material" placeholder="Valor" value="${campo.valor || ""}" style="flex:1;" />
+    <button type="button" class="btn-remover-linha-extra" style="background:none;border:none;color:#DC143C;cursor:pointer;font-size:16px;">✕</button>
+  `;
+  linha.querySelector(".btn-remover-linha-extra").addEventListener("click", () => linha.remove());
+  container.appendChild(linha);
 }
 
-form.addEventListener("submit", (e) => {
+function lerCamposExtrasMaterial() {
+  return [...document.querySelectorAll("#listaCamposExtrasMaterial > div")]
+    .map((linha) => ({ nome: linha.querySelector(".extra-nome-material").value.trim(), valor: linha.querySelector(".extra-valor-material").value.trim() }))
+    .filter((c) => c.nome);
+}
+
+document.getElementById("btnAddCampoExtraMaterial").addEventListener("click", () => adicionarLinhaExtraMaterial());
+
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const campoNome = document.getElementById("nomeMaterial");
@@ -217,21 +245,47 @@ form.addEventListener("submit", (e) => {
     return;
   }
 
-  const registro = { nome, setor, codigo, valor, quantidade, observacao };
+  const idEmEdicao = indiceEditando !== null ? materiais[indiceEditando].id : null;
+  const registro = {
+    id: idEmEdicao,
+    nome, setor, codigo, valor, quantidade, observacao,
+    ncm: document.getElementById("ncmMaterial").value.trim(),
+    cfop: document.getElementById("cfopMaterial").value.trim(),
+    cest: document.getElementById("cestMaterial").value.trim(),
+    ean: document.getElementById("eanMaterial").value.trim(),
+    origem: document.getElementById("origemMaterial").value,
+    cstCsosn: document.getElementById("cstCsosnMaterial").value.trim(),
+    unidade: document.getElementById("unidadeMaterial").value.trim().toUpperCase() || "UN",
+    camposAdicionais: lerCamposExtrasMaterial(),
+  };
 
-  if (indiceEditando !== null) {
-    materiais[indiceEditando] = registro;
-    indiceEditando = null;
-    btnSubmitMaterial.textContent = "Adicionar";
-    tituloModalMaterial.textContent = "Novo Material";
-  } else {
-    materiais.push(registro);
+  btnSubmitMaterial.disabled = true;
+  const textoOriginalBotao = btnSubmitMaterial.textContent;
+  btnSubmitMaterial.textContent = "Salvando...";
+
+  try {
+    const resposta = await apiSalvarMaterial(registro);
+    if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar material.", "erro"); return; }
+
+    const registroSalvo = { ...registro, id: resposta.id };
+    if (indiceEditando !== null) {
+      materiais[indiceEditando] = registroSalvo;
+      indiceEditando = null;
+      tituloModalMaterial.textContent = "Novo Material";
+    } else {
+      materiais.push(registroSalvo);
+    }
+
+    form.reset();
+    document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
+    document.getElementById("origemMaterial").value = "0";
+    document.getElementById("unidadeMaterial").value = "UN";
+    fecharModalEl(modalMaterial);
+    renderTudo();
+  } finally {
+    btnSubmitMaterial.disabled = false;
+    btnSubmitMaterial.textContent = textoOriginalBotao;
   }
-
-  salvarMateriais();
-  form.reset();
-  fecharModalEl(modalMaterial);
-  renderTudo();
 });
 
 function editar(index) {
@@ -242,6 +296,15 @@ function editar(index) {
   document.getElementById("valorMaterial").value = m.valor;
   document.getElementById("quantidadeMaterial").value = m.quantidade;
   document.getElementById("obsMaterial").value = m.observacao || "";
+  document.getElementById("ncmMaterial").value = m.ncm || "";
+  document.getElementById("cfopMaterial").value = m.cfop || "";
+  document.getElementById("cestMaterial").value = m.cest || "";
+  document.getElementById("eanMaterial").value = m.ean || "";
+  document.getElementById("origemMaterial").value = m.origem || "0";
+  document.getElementById("cstCsosnMaterial").value = m.cstCsosn || "";
+  document.getElementById("unidadeMaterial").value = m.unidade || "UN";
+  document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
+  (m.camposAdicionais || []).forEach((c) => adicionarLinhaExtraMaterial(c));
   indiceEditando = index;
   tituloModalMaterial.textContent = "Editar Material";
   btnSubmitMaterial.textContent = "Salvar Alterações";
@@ -254,8 +317,12 @@ async function excluir(index) {
     "Essa ação não pode ser desfeita."
   );
   if (!confirmado) return;
+
+  const material = materiais[index];
+  const resposta = await apiExcluirMaterial(material.id);
+  if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao excluir.", "erro"); return; }
+
   materiais.splice(index, 1);
-  salvarMateriais();
   if (indiceEditando === index) {
     indiceEditando = null;
     form.reset();
@@ -542,10 +609,69 @@ btnLimparFiltros.addEventListener("click", () => {
 });
 
 // ====================================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO — carrega da nuvem, migrando dados antigos do
+// localStorage automaticamente na primeira vez (se a nuvem ainda
+// estiver vazia). Depois da primeira migração, a nuvem manda —
+// isso nunca duplica, mesmo abrindo em outro dispositivo depois.
 // ====================================================
 ["nomeMaterial", "setorMaterial", "codigoMaterial", "valorMaterial", "quantidadeMaterial"].forEach((id) => {
   limparErroAoEditar(document.getElementById(id));
 });
 
-renderTudo();
+async function migrarSetoresSeNecessario() {
+  const resposta = await apiDataGet("materiaisSetores");
+  if (resposta.ok && resposta.valor && resposta.valor.length > 0) {
+    return resposta.valor; // já existe na nuvem, usa isso
+  }
+  // Nuvem vazia — se tiver algo salvo localmente (uso anterior desta
+  // página antes da migração), sobe pra nuvem agora.
+  const local = JSON.parse(localStorage.getItem(CHAVE_SETORES)) || [];
+  if (local.length > 0) {
+    await apiDataSet("materiaisSetores", local);
+    console.info(`[gestaodematerial] Migrados ${local.length} setor(es) de material do localStorage para a nuvem.`);
+    return local;
+  }
+  return [];
+}
+
+async function migrarMateriaisSeNecessario() {
+  const resposta = await apiListarMateriais();
+  if (resposta.ok && resposta.materiais && resposta.materiais.length > 0) {
+    return resposta.materiais; // já existe na nuvem, usa isso
+  }
+  // Nuvem vazia — migra o que tiver no localStorage (dados antigos,
+  // de antes desta página usar a nuvem). Cada item recebe um "id"
+  // novo, gerado no momento da migração.
+  const local = JSON.parse(localStorage.getItem(CHAVE_MATERIAIS)) || [];
+  if (local.length === 0) return [];
+
+  const migrados = [];
+  for (let i = 0; i < local.length; i++) {
+    const item = local[i];
+    // pequeno espaçamento no id pra garantir que cada item migrado
+    // tenha um id único, mesmo migrando vários no mesmo milissegundo
+    const id = String(Date.now() + i);
+    const registro = { id, nome: item.nome, setor: item.setor, codigo: item.codigo, valor: item.valor, quantidade: item.quantidade, observacao: item.observacao || "" };
+    const r = await apiSalvarMaterial(registro);
+    if (r.ok) migrados.push(registro);
+  }
+  console.info(`[gestaodematerial] Migrados ${migrados.length} material(is) do localStorage para a nuvem.`);
+  return migrados;
+}
+
+async function iniciarGestaoDeMaterial() {
+  try {
+    const [setoresCarregados, materiaisCarregados] = await Promise.all([
+      migrarSetoresSeNecessario(),
+      migrarMateriaisSeNecessario(),
+    ]);
+    setores = setoresCarregados;
+    materiais = materiaisCarregados;
+  } catch (e) {
+    console.error("[gestaodematerial] Erro ao carregar dados da nuvem:", e);
+    mostrarToast("Não foi possível carregar os materiais. Verifique sua conexão e recarregue a página.", "erro");
+  }
+  renderTudo();
+}
+
+iniciarGestaoDeMaterial();

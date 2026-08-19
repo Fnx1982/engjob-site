@@ -81,20 +81,31 @@ function renderLista() {
     const card = document.createElement("div");
     card.className = `proposta-card status-${corStatus(p)}`;
     const dataFormatada = new Date(p.criadoEm).toLocaleDateString("pt-BR");
+    const numOrc = p.numeroOrcamento ? `<span style="font-size:11px;color:#888;font-weight:600;">Nº ${p.numeroOrcamento}</span>` : "";
 
-    const botaoStatus =
-      p.status === "andamento"
-        ? `<button class="btn-finalizar" data-finalizar-id="${p.id}">Marcar como Finalizada</button>
-           <button class="btn-negar" data-reverter-id="${p.id}">Voltar para Propostas</button>`
-        : `<button class="btn-andamento" data-reabrir-id="${p.id}">Voltar para Em Andamento</button>`;
+    // Status de obra independente do status da proposta
+    const statusObraAtual = p.statusObra || (p.status === "finalizada" ? "finalizada" : "andamento");
+    const seloObra = statusObraAtual === "finalizada"
+      ? `<span style="background:#E8F5EF;color:#1c8a4b;font-size:10px;font-weight:700;padding:2px 9px;border-radius:12px;text-transform:uppercase;">✓ Finalizada</span>`
+      : `<span style="background:#EBF2FB;color:#2B6CB0;font-size:10px;font-weight:700;padding:2px 9px;border-radius:12px;text-transform:uppercase;">⚙ Em Andamento</span>`;
+
+    const botaoStatusObra = statusObraAtual !== "finalizada"
+      ? `<button class="btn-finalizar" data-finalizar-obra="${p.id}">Finalizar Obra</button>`
+      : `<button class="btn-andamento" data-reabrir-obra="${p.id}">Reabrir Obra</button>`;
 
     card.innerHTML = `
       <div class="proposta-topo">
-        <div>
-          <div class="proposta-cliente">${p.cliente || "(sem nome do cliente)"}</div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="proposta-cliente">${p.cliente || "(sem nome do cliente)"}</div>
+            ${numOrc}
+          </div>
           <div class="proposta-servico">${p.servico || ""}</div>
         </div>
-        <span class="selo-status ${corStatus(p)}">${rotuloStatus(p)}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+          <span class="selo-status ${corStatus(p)}">${rotuloStatus(p)}</span>
+          ${seloObra}
+        </div>
       </div>
       <div class="proposta-meta">
         <span>Criado em ${dataFormatada}</span>
@@ -103,7 +114,8 @@ function renderLista() {
       <div class="proposta-acoes">
         <button class="btn-pdf" data-pdf-id="${p.id}">Baixar PDF</button>
         <button class="btn-editar" data-edit-id="${p.id}">Editar</button>
-        ${botaoStatus}
+        ${botaoStatusObra}
+        <button class="btn-negar" data-reverter-id="${p.id}">Voltar para Propostas</button>
         <button class="btn-excluir-item" data-delete-id="${p.id}">Excluir</button>
       </div>
     `;
@@ -116,27 +128,29 @@ function renderLista() {
   listaPropostasEl.querySelectorAll("[data-edit-id]").forEach((btn) => {
     btn.addEventListener("click", () => abrirFormularioProposta(btn.dataset.editId, renderLista));
   });
-  listaPropostasEl.querySelectorAll("[data-finalizar-id]").forEach((btn) => {
+  listaPropostasEl.querySelectorAll("[data-finalizar-obra]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const confirmado = await confirmarAcao("Marcar como finalizada?", "A obra vai para a aba 'Finalizada'.");
+      const confirmado = await confirmarAcao("Finalizar esta obra?", "O status vai para 'Finalizada'.");
       if (!confirmado) return;
-      mudarStatusExecucao(btn.dataset.finalizarId, "finalizada");
+      const p = buscarProposta(btn.dataset.finalizarObra);
+      if (p) { p.statusObra = "finalizada"; p.status = "finalizada"; salvarProposta(p); }
+      renderLista();
+    });
+  });
+  listaPropostasEl.querySelectorAll("[data-reabrir-obra]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const confirmado = await confirmarAcao("Reabrir esta obra?", "O status volta para 'Em Andamento'.");
+      if (!confirmado) return;
+      const p = buscarProposta(btn.dataset.reabrirObra);
+      if (p) { p.statusObra = "andamento"; p.status = "andamento"; salvarProposta(p); }
       renderLista();
     });
   });
   listaPropostasEl.querySelectorAll("[data-reverter-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const confirmado = await confirmarAcao("Voltar para Propostas?", "A aprovação será desfeita e a proposta volta para 'Em Análise'.");
+      const confirmado = await confirmarAcao("Voltar para Propostas?", "A aprovação será desfeita.");
       if (!confirmado) return;
       reverterParaAnalise(btn.dataset.reverterId);
-      renderLista();
-    });
-  });
-  listaPropostasEl.querySelectorAll("[data-reabrir-id]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const confirmado = await confirmarAcao("Voltar para Em Andamento?", "A obra deixará de estar marcada como finalizada.");
-      if (!confirmado) return;
-      mudarStatusExecucao(btn.dataset.reabrirId, "andamento");
       renderLista();
     });
   });
@@ -169,4 +183,4 @@ btnLimparFiltros.addEventListener("click", () => {
   renderLista();
 });
 
-renderLista();  
+renderLista();

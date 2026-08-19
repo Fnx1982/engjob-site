@@ -37,6 +37,7 @@ function lerSetoresPermissoes() {
 }
 function salvarSetoresPermissoes(mapa) {
   localStorage.setItem(CHAVE_SETORES_PERMISSOES, JSON.stringify(mapa));
+  apiDataSet("setoresPermissoes", mapa).catch((e) => console.warn("Falha ao salvar permissões no servidor:", e));
 }
 
 function getPermissoesDoSetor(nomeSetor) {
@@ -67,15 +68,38 @@ function excluirSetorDasPermissoes(nomeSetor) {
 }
 
 // ====================================================
-// CONFIGURAÇÃO INICIAL (executada apenas uma vez)
+// SINCRONIZAÇÃO COM O SERVIDOR (Worker + KV)
 // ====================================================
-// Se ainda não existir nenhuma configuração de permissões salva,
-// pré-configura os 5 setores padrão do sistema com um mapeamento
-// inicial razoável — o usuário pode editar cada um livremente
-// depois pela tela de Cadastro.
-function inicializarPermissoesPadrao() {
-  const jaConfigurado = localStorage.getItem(CHAVE_SETORES_PERMISSOES);
-  if (jaConfigurado !== null) return; // já existe configuração, não sobrescreve
+// "setores" e "setoresPermissoes" vivem no servidor agora, para que
+// todo mundo (em qualquer computador) veja os mesmos dados. O
+// localStorage aqui funciona só como CACHE LOCAL de leitura rápida —
+// toda função de escrita abaixo também empurra a mudança pro
+// servidor (apiDataSet). Chame sincronizarDadosCompartilhados() e
+// espere (await) ela terminar antes de usar getPermissoesDoSetor()
+// ou os setores, em qualquer página que acabou de carregar.
+async function sincronizarDadosCompartilhados() {
+  try {
+    const [respSetores, respPermissoes] = await Promise.all([
+      apiDataGet("setores"),
+      apiDataGet("setoresPermissoes"),
+    ]);
+    if (respSetores.ok && respSetores.valor) {
+      localStorage.setItem("setores", JSON.stringify(respSetores.valor));
+    }
+    if (respPermissoes.ok && respPermissoes.valor) {
+      localStorage.setItem(CHAVE_SETORES_PERMISSOES, JSON.stringify(respPermissoes.valor));
+    }
+  } catch (e) {
+    console.warn("[permissoes-setor.js] Não foi possível sincronizar com o servidor, usando cache local.", e);
+  }
+}
+
+// Cria a configuração padrão de setores/permissões no SERVIDOR.
+// Só deve ser chamada por um admin (a partir de gerenciarcontas.html)
+// e só faz algo se ainda não existir nada configurado no servidor.
+async function seedPermissoesPadraoSeVazio() {
+  const respPermissoes = await apiDataGet("setoresPermissoes");
+  if (respPermissoes.ok && respPermissoes.valor) return; // já existe, não sobrescreve
 
   const todos = ITENS_MENU_DISPONIVEIS.map((i) => i.id);
   const todosMenosCadastro = todos.filter((id) => id !== "gerenciarcontas-menu");
@@ -88,16 +112,13 @@ function inicializarPermissoesPadrao() {
     "Recursos Humanos": ["notas-menu", "reuniao-menu", "midias-menu", "calendario-menu"],
   };
 
-  salvarSetoresPermissoes(configuracaoInicial);
-
-  // Garante que esses 5 setores também existam na lista de setores
-  // cadastrados (localStorage["setores"]), para aparecerem nos
-  // seletores de cadastro de usuário.
-  const setores = JSON.parse(localStorage.getItem("setores")) || [];
+  const respSetores = await apiDataGet("setores");
+  const setores = (respSetores.ok && respSetores.valor) ? respSetores.valor : [];
   Object.keys(configuracaoInicial).forEach((nome) => {
     if (!setores.includes(nome)) setores.push(nome);
   });
-  localStorage.setItem("setores", JSON.stringify(setores));
-}
 
-inicializarPermissoesPadrao();
+  await apiDataSet("setoresPermissoes", configuracaoInicial);
+  await apiDataSet("setores", setores);
+  await sincronizarDadosCompartilhados();
+}

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
+    <script src="auth-worker.js"></script>
+<script src="auth-guard.js"></script>
+<meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestão de Materiais</title>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
@@ -127,6 +129,52 @@
           Observação
           <textarea id="obsMaterial" rows="2" placeholder="Opcional"></textarea>
         </label>
+
+        <!-- Campos fiscais, usados na emissão de NF-e -->
+        <label>
+          <span class="rotulo-com-opcional">NCM <span class="texto-opcional">(opcional)</span></span>
+          <input type="text" id="ncmMaterial" placeholder="00000000" maxlength="8" />
+        </label>
+        <label>
+          <span class="rotulo-com-opcional">CFOP <span class="texto-opcional">(opcional)</span></span>
+          <input type="text" id="cfopMaterial" placeholder="ex: 5102" maxlength="4" />
+        </label>
+        <label>
+          <span class="rotulo-com-opcional">CEST <span class="texto-opcional">(se aplicável)</span></span>
+          <input type="text" id="cestMaterial" placeholder="opcional" />
+        </label>
+        <label>
+          <span class="rotulo-com-opcional">EAN / GTIN <span class="texto-opcional">(código de barras)</span></span>
+          <input type="text" id="eanMaterial" placeholder="deixe em branco se não tiver" />
+        </label>
+        <label>
+          Origem da mercadoria
+          <select id="origemMaterial">
+            <option value="0">0 — Nacional</option>
+            <option value="1">1 — Estrangeira, importação direta</option>
+            <option value="2">2 — Estrangeira, adquirida no mercado interno</option>
+            <option value="3">3 — Nacional, +40% de conteúdo importado</option>
+            <option value="4">4 — Nacional, produção segundo processos básicos</option>
+            <option value="5">5 — Nacional, até 40% de conteúdo importado</option>
+            <option value="6">6 — Estrangeira, importação direta, sem similar nacional</option>
+            <option value="7">7 — Estrangeira, mercado interno, sem similar nacional</option>
+            <option value="8">8 — Nacional, +70% de conteúdo importado</option>
+          </select>
+        </label>
+        <label>
+          <span class="rotulo-com-opcional">CST / CSOSN <span class="texto-opcional">(situação tributária ICMS)</span></span>
+          <input type="text" id="cstCsosnMaterial" placeholder="ex: 102 (Simples) ou 00 (Normal)" />
+        </label>
+        <label>
+          <span class="rotulo-com-opcional">Unidade <span class="texto-opcional">(opcional)</span></span>
+          <input type="text" id="unidadeMaterial" placeholder="UN, KG, M, SC..." value="UN" />
+        </label>
+
+        <div class="campo-largura-total">
+          <span class="rotulo-com-opcional" style="display:block;margin-bottom:8px;">Códigos extras <span class="texto-opcional">— qualquer outro código fiscal que aparecer na nota de referência</span></span>
+          <div id="listaCamposExtrasMaterial" style="display:flex; flex-direction:column; gap:8px; margin-bottom:8px;"></div>
+          <button type="button" id="btnAddCampoExtraMaterial" style="background:#f7f7f7;border:1px dashed #ddd;border-radius:8px;padding:8px 14px;font-family:inherit;font-size:12.5px;font-weight:600;color:#555;cursor:pointer;width:100%;">+ Adicionar código extra</button>
+        </div>
 
         <button type="submit" id="btnSubmitMaterial" class="btn-laranja campo-largura-total">Adicionar</button>
       </form>

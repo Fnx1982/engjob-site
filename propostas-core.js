@@ -30,6 +30,7 @@ function buscarProposta(id) {
 function criarPropostaVazia() {
   return {
     id: `prop_${Date.now()}`,
+    numeroOrcamento: "",          // número manual do orçamento
     cliente: "",
     telefone: "",
     local: "",
@@ -41,7 +42,8 @@ function criarPropostaVazia() {
     planejamentoDias: "",
     validadeDias: "",
     status: "orcamento",
-    statusExecucao: "", // "andamento" | "finalizada" — só usado depois de aprovada
+    statusObra: "andamento",      // "andamento" | "finalizada" — visível nas obras
+    statusExecucao: "",
     criadoEm: new Date().toISOString(),
     atualizadoEm: new Date().toISOString(),
   };
@@ -116,47 +118,78 @@ function reverterParaAnalise(id) {
 }
 
 // ====================================================
-// SINCRONIZAÇÃO COM GESTÃO DE MATERIAIS
+// SINCRONIZAÇÃO COM GESTÃO DE MATERIAIS E SERVIÇOS
 // ====================================================
+// Cache local, carregado da nuvem (ver carregarCatalogosDeItens()).
+// Itens de proposta agora se ligam ao catálogo por "id" (não mais
+// por posição/índice de array como antes — isso quebrava assim que
+// os dados passaram a viver na nuvem, onde a ordem pode mudar).
+let materiaisEstoqueCache = [];
+let servicosCatalogoCache = [];
+
+async function carregarCatalogosDeItens() {
+  const [respMateriais, respServicos] = await Promise.all([apiListarMateriais(), apiListarServicos()]);
+  materiaisEstoqueCache = respMateriais.ok ? respMateriais.materiais : [];
+  servicosCatalogoCache = respServicos.ok ? respServicos.servicos : [];
+}
+
 function lerMateriaisEstoque() {
-  return JSON.parse(localStorage.getItem("materiais_lista")) || [];
+  return materiaisEstoqueCache;
 }
-function salvarMateriaisEstoque(lista) {
-  localStorage.setItem("materiais_lista", JSON.stringify(lista));
-}
-
-// Encontra o índice do material no estoque a partir do índice
-// guardado no item da proposta (materialIndex). Retorna -1 se
-// não encontrar (ex: material foi excluído do estoque depois).
-function encontrarMaterialNoEstoque(materialIndex) {
-  const estoque = lerMateriaisEstoque();
-  if (materialIndex === null || materialIndex === undefined) return null;
-  if (materialIndex < 0 || materialIndex >= estoque.length) return null;
-  return estoque[materialIndex];
+function lerServicosCatalogo() {
+  return servicosCatalogoCache;
 }
 
-// Pergunta ao usuário se a edição de um item de material vinculado
-// deve ser propagada de volta para o estoque (Gestão de Materiais).
-// Retorna uma Promise<boolean>.
+// Encontra o material/serviço no catálogo a partir do id guardado no
+// item da proposta. Retorna null se não encontrar (ex: foi excluído
+// do catálogo depois, ou é um item antigo de antes da migração pra
+// nuvem, que usava índice em vez de id).
+function encontrarMaterialNoEstoque(materialId) {
+  if (!materialId) return null;
+  return materiaisEstoqueCache.find((m) => m.id === materialId) || null;
+}
+function encontrarServicoNoCatalogo(servicoId) {
+  if (!servicoId) return null;
+  return servicosCatalogoCache.find((s) => s.id === servicoId) || null;
+}
+
+// Pergunta ao usuário se a edição de um item vinculado deve ser
+// propagada de volta pro catálogo (Gestão de Materiais / Serviços).
 async function perguntarSincronizarMaterial(nomeMaterial) {
   return confirmarAcao(
     `Atualizar "${nomeMaterial}" na Gestão de Materiais também?`,
-    "Isso vai sobrescrever o nome, valor e quantidade desse material no estoque com os novos valores."
+    "Isso vai sobrescrever o nome e o valor desse material no catálogo com os novos valores."
+  );
+}
+async function perguntarSincronizarServico(nomeServico) {
+  return confirmarAcao(
+    `Atualizar "${nomeServico}" no catálogo de Serviços também?`,
+    "Isso vai sobrescrever o nome e o valor desse serviço no catálogo com os novos valores."
   );
 }
 
-// Atualiza o material no estoque (Gestão de Materiais) com os
-// novos dados, mantendo o setor original do material.
-function atualizarMaterialNoEstoque(materialIndex, novosDados) {
-  const estoque = lerMateriaisEstoque();
-  if (materialIndex === null || materialIndex < 0 || materialIndex >= estoque.length) return;
-  estoque[materialIndex] = {
-    ...estoque[materialIndex],
-    nome: novosDados.nome,
-    valor: novosDados.valorUnit,
-    quantidade: novosDados.qtd,
-  };
-  salvarMateriaisEstoque(estoque);
+// Atualiza o material/serviço no catálogo com os novos dados vindos
+// da proposta, preservando os outros campos (fiscais, etc.) que já
+// existiam — só troca nome e valor.
+async function atualizarMaterialNoEstoque(materialId, novosDados) {
+  const existente = encontrarMaterialNoEstoque(materialId);
+  if (!existente) return;
+  const atualizado = { ...existente, nome: novosDados.nome, valor: novosDados.valorUnit };
+  const resposta = await apiSalvarMaterial(atualizado);
+  if (resposta.ok) {
+    const idx = materiaisEstoqueCache.findIndex((m) => m.id === materialId);
+    if (idx !== -1) materiaisEstoqueCache[idx] = atualizado;
+  }
+}
+async function atualizarServicoNoCatalogo(servicoId, novosDados) {
+  const existente = encontrarServicoNoCatalogo(servicoId);
+  if (!existente) return;
+  const atualizado = { ...existente, nome: novosDados.nome, valor: novosDados.valorUnit };
+  const resposta = await apiSalvarServico(atualizado);
+  if (resposta.ok) {
+    const idx = servicosCatalogoCache.findIndex((s) => s.id === servicoId);
+    if (idx !== -1) servicosCatalogoCache[idx] = atualizado;
+  }
 }
 
 // ====================================================
@@ -246,8 +279,51 @@ function salvarObra(obra) {
 }
 
 function excluirObra(id) {
-  const obras = lerObras().filter((o) => o.id !== id);
+  // Move para lixeira em vez de excluir definitivo
+  const obras = lerObras();
+  const idx = obras.findIndex((o) => o.id === id);
+  if (idx !== -1) {
+    obras[idx].lixeira = true;
+    obras[idx].lixeiraEm = new Date().toISOString();
+    salvarObras(obras);
+  }
+}
+
+function excluirObraDefinitivo(id) {
+  salvarObras(lerObras().filter((o) => o.id !== id));
+}
+
+function restaurarObra(id) {
+  const obras = lerObras();
+  const idx = obras.findIndex((o) => o.id === id);
+  if (idx !== -1) {
+    delete obras[idx].lixeira;
+    delete obras[idx].lixeiraEm;
+    salvarObras(obras);
+  }
+}
+
+function lerObrasAtivas()   { return lerObras().filter((o) => !o.lixeira && (!o.statusObra || o.statusObra !== "finalizada")); }
+function lerObrasFinaliz()  { return lerObras().filter((o) => !o.lixeira && o.statusObra === "finalizada"); }
+function lerObrasLixeira()  { return lerObras().filter((o) => !!o.lixeira); }
+
+function alternarStatusObra(id) {
+  const obras = lerObras();
+  const idx = obras.findIndex((o) => o.id === id);
+  if (idx === -1) return;
+  obras[idx].statusObra = obras[idx].statusObra === "finalizada" ? "andamento" : "finalizada";
+  obras[idx].atualizadoEm = new Date().toISOString();
   salvarObras(obras);
+  // Sincroniza com proposta vinculada se existir
+  const propostaId = obras[idx].propostaId;
+  if (propostaId) {
+    const p = buscarProposta(propostaId);
+    if (p) {
+      p.statusObra = obras[idx].statusObra;
+      p.status = obras[idx].statusObra;
+      salvarProposta(p);
+    }
+  }
 }
 
 // ----- Funcionários da obra (vinculados ao Financeiro) -----

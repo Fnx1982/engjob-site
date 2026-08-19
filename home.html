@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8" />
+  <script src="auth-worker.js"></script>
+<script src="auth-guard.js"></script>
+<meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="home.css">
@@ -31,19 +33,19 @@
         </a>
         <ul class="submenu">
           <li class="lista">
-            <a href="https://contadigital.inter.co/" target="_blank">
+            <a href="https://contadigital.inter.co/" target="_blank" rel="noopener">
               <i class='bx bx-building-house'></i>
               <span class="span-menu">InterBanking</span>
             </a>
           </li>
           <li class="lista">
-            <a href="https://ibpj.sicredi.com.br/ib-view/loginpj/preauth.html" target="_blank">
+            <a href="https://ibpj.sicredi.com.br/ib-view/loginpj/preauth.html" target="_blank" rel="noopener">
               <i class='bx bx-credit-card'></i>
               <span class="span-menu">Sicredi</span>
             </a>
           </li>
           <li class="lista">
-            <a href="https://contaonline.credcrea.coop.br/ib/auth" target="_blank">
+            <a href="https://contaonline.credcrea.coop.br/ib/auth" target="_blank" rel="noopener">
               <i class='bx bx-dollar-circle'></i>
               <span class="span-menu">Credcrea (Ailos)</span>
             </a>
@@ -112,7 +114,7 @@
       </li>
 
       <li class="lista" id="armazenamento-menu">
-        <a href="#">
+        <a href="armazenamento.html">
           <i class='bx bx-store'></i>
           <span class="span-menu">Armazenamento</span>
         </a>
@@ -152,6 +154,24 @@
               <span class="span-menu">Consulta</span>
             </a>
           </li>
+          <li class="lista">
+            <a href="recebidos.html">
+              <i class='bx bx-file'></i>
+              <span class="span-menu">Recebidos</span>
+            </a>
+          </li>
+          <li class="lista">
+            <a href="contatos.html">
+              <i class='bx bx-id-card'></i>
+              <span class="span-menu">Clientes/Fornecedores</span>
+            </a>
+          </li>
+          <li class="lista">
+            <a href="servicos.html">
+              <i class='bx bx-wrench'></i>
+              <span class="span-menu">Serviços</span>
+            </a>
+          </li>
         </ul>
       </li>
 
@@ -185,7 +205,7 @@
       </li>
 
       <li class="lista" id="reuniao-menu">
-        <a href="#">
+        <a href="reuniao.html">
           <i class='bx bx-group'></i>
           <span class="span-menu">Reunião</span>
         </a>

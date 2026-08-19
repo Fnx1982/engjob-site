@@ -23,6 +23,9 @@ function montarModalFormularioProposta() {
       <div class="form-secao">
         <h3>Dados do Cliente / Obra</h3>
         <div class="form-grid">
+          <label>Número do Orçamento
+            <input type="text" id="campoNumeroOrcamento" placeholder="Ex: 2026-001" />
+          </label>
           <label>Cliente
             <input type="text" id="campoCliente" placeholder="Nome do cliente" />
           </label>
@@ -44,8 +47,8 @@ function montarModalFormularioProposta() {
       <div class="form-secao">
         <h3>Mão de Obra</h3>
         <p class="texto-ajuda" style="margin-bottom:8px;">
-          Você pode preencher <strong>Qtd × Valor Unit.</strong> para calcular automaticamente,
-          ou deixar em branco e preencher o <strong>Valor Final</strong> diretamente.
+          Digitar uma descrição que já existe no catálogo de Serviços preenche o valor sozinho.
+          Descrições novas são salvas no catálogo automaticamente, pra aparecer aqui e na NFS-e depois.
         </p>
         <table class="itens-tabela" id="tabelaMaoDeObra">
           <thead>
@@ -60,6 +63,7 @@ function montarModalFormularioProposta() {
           </thead>
           <tbody></tbody>
         </table>
+        <datalist id="listaServicosPropostaDatalist"></datalist>
         <button type="button" class="btn-add-item" id="btnAddMaoDeObra">+ Adicionar item de mão de obra</button>
         <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
           <div>Subtotal M.O.: <span id="subtotalMaoDeObraTexto">R$ 0,00</span></div>
@@ -106,7 +110,7 @@ function montarModalFormularioProposta() {
           </thead>
           <tbody></tbody>
         </table>
-        <button type="button" class="btn-add-item" id="btnAddMaterial">+ Adicionar item manual (sem vincular ao estoque)</button>
+        <button type="button" class="btn-add-item" id="btnAddMaterial">+ Adicionar item manual (é salvo no catálogo ao salvar o orçamento)</button>
         <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
           <div>Subtotal Materiais: <span id="subtotalMateriaisTexto">R$ 0,00</span></div>
           <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
@@ -175,12 +179,13 @@ function aplicarMascaraTelefoneProposta(event) {
   input.value = valor.trim();
 }
 
-function abrirFormularioProposta(id, onSalvar) {
+async function abrirFormularioProposta(id, onSalvar) {
   montarModalFormularioProposta();
   onSalvarPropostaCallback = onSalvar || null;
   propostaEmEdicao = id ? JSON.parse(JSON.stringify(buscarProposta(id))) : criarPropostaVazia();
 
   document.getElementById("tituloModalProposta").textContent = id ? "Editar Orçamento" : "Novo Orçamento";
+  document.getElementById("campoNumeroOrcamento").value = propostaEmEdicao.numeroOrcamento || "";
   document.getElementById("campoCliente").value = propostaEmEdicao.cliente;
   document.getElementById("campoTelefone").value = propostaEmEdicao.telefone;
   document.getElementById("campoLocal").value = propostaEmEdicao.local;
@@ -190,7 +195,15 @@ function abrirFormularioProposta(id, onSalvar) {
   document.getElementById("campoPlanejamento").value = propostaEmEdicao.planejamentoDias;
   document.getElementById("campoValidade").value = propostaEmEdicao.validadeDias;
 
+  document.getElementById("modalProposta").classList.add("active");
+
+  // Carrega os catálogos de material/serviço da nuvem antes de montar
+  // os checklists e o autocomplete — abre o modal já, e preenche essa
+  // parte assim que a resposta chegar (evita travar a tela esperando).
+  await carregarCatalogosDeItens();
+
   renderChecklistMateriaisEstoque();
+  atualizarDatalistServicos();
   renderTabelaMaoDeObra();
   renderTabelaMateriais();
 
@@ -205,7 +218,6 @@ function abrirFormularioProposta(id, onSalvar) {
   document.getElementById("rapidoNomeMaterial").value = "";
   document.getElementById("rapidoValorMaterial").value = "";
   document.getElementById("rapidoSetorMaterial").value = "";
-  document.getElementById("modalProposta").classList.add("active");
 }
 
 function fecharFormularioProposta() {
@@ -229,6 +241,12 @@ function valorFinalItem(item) {
 // ====================================================
 // TABELA: MÃO DE OBRA
 // ====================================================
+function atualizarDatalistServicos() {
+  const datalist = document.getElementById("listaServicosPropostaDatalist");
+  if (!datalist) return;
+  datalist.innerHTML = servicosCatalogoCache.map((s) => `<option value="${s.nome}"></option>`).join("");
+}
+
 function renderTabelaMaoDeObra() {
   const tbody = document.querySelector("#tabelaMaoDeObra tbody");
   tbody.innerHTML = "";
@@ -237,10 +255,13 @@ function renderTabelaMaoDeObra() {
     const vf = valorFinalItem(item);
     // Se valorFinal está preenchido, desabilita Qtd e Valor Unit
     const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
+    const vinculado = !!item.servicoId;
+    const rotuloVinculo = vinculado ? '<span class="tag-vinculado">catálogo</span>' : "";
     tr.innerHTML = `
       <td class="col-descricao">
+        ${rotuloVinculo}
         <input type="text" value="${item.descricao || ""}" placeholder="Descrição do serviço"
-          data-mo-campo="descricao" data-mo-index="${index}" />
+          data-mo-campo="descricao" data-mo-index="${index}" list="listaServicosPropostaDatalist" />
       </td>
       <td>
         <input type="number" min="0" step="0.01" value="${item.qtd || ""}"
@@ -296,9 +317,35 @@ function renderTabelaMaoDeObra() {
       atualizarTotaisFormulario();
     });
 
+    // Descrição que bate com um serviço já cadastrado: liga o item a
+    // ele e preenche o valor (só se ainda estiver vazio).
+    if (input.dataset.moCampo === "descricao") {
+      input.addEventListener("change", () => {
+        const idx = parseInt(input.dataset.moIndex, 10);
+        const item = propostaEmEdicao.itensMaoDeObra[idx];
+        const servico = servicosCatalogoCache.find((s) => s.nome.trim().toLowerCase() === input.value.trim().toLowerCase());
+        if (servico) {
+          item.servicoId = servico.id;
+          if (!item.valorUnit) {
+            item.valorUnit = servico.valor;
+            renderTabelaMaoDeObra();
+            atualizarTotaisFormulario();
+          }
+        } else {
+          item.servicoId = null; // descrição nova/alterada — deixa de estar vinculada até salvar
+        }
+      });
+    }
+
     // Ao sair do campo valorFinal, rerenderiza para habilitar/desabilitar os outros
     if (input.dataset.moCampo === "valorFinal") {
-      input.addEventListener("blur", () => {
+      input.addEventListener("blur", async () => {
+        const idx = parseInt(input.dataset.moIndex, 10);
+        const item = propostaEmEdicao.itensMaoDeObra[idx];
+        if (item.servicoId) {
+          const sincronizar = await perguntarSincronizarServico(item.descricao);
+          if (sincronizar) await atualizarServicoNoCatalogo(item.servicoId, { nome: item.descricao, valorUnit: item.valorUnit });
+        }
         renderTabelaMaoDeObra();
         atualizarTotaisFormulario();
       });
@@ -315,7 +362,7 @@ function renderTabelaMaoDeObra() {
 }
 
 function adicionarLinhaMaoDeObra() {
-  propostaEmEdicao.itensMaoDeObra.push({ qtd: null, unid: "un", descricao: "", valorUnit: null, valorFinal: null });
+  propostaEmEdicao.itensMaoDeObra.push({ qtd: null, unid: "un", descricao: "", valorUnit: null, valorFinal: null, servicoId: null });
   renderTabelaMaoDeObra();
   atualizarTotaisFormulario();
 }
@@ -332,40 +379,40 @@ function renderChecklistMateriaisEstoque() {
     return;
   }
 
-  const indicesJaAdicionados = new Set(
+  const idsJaAdicionados = new Set(
     propostaEmEdicao.itensMateriais
-      .map((item) => item.materialIndex)
-      .filter((idx) => idx !== null && idx !== undefined)
+      .map((item) => item.materialId)
+      .filter((id) => id !== null && id !== undefined)
   );
 
   container.innerHTML = "";
-  estoque.forEach((material, index) => {
+  estoque.forEach((material) => {
     const linha = document.createElement("label");
     linha.className = "checklist-item-material";
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
-    checkbox.checked = indicesJaAdicionados.has(index);
+    checkbox.checked = idsJaAdicionados.has(material.id);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) {
         propostaEmEdicao.itensMateriais.push({
-          qtd: 1, unid: "un", nome: material.nome,
-          valorUnit: material.valor, valorFinal: null, materialIndex: index,
+          qtd: 1, unid: material.unidade || "un", nome: material.nome,
+          valorUnit: material.valor, valorFinal: null, materialId: material.id,
         });
       } else {
         propostaEmEdicao.itensMateriais = propostaEmEdicao.itensMateriais.filter(
-          (item) => item.materialIndex !== index
+          (item) => item.materialId !== material.id
         );
       }
       renderTabelaMateriais();
       atualizarTotaisFormulario();
     });
     linha.appendChild(checkbox);
-    linha.appendChild(document.createTextNode(`${material.nome} — R$ ${formatarMoeda(material.valor)} (${material.setor})`));
+    linha.appendChild(document.createTextNode(`${material.nome} — R$ ${formatarMoeda(material.valor)}${material.setor ? " (" + material.setor + ")" : ""}`));
     container.appendChild(linha);
   });
 }
 
-function cadastrarMaterialRapido() {
+async function cadastrarMaterialRapido() {
   const campoNome = document.getElementById("rapidoNomeMaterial");
   const campoValor = document.getElementById("rapidoValorMaterial");
   const campoSetor = document.getElementById("rapidoSetorMaterial");
@@ -382,20 +429,37 @@ function cadastrarMaterialRapido() {
   if (!setor) { marcarCampoComErro(campoSetor, "Informe o setor."); temErro = true; }
   if (temErro) return;
 
-  const setores = JSON.parse(localStorage.getItem("materiais_setores")) || [];
-  if (!setores.includes(setor)) { setores.push(setor); localStorage.setItem("materiais_setores", JSON.stringify(setores)); }
+  const botao = document.getElementById("btnCadastroRapidoMaterial");
+  const textoOriginal = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = "Salvando...";
 
-  const estoque = lerMateriaisEstoque();
-  estoque.push({ nome, setor, codigo: "", valor, quantidade: 0, observacao: "" });
-  salvarMateriaisEstoque(estoque);
+  try {
+    // Garante que o setor existe na Gestão de Materiais (mesma lista
+    // usada por lá), antes de salvar o material propriamente dito.
+    const respSetores = await apiDataGet("materiaisSetores");
+    const setoresAtuais = (respSetores.ok && respSetores.valor) ? respSetores.valor : [];
+    if (!setoresAtuais.includes(setor)) {
+      setoresAtuais.push(setor);
+      await apiDataSet("materiaisSetores", setoresAtuais);
+    }
 
-  const novoIndex = estoque.length - 1;
-  propostaEmEdicao.itensMateriais.push({ qtd: 1, unid: "un", nome, valorUnit: valor, valorFinal: null, materialIndex: novoIndex });
+    const resposta = await apiSalvarMaterial({ nome, setor, codigo: "", valor, quantidade: 0, observacao: "" });
+    if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao cadastrar material.", "erro"); return; }
 
-  campoNome.value = ""; campoValor.value = ""; campoSetor.value = "";
-  renderChecklistMateriaisEstoque();
-  renderTabelaMateriais();
-  atualizarTotaisFormulario();
+    const novoMaterial = { id: resposta.id, nome, setor, codigo: "", valor, quantidade: 0, observacao: "" };
+    materiaisEstoqueCache.push(novoMaterial);
+
+    propostaEmEdicao.itensMateriais.push({ qtd: 1, unid: "un", nome, valorUnit: valor, valorFinal: null, materialId: resposta.id });
+
+    campoNome.value = ""; campoValor.value = ""; campoSetor.value = "";
+    renderChecklistMateriaisEstoque();
+    renderTabelaMateriais();
+    atualizarTotaisFormulario();
+  } finally {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
 }
 
 // ====================================================
@@ -408,7 +472,7 @@ function renderTabelaMateriais() {
   propostaEmEdicao.itensMateriais.forEach((item, index) => {
     const tr = document.createElement("tr");
     const vf = valorFinalItem(item);
-    const vinculado = item.materialIndex !== null && item.materialIndex !== undefined;
+    const vinculado = item.materialId !== null && item.materialId !== undefined;
     const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
     const rotuloVinculo = vinculado ? '<span class="tag-vinculado">estoque</span>' : "";
 
@@ -474,9 +538,9 @@ function renderTabelaMateriais() {
       input.addEventListener("blur", async () => {
         const idx = parseInt(input.dataset.matIndex, 10);
         const item = propostaEmEdicao.itensMateriais[idx];
-        if (item.materialIndex !== null && item.materialIndex !== undefined) {
+        if (item.materialId) {
           const sincronizar = await perguntarSincronizarMaterial(item.nome);
-          if (sincronizar) atualizarMaterialNoEstoque(item.materialIndex, item);
+          if (sincronizar) await atualizarMaterialNoEstoque(item.materialId, item);
         }
         renderTabelaMateriais();
         atualizarTotaisFormulario();
@@ -495,7 +559,7 @@ function renderTabelaMateriais() {
 }
 
 function adicionarLinhaMaterial() {
-  propostaEmEdicao.itensMateriais.push({ qtd: null, unid: "un", nome: "", valorUnit: null, valorFinal: null, materialIndex: null });
+  propostaEmEdicao.itensMateriais.push({ qtd: null, unid: "un", nome: "", valorUnit: null, valorFinal: null, materialId: null });
   renderTabelaMateriais();
   atualizarTotaisFormulario();
 }
@@ -537,10 +601,11 @@ function atualizarTotaisFormulario() {
 // ====================================================
 // SALVAR
 // ====================================================
-function salvarFormularioProposta() {
+async function salvarFormularioProposta() {
   const campoCliente = document.getElementById("campoCliente");
   limparErrosDoFormulario(document.getElementById("modalProposta"));
 
+  propostaEmEdicao.numeroOrcamento = document.getElementById("campoNumeroOrcamento").value.trim();
   propostaEmEdicao.cliente = campoCliente.value.trim();
   propostaEmEdicao.telefone = document.getElementById("campoTelefone").value.trim();
   propostaEmEdicao.local = document.getElementById("campoLocal").value.trim();
@@ -556,7 +621,32 @@ function salvarFormularioProposta() {
     return;
   }
 
-  salvarProposta(propostaEmEdicao);
-  fecharFormularioProposta();
-  if (onSalvarPropostaCallback) onSalvarPropostaCallback();
+  const botaoSalvar = document.getElementById("btnSalvarProposta");
+  const textoOriginalBotao = botaoSalvar.textContent;
+  botaoSalvar.disabled = true;
+  botaoSalvar.textContent = "Salvando...";
+
+  try {
+    // Qualquer item de material/mão de obra digitado manualmente (sem
+    // ter sido escolhido do catálogo) vira uma entrada nova no
+    // catálogo agora — assim fica disponível depois em Gestão de
+    // Material / na NFS-e, sem precisar cadastrar de novo.
+    for (const item of propostaEmEdicao.itensMateriais) {
+      if (!item.materialId && item.nome && item.nome.trim()) {
+        item.materialId = await garantirMaterialNoCatalogo(item.nome, item.valorUnit);
+      }
+    }
+    for (const item of propostaEmEdicao.itensMaoDeObra) {
+      if (!item.servicoId && item.descricao && item.descricao.trim()) {
+        item.servicoId = await garantirServicoNoCatalogo(item.descricao, item.valorUnit);
+      }
+    }
+
+    salvarProposta(propostaEmEdicao);
+    fecharFormularioProposta();
+    if (onSalvarPropostaCallback) onSalvarPropostaCallback();
+  } finally {
+    botaoSalvar.disabled = false;
+    botaoSalvar.textContent = textoOriginalBotao;
+  }
 }

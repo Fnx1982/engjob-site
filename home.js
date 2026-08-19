@@ -6,26 +6,26 @@ const modal = document.getElementById("logout-modal");
 const btnYes = document.getElementById("btn-yes");
 const btnNo = document.getElementById("btn-no");
 
-function logout() {
+async function logout() {
   try {
-    // Limpa apenas os dados de SESSÃO do usuário logado.
-    // IMPORTANTE: NÃO remover "usuarios" aqui — essa chave guarda a base
-    // de cadastros (todos os usuários do sistema), não é dado de sessão.
-    // Removê-la no logout apagava todos os cadastros sempre que alguém saía.
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userType");
+    // Invalida o token no servidor e limpa os dados de sessão locais.
+    // "usuarios" não existe mais no localStorage (agora vive no
+    // servidor), então não há mais risco de apagar a base de cadastros
+    // ao sair.
+    await apiLogout();
 
-    // Se quiser que "Montante" e "Mês" também sejam só da sessão atual,
-    // mantenha as duas linhas abaixo. Se quiser que esses valores
-    // continuem aparecendo após logar de novo, remova-as também.
     localStorage.removeItem("montante");
     localStorage.removeItem("observacao");
 
-    // redireciona para tela de login
     window.location.href = "login.html";
   } catch (err) {
     console.error("Erro ao deslogar:", err);
-    alert("Não foi possível sair. Tente novamente.");
+    // Mesmo se a chamada ao servidor falhar (ex: sem internet),
+    // ainda assim tira a sessão local para não travar o usuário.
+    localStorage.removeItem("sessionToken");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userType");
+    window.location.href = "login.html";
   }
 }
 
@@ -115,17 +115,18 @@ function aplicarRegraPontosSubitens() {
   itemConsulta.style.display = "";
 }
 
-function updateMenuVisibility() {
+async function updateMenuVisibility() {
   const userId = localStorage.getItem("userId");
-  let nomeSetor = "";
+  // O setor vem da sessão validada pelo servidor (auth-guard.js já
+  // sincronizou isso em localStorage["userSetor"] ao confirmar o
+  // token). Antes isso vinha de localStorage["usuarios"], que só
+  // existia no navegador onde o usuário foi cadastrado — por isso o
+  // menu "sumia" ou saía errado em outro computador.
+  const nomeSetor = localStorage.getItem("userSetor") || "";
 
-  if (userId) {
-    const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
-    const found = usuarios.find((u) => String(u.registro) === String(userId));
-    if (found && found.setor) {
-      nomeSetor = found.setor;
-    }
-  }
+  // Garante que o cache local de permissões está atualizado antes de
+  // decidir o que mostrar no menu.
+  await sincronizarDadosCompartilhados();
 
   // CEO/login fixo do sistema (ver login.js) não tem um setor
   // cadastrado de verdade — esse caso continua liberando tudo.

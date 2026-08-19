@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
+  <script src="auth-worker.js"></script>
+<script src="auth-guard.js"></script>
+<meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Relatórios</title>
   <link rel="stylesheet" href="relatorios.css" />
@@ -154,57 +156,74 @@
       <!-- Seção: Apresentação -->
       <div class="secao-filtro" id="secaoApresentacao">
         <h3>Configurar Apresentação</h3>
-        <p class="banco-aviso">Selecione os slides que deseja incluir. A apresentação será gerada como arquivo .pptx, que pode ser aberto no PowerPoint ou Google Slides e exportado como PDF.</p>
+        <p class="banco-aviso">Gera um arquivo <strong>.pptx</strong> com os dados reais do sistema, pronto para abrir no PowerPoint ou Google Slides.</p>
 
-        <div class="linha-campos" style="margin-bottom:14px;">
-          <div class="select-simples" style="flex:1;min-width:140px;">
-            <label class="filtro-label-mini" for="apresentacaoMes">Mês</label>
-            <select id="apresentacaoMes"></select>
+        <!-- Período -->
+        <div style="margin-bottom:18px;">
+          <p style="font-weight:600;font-size:13px;margin-bottom:10px;">Período</p>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="select-simples" style="flex:1;min-width:130px;">
+              <label class="filtro-label-mini" for="apresentacaoAno">Ano</label>
+              <select id="apresentacaoAno"></select>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;padding:10px 0;cursor:pointer;">
+              <input type="checkbox" id="apresentacaoAnual" style="width:16px;height:16px;accent-color:#EB991C;" />
+              Resumo anual (todos os meses do ano)
+            </label>
           </div>
-          <div class="select-simples" style="flex:1;min-width:120px;">
-            <label class="filtro-label-mini" for="apresentacaoAno">Ano</label>
-            <select id="apresentacaoAno"></select>
+
+          <!-- Meses (oculto quando anual marcado) -->
+          <div id="seletorMeses" style="margin-top:12px;">
+            <p style="font-size:12px;color:#777;margin-bottom:8px;">Selecione o(s) mês(es):</p>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" id="gridMeses">
+              <!-- gerado via JS -->
+            </div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+              <button type="button" id="btnMarcarTodosMeses" style="background:none;border:none;font-size:12px;color:#2B6CB0;cursor:pointer;font-family:inherit;font-weight:600;padding:0;">Marcar todos</button>
+              <button type="button" id="btnDesmarcarTodosMeses" style="background:none;border:none;font-size:12px;color:#999;cursor:pointer;font-family:inherit;font-weight:600;padding:0;">Desmarcar todos</button>
+            </div>
           </div>
         </div>
 
-        <p style="font-weight:600;font-size:13px;margin-bottom:10px;">Slides a incluir:</p>
-        <div class="lista-checkbox-permissao" id="checkboxesApresentacao">
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="capa" checked /> Slide de capa (nome da empresa, período, data)
+        <!-- Slides -->
+        <p style="font-weight:600;font-size:13px;margin-bottom:10px;">Slides a incluir</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="checkboxesApresentacao">
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="capa" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Capa
           </label>
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="resumo_financeiro" checked /> Resumo financeiro (total de pagamentos, obras, extrato)
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="resumo_financeiro" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Fluxo de Caixa
           </label>
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="obras" checked /> Obras do período (lista e lucro por obra)
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="obras" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Obras
           </label>
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="propostas" checked /> Propostas (orçamentos, em análise, aprovadas, negadas)
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="propostas" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Propostas
           </label>
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="materiais" checked /> Gestão de materiais (itens em estoque, valor total)
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="funcionarios" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Funcionários
           </label>
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="funcionarios" checked /> Funcionários (pagamentos do período)
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="boletos" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Boletos
           </label>
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="pontos" checked /> Banco de horas (resumo por funcionário)
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="pontos" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Banco de Horas
           </label>
-          <label class="linha-checkbox-permissao">
-            <input type="checkbox" value="boletos" checked /> Boletos (pendentes, atrasados, pagos)
+          <label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:#F7F7F7;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+            <input type="checkbox" value="materiais" checked style="width:15px;height:15px;accent-color:#EB991C;" /> Materiais
           </label>
         </div>
-
-        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
-          <button type="button" class="btn-secundario-permissao" id="btnMarcarTudoApresentacao">Marcar tudo</button>
-          <button type="button" class="btn-secundario-permissao" id="btnDesmarcarTudoApresentacao">Desmarcar tudo</button>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button type="button" id="btnMarcarTudoApresentacao" style="background:none;border:none;font-size:12px;color:#2B6CB0;cursor:pointer;font-family:inherit;font-weight:600;padding:0;">Marcar tudo</button>
+          <button type="button" id="btnDesmarcarTudoApresentacao" style="background:none;border:none;font-size:12px;color:#999;cursor:pointer;font-family:inherit;font-weight:600;padding:0;">Desmarcar tudo</button>
         </div>
       </div>
 
       <div class="modal-rodape">
         <button type="button" class="btn-secundario" id="btnCancelarRelatorio">Cancelar</button>
         <button type="button" class="btn-laranja" id="btnSalvarRelatorio">Salvar e Gerar PDF</button>
-        <button type="button" class="btn-laranja" id="btnGerarApresentacao" style="display:none;">📊 Gerar Apresentação (PDF)</button>
+        <button type="button" class="btn-laranja" id="btnGerarApresentacaoDemanda" style="display:none;">📊 Apresentação Demanda</button>
+        <button type="button" class="btn-laranja" id="btnGerarApresentacaoFinanceiro" style="display:none;">📊 Apresentação Financeiro</button>
       </div>
     </div>
   </div>

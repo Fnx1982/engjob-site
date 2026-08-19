@@ -11,13 +11,29 @@ function showLoginButton(show) {
   document.getElementById("btnLogout").style.display = show ? "none" : "block";
 }
 
+function mostrarAvisoErroGoogle() {
+  if (document.getElementById("avisoErroGoogle")) return; // já mostrado, não duplica
+  const aviso = document.createElement("div");
+  aviso.id = "avisoErroGoogle";
+  aviso.style.cssText = "background:#FDECEA; color:#8A1C1C; border:1px solid #F5C2C0; border-radius:8px; padding:12px 16px; margin-bottom:16px; font-size:13.5px; line-height:1.5;";
+  aviso.innerHTML = "<b>Não foi possível conectar com o Google Agenda.</b> Isso pode acontecer se a chave da API do Google acabou de ter uma restrição de segurança configurada (pode levar alguns minutos para ativar) ou se há um problema de conexão. Se persistir depois de alguns minutos, avise o administrador do sistema.";
+  const container = document.querySelector(".container") || document.body;
+  container.insertBefore(aviso, container.firstChild);
+}
+
 function iniciarTelaCalendario() {
   // Atualiza botões de login/logout conforme estado atual.
   // Essa função pode rodar mais de uma vez (ex: token atrasado
   // chegando depois do fallback), por isso é segura para repetir.
   const autenticado = isGoogleAuthenticated();
-  console.log("[calendario] iniciarTelaCalendario() chamado. autenticado =", autenticado, "token:", gapi.client && gapi.client.getToken());
   showLoginButton(!autenticado);
+
+  // Se a inicialização da API do Google falhou (ex: chave bloqueada,
+  // sem internet), mostra isso na tela em vez de deixar a pessoa
+  // achando que o sistema simplesmente não faz nada.
+  if (typeof googleApiErroInicializacao !== "undefined" && googleApiErroInicializacao) {
+    mostrarAvisoErroGoogle();
+  }
 
   if (autenticado) {
     listarEventos();

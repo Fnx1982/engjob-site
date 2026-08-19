@@ -546,6 +546,15 @@ table {
     box-shadow: 0 10px 36px rgba(0,0,0,0.3);
 }
 
+/* Modal de Material — tela quase cheia, já que tem muitos campos
+   (inclusive os fiscais). O de Setor continua compacto (.modal-caixa
+   normal), só o de Material usa este modificador. */
+#modalMaterial .modal-caixa {
+    max-width: 1200px;
+    width: 95vw;
+    max-height: 94vh;
+}
+
 .modal-cabecalho {
     display: flex;
     justify-content: space-between;
@@ -588,8 +597,8 @@ table {
 
 .form-modal-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px 18px;
 }
 
 .form-modal-grid label {
@@ -627,6 +636,18 @@ table {
 
 .campo-largura-total {
     grid-column: span 2;
+}
+
+/* O botão de "Adicionar" material fica na própria linha (grid-column:
+   span 2), mas sem ESTICAR pra preencher a célula inteira — senão
+   vira um botão gigante, esticado tanto na largura quanto na altura.
+   Padding igual ao dos outros botões laranja do site (.btn-laranja). */
+#btnSubmitMaterial {
+    justify-self: start;
+    align-self: start;
+    width: auto;
+    height: auto;
+    padding: 10px 22px;
 }
 
 /* Chips de setores cadastrados */

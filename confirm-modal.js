@@ -148,6 +148,79 @@ function confirmarAcao(titulo, texto) {
 }
 
 // ============================================================
+// Modal de escolha entre várias opções (ex: "Qual nota você quer
+// emitir?" com botões "NF-e" / "NFS-e" / "Cancelar"), no mesmo
+// estilo visual do modal de confirmação acima.
+//
+// Uso:
+//   escolherOpcao("Qual nota emitir?", "", ["NF-e (materiais)", "NFS-e (mão de obra)"])
+//     .then((escolhida) => {
+//       // escolhida = o texto do botão clicado, ou null se cancelou
+//     });
+// ============================================================
+function _criarEstruturaModalEscolha() {
+  if (document.getElementById("modal-escolha-global")) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = "modal-escolha-global";
+  overlay.className = "confirm-modal-overlay";
+  overlay.innerHTML = `
+    <div class="confirm-modal-content">
+      <p class="confirm-modal-titulo" id="escolha-modal-titulo"></p>
+      <p class="confirm-modal-texto" id="escolha-modal-texto"></p>
+      <div class="confirm-modal-botoes" id="escolha-modal-botoes" style="flex-direction:column;"></div>
+      <button type="button" class="confirm-modal-cancelar" id="escolha-modal-cancelar" style="margin-top:10px; width:100%;">Cancelar</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  _criarEstruturaModalConfirmacao(); // garante que o <style> compartilhado já foi injetado
+}
+
+function escolherOpcao(titulo, texto, opcoes) {
+  _criarEstruturaModalEscolha();
+
+  const overlay = document.getElementById("modal-escolha-global");
+  const tituloEl = document.getElementById("escolha-modal-titulo");
+  const textoEl = document.getElementById("escolha-modal-texto");
+  const botoesContainer = document.getElementById("escolha-modal-botoes");
+  const btnCancelar = document.getElementById("escolha-modal-cancelar");
+
+  tituloEl.textContent = titulo || "Escolha uma opção";
+  textoEl.textContent = texto || "";
+  textoEl.style.display = texto ? "block" : "none";
+  botoesContainer.innerHTML = "";
+
+  overlay.classList.add("active");
+
+  return new Promise((resolve) => {
+    function limpar(resultado) {
+      overlay.classList.remove("active");
+      botoesContainer.querySelectorAll("button").forEach((b) => b.replaceWith(b.cloneNode(true))); // remove listeners
+      btnCancelar.removeEventListener("click", onCancelar);
+      overlay.removeEventListener("click", onOverlayClick);
+      document.removeEventListener("keydown", onKeydown);
+      resolve(resultado);
+    }
+    function onCancelar() { limpar(null); }
+    function onOverlayClick(e) { if (e.target === overlay) limpar(null); }
+    function onKeydown(e) { if (e.key === "Escape") limpar(null); }
+
+    opcoes.forEach((opcao) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "confirm-modal-confirmar";
+      btn.textContent = opcao;
+      btn.addEventListener("click", () => limpar(opcao));
+      botoesContainer.appendChild(btn);
+    });
+
+    btnCancelar.addEventListener("click", onCancelar);
+    overlay.addEventListener("click", onOverlayClick);
+    document.addEventListener("keydown", onKeydown);
+  });
+}
+
+// ============================================================
 // Toast de aviso temporário (substitui o alert() nativo para
 // mensagens de sucesso/erro que não precisam de confirmação,
 // como "Cadastro realizado com sucesso!").

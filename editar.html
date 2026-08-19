@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8" />
+    <script src="auth-worker.js"></script>
+<script src="auth-guard.js"></script>
+<meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet' />
     <link rel="stylesheet" href="editar.css">
@@ -53,8 +55,8 @@
                 <input type="text" id="endereco" />
             </label>
             <label>
-                Senha
-                <input type="password" id="senha" required />
+                Nova senha <span style="font-weight:normal;color:#888;font-size:12px;">(deixe em branco para manter a senha atual)</span>
+                <input type="password" id="senha" minlength="6" />
             </label>
             <label>
                 Setor
@@ -100,54 +102,59 @@
             return urlParams.get(param);
         }
 
-        const index = getQueryParam("index");
-        if (index === null) {
-            // Sem popup bloqueante: avisa via toast e redireciona direto.
+        const registroOriginal = getQueryParam("registro");
+        if (registroOriginal === null) {
             window.location.href = "gerenciarcontas.html?erro=usuario_nao_especificado";
         }
 
-        // Carregar dados do usuário para edição
-        const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
-        const usuario = usuarios[index];
+        let usuario = null;
 
-        if (!usuario) {
-            window.location.href = "gerenciarcontas.html?erro=usuario_nao_encontrado";
+        async function carregarUsuario() {
+            const resposta = await apiListarUsuarios();
+            if (!resposta.ok) {
+                mostrarToast(resposta.erro || "Não foi possível carregar o usuário.", "erro");
+                return;
+            }
+            usuario = resposta.usuarios.find(u => String(u.registro) === String(registroOriginal));
+            if (!usuario) {
+                window.location.href = "gerenciarcontas.html?erro=usuario_nao_encontrado";
+                return;
+            }
+
+            // Popula o select de Setor com os setores cadastrados no servidor.
+            const respSetores = await apiDataGet("setores");
+            const setoresDisponiveis = (respSetores.ok && respSetores.valor) ? respSetores.valor : [];
+            const selectSetorEditar = document.getElementById("setor");
+            setoresDisponiveis.forEach((s) => {
+                const opt = document.createElement("option");
+                opt.value = s;
+                opt.textContent = s;
+                selectSetorEditar.appendChild(opt);
+            });
+            if (usuario.setor && !setoresDisponiveis.includes(usuario.setor)) {
+                const opt = document.createElement("option");
+                opt.value = usuario.setor;
+                opt.textContent = usuario.setor + " (não está mais na lista)";
+                selectSetorEditar.appendChild(opt);
+            }
+
+            // Preenche o formulário — o campo de senha NUNCA é preenchido,
+            // porque o servidor só guarda o hash, não a senha em si.
+            document.getElementById("nome").value = usuario.nome;
+            document.getElementById("registro").value = usuario.registro;
+            document.getElementById("email").value = usuario.email || "";
+            document.getElementById("telefone").value = usuario.telefone || "";
+            document.getElementById("sexo").value = usuario.sexo || "";
+            document.getElementById("cpf").value = usuario.cpf || "";
+            document.getElementById("rg").value = usuario.rg || "";
+            document.getElementById("endereco").value = usuario.endereco || "";
+            document.getElementById("setor").value = usuario.setor || "";
         }
 
-        // Popula o select de Setor com os setores cadastrados
-        // dinamicamente (mesma lista usada em gerenciarcontas.html),
-        // em vez de uma lista fixa desatualizada.
-        const setoresDisponiveis = JSON.parse(localStorage.getItem("setores")) || [];
-        const selectSetorEditar = document.getElementById("setor");
-        setoresDisponiveis.forEach((s) => {
-            const opt = document.createElement("option");
-            opt.value = s;
-            opt.textContent = s;
-            selectSetorEditar.appendChild(opt);
-        });
-        // Garante que o setor atual do usuário apareça, mesmo que
-        // não esteja (mais) na lista cadastrada de setores.
-        if (usuario && usuario.setor && !setoresDisponiveis.includes(usuario.setor)) {
-            const opt = document.createElement("option");
-            opt.value = usuario.setor;
-            opt.textContent = usuario.setor + " (não está mais na lista)";
-            selectSetorEditar.appendChild(opt);
-        }
-
-        // Preencher formulário com dados do usuário
-        document.getElementById("nome").value = usuario.nome;
-        document.getElementById("registro").value = usuario.registro;
-        document.getElementById("email").value = usuario.email || "";
-        document.getElementById("telefone").value = usuario.telefone || "";
-        document.getElementById("sexo").value = usuario.sexo;
-        document.getElementById("cpf").value = usuario.cpf || "";
-        document.getElementById("rg").value = usuario.rg || "";
-        document.getElementById("endereco").value = usuario.endereco || "";
-        document.getElementById("senha").value = usuario.senha;
-        document.getElementById("setor").value = usuario.setor;
+        carregarUsuario();
 
         // Salvar alterações
-        document.getElementById("formEditarUsuario").addEventListener("submit", function(event) {
+        document.getElementById("formEditarUsuario").addEventListener("submit", async function(event) {
             event.preventDefault();
 
             const campoNome = document.getElementById("nome");
@@ -168,17 +175,16 @@
             const cpf = document.getElementById("cpf").value.trim();
             const rg = document.getElementById("rg").value.trim();
             const endereco = document.getElementById("endereco").value.trim();
-            const senha = campoSenha.value;
+            const senha = campoSenha.value; // pode ficar em branco = mantém a atual
             const setor = campoSetor.value;
 
             let temErro = false;
             if (!nome) { marcarCampoComErro(campoNome, "Informe o nome completo."); temErro = true; }
             if (!registro) { marcarCampoComErro(campoRegistro, "Informe o registro."); temErro = true; }
             if (!sexo) { marcarCampoComErro(campoSexo, "Selecione o sexo."); temErro = true; }
-            if (!senha) { marcarCampoComErro(campoSenha, "Informe uma senha."); temErro = true; }
+            if (senha && senha.length < 6) { marcarCampoComErro(campoSenha, "A nova senha precisa ter pelo menos 6 caracteres."); temErro = true; }
             if (!setor) { marcarCampoComErro(campoSetor, "Selecione o setor."); temErro = true; }
 
-            // Telefone é opcional, mas se preenchido precisa de formato válido.
             const telefoneRegex = /^\(\d{2}\)\s?\d{4,5}-\d{4}$/;
             if (telefone && !telefoneRegex.test(telefone)) {
                 marcarCampoComErro(campoTelefone, "Telefone inválido. Use (99) 99999-9999, ou deixe em branco.");
@@ -190,36 +196,48 @@
                 return;
             }
 
-            const registroExistente = usuarios.some((u, i) => u.registro === registro && i != index);
-            if (registroExistente) {
-                marcarCampoComErro(campoRegistro, "Registro já cadastrado em outro usuário.");
-                focarPrimeiroErro(this);
-                return;
-            }
-            const emailExistente = email && usuarios.some((u, i) => u.email === email && i != index);
-            if (emailExistente) {
-                marcarCampoComErro(campoEmail, "Email já cadastrado em outro usuário.");
-                focarPrimeiroErro(this);
-                return;
-            }
+            const botao = this.querySelector(".btn-salvar");
+            const textoOriginal = botao.textContent;
+            botao.disabled = true;
+            botao.textContent = "Salvando...";
 
-            usuarios[index] = { nome, registro, email, telefone, sexo, cpf, rg, endereco, setor, senha };
-
-            localStorage.setItem("usuarios", JSON.stringify(usuarios));
-            window.location.href = "home.html";
+            try {
+                const resposta = await apiSalvarUsuario({
+                    registro, registroOriginal, nome, email, telefone, sexo, cpf, rg, endereco, setor,
+                    senha: senha || undefined, // omitido = servidor mantém o hash atual
+                });
+                if (!resposta.ok) {
+                    if ((resposta.erro || "").toLowerCase().includes("registro")) {
+                        marcarCampoComErro(campoRegistro, resposta.erro);
+                    } else {
+                        mostrarToast(resposta.erro || "Não foi possível salvar.", "erro");
+                    }
+                    focarPrimeiroErro(this);
+                    return;
+                }
+                window.location.href = "gerenciarcontas.html";
+            } catch (err) {
+                mostrarToast("Não foi possível conectar ao servidor.", "erro");
+            } finally {
+                botao.disabled = false;
+                botao.textContent = textoOriginal;
+            }
         });
-
 
         // Excluir usuário
         document.getElementById("btnExcluir").addEventListener("click", async function() {
+            if (!usuario) return;
             const confirmado = await confirmarAcao(
                 `Excluir o usuário "${usuario.nome}"?`,
                 "Essa ação não pode ser desfeita."
             );
             if (!confirmado) return;
 
-            usuarios.splice(index, 1);
-            localStorage.setItem("usuarios", JSON.stringify(usuarios));
+            const resposta = await apiExcluirUsuario(usuario.registro);
+            if (!resposta.ok) {
+                mostrarToast(resposta.erro || "Não foi possível excluir.", "erro");
+                return;
+            }
             window.location.href = "gerenciarcontas.html";
         });
     </script>

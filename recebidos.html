@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <script src="auth-worker.js"></script>
+  <script src="auth-guard.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notas Recebidas — EnJob</title>
+  <link rel="stylesheet" href="recebidos.css" />
+  <script src="confirm-modal.js"></script>
+</head>
+<body>
+
+  <main class="container">
+
+    <div class="topo-pagina">
+      <div>
+        <h1>Notas Recebidas</h1>
+        <p>Documentos fiscais que fornecedores emitiram para o CNPJ da EnJob</p>
+      </div>
+      <a href="home.html" class="btn-voltar">← Voltar</a>
+    </div>
+
+    <!-- Formulário de registro -->
+    <div class="card-form">
+      <h2>Registrar nota recebida</h2>
+      <form id="formRecebido">
+        <div class="grid-campos">
+          <div class="campo">
+            <label for="campoTipo">Tipo de documento</label>
+            <select id="campoTipo" required>
+              <option value="NF-e">NF-e (Material)</option>
+              <option value="NFS-e">NFS-e (Serviço)</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="campoFornecedor">Fornecedor</label>
+            <input type="text" id="campoFornecedor" placeholder="Nome ou razão social" required />
+          </div>
+          <div class="campo">
+            <label for="campoCnpj">CNPJ do fornecedor</label>
+            <input type="text" id="campoCnpj" placeholder="00.000.000/0000-00" />
+          </div>
+          <div class="campo">
+            <label for="campoNumero">Número da nota</label>
+            <input type="text" id="campoNumero" placeholder="ex: 4521" />
+          </div>
+          <div class="campo">
+            <label for="campoValor">Valor (R$)</label>
+            <input type="number" id="campoValor" step="0.01" min="0" placeholder="0,00" />
+          </div>
+          <div class="campo">
+            <label for="campoData">Data de emissão</label>
+            <input type="date" id="campoData" />
+          </div>
+          <div class="campo full">
+            <label for="campoDescricao">Descrição</label>
+            <textarea id="campoDescricao" placeholder="Ex: Cimento e areia para a obra do Centro"></textarea>
+          </div>
+        </div>
+
+        <div class="area-arquivo">
+          📎 Anexar o arquivo da nota (PDF ou XML) — opcional, mas recomendado
+          <br />
+          <input type="file" id="campoArquivo" accept=".pdf,.xml" />
+          <div class="nome-arquivo-escolhido" id="nomeArquivoEscolhido"></div>
+        </div>
+
+        <button type="submit" class="btn-salvar-recebido" id="btnSalvarRecebido">Registrar nota</button>
+      </form>
+    </div>
+
+    <!-- Busca -->
+    <div class="barra-busca">
+      <input type="text" id="buscaRecebidos" placeholder="Buscar por fornecedor, número ou descrição..." />
+      <select id="filtroTipo">
+        <option value="">Todos os tipos</option>
+        <option value="NF-e">NF-e</option>
+        <option value="NFS-e">NFS-e</option>
+        <option value="Outro">Outro</option>
+      </select>
+    </div>
+
+    <div class="lista-recebidos" id="listaRecebidos"></div>
+    <div class="vazio" id="vazioRecebidos" style="display:none;">Nenhuma nota registrada ainda.</div>
+
+  </main>
+
+  <script src="recebidos.js"></script>
+</body>
+</html>

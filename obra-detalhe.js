@@ -47,10 +47,49 @@ const btnAddMaterialObra = document.getElementById("btnAddMaterialObra");
 // CABEÇALHO / INFOS
 // ====================================================
 function renderCabecalho() {
-  tituloObraEl.textContent = obraAtual.cliente || "Obra";
+  // Busca a proposta vinculada para pegar número do orçamento e status
+  const propostaVinculada = obraAtual.propostaId ? buscarProposta(obraAtual.propostaId) : null;
+  const numOrc = propostaVinculada && propostaVinculada.numeroOrcamento
+    ? ` — Nº ${propostaVinculada.numeroOrcamento}` : "";
+  const statusObra = propostaVinculada
+    ? (propostaVinculada.statusObra || propostaVinculada.status || "andamento")
+    : "andamento";
+
+  tituloObraEl.textContent = (obraAtual.cliente || "Obra") + numOrc;
   clienteObraEl.textContent = obraAtual.cliente || "(sem nome do cliente)";
   servicoObraEl.textContent = obraAtual.servico || "";
   campoObservacaoObra.value = obraAtual.observacao || "";
+
+  // Renderiza o selo e botão de status
+  const statusEl = document.getElementById("statusObraDetalhe");
+  if (statusEl) {
+    const eFinalizada = statusObra === "finalizada";
+    statusEl.innerHTML = `
+      <span style="display:inline-flex;align-items:center;gap:10px;">
+        <span style="background:${eFinalizada ? "#E8F5EF" : "#EBF2FB"};color:${eFinalizada ? "#1c8a4b" : "#2B6CB0"};
+          font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;text-transform:uppercase;">
+          ${eFinalizada ? "✓ Finalizada" : "⚙ Em Andamento"}
+        </span>
+        <button id="btnAlternarStatusObra" style="background:none;border:1px solid #ccc;border-radius:20px;
+          padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:#555;">
+          ${eFinalizada ? "Reabrir" : "Finalizar Obra"}
+        </button>
+      </span>
+    `;
+    document.getElementById("btnAlternarStatusObra").addEventListener("click", async () => {
+      if (!propostaVinculada) return;
+      const novoStatus = eFinalizada ? "andamento" : "finalizada";
+      const ok = await confirmarAcao(
+        eFinalizada ? "Reabrir esta obra?" : "Finalizar esta obra?",
+        eFinalizada ? "O status volta para Em Andamento." : "A obra será marcada como Finalizada."
+      );
+      if (!ok) return;
+      propostaVinculada.statusObra = novoStatus;
+      propostaVinculada.status = novoStatus;
+      salvarProposta(propostaVinculada);
+      renderCabecalho();
+    });
+  }
 }
 
 // Salva a observação automaticamente, com um pequeno debounce

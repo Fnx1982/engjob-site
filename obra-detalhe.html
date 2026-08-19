@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
+  <script src="auth-worker.js"></script>
+<script src="auth-guard.js"></script>
+<meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Detalhe da Obra</title>
   <link rel="stylesheet" href="propostas.css" />
@@ -22,6 +24,7 @@
     <div class="detalhe-topo-info">
       <h2 id="clienteObra"></h2>
       <div class="servico" id="servicoObra"></div>
+      <div id="statusObraDetalhe" style="margin-top:10px;"></div>
 
       <div class="detalhe-observacao">
         <label for="campoObservacaoObra">Observação</label>

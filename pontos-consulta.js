@@ -14,6 +14,7 @@ if (!_temPermissaoPontos) {
 }
 
 const NOMES_MESES = NOMES_MESES_PONTO;
+const TIPOS_COM_PERIODO = ["abono", "atestado", "declaracao"];
 let abaAtiva = "funcionarios";
 let funcSelecionado = null; // { registro, nome } do funcionário no modal de detalhe
 let batidaEditandoId = null;
@@ -40,8 +41,22 @@ document.querySelectorAll("[data-aba]").forEach((btn) => {
 // ====================================================
 // FUNCIONÁRIOS (aba principal)
 // ====================================================
+// A lista de funcionários agora vive no servidor (Worker + KV), não
+// mais em localStorage["usuarios"]. Para não precisar reescrever
+// toda função síncrona que chama listarFuncionarios() nesta página,
+// mantemos um cache local em memória, carregado uma vez no início
+// (ver iniciarPontosConsulta() no fim do arquivo) e atualizado
+// sempre que necessário via sincronizarFuncionariosCache().
+let _funcionariosCache = [];
+
 function listarFuncionarios() {
-  return JSON.parse(localStorage.getItem("usuarios")) || [];
+  return _funcionariosCache;
+}
+
+async function sincronizarFuncionariosCache() {
+  const resposta = await apiListarUsuariosBasico();
+  if (resposta.ok) _funcionariosCache = resposta.usuarios;
+  return resposta;
 }
 
 function popularFiltrosConsulta() {
@@ -242,11 +257,6 @@ function renderModalBatidas() {
       renderTabelaFuncionarios();
     });
   });
-}
-
-function renderDocumentoLanc(l) {
-  if (!l.documentoUrl) return "";
-  return `<button class="btn-editar-mini" onclick="window.open('${l.documentoUrl}','_blank')" style="background:rgba(43,108,176,0.15);color:#2b6cb0;">📄 ${l.documentoNome || "Ver doc"}</button>`;
 }
 
 function renderDocumentoLanc(l) {
@@ -483,7 +493,6 @@ document.getElementById("btnRemoverDocLancamento").addEventListener("click", () 
 });
 
 // Mostra campo de período para tipos que têm ausência com hora início/fim
-const TIPOS_COM_PERIODO = ["abono", "atestado", "declaracao"];
 document.getElementById("campoTipoLancamento").addEventListener("change", (e) => {
   const tipo = e.target.value;
   const temPeriodo = TIPOS_COM_PERIODO.includes(tipo);
@@ -942,8 +951,11 @@ function renderFeriadosFuncionario(podeEditar) {
 // ====================================================
 // INICIALIZAÇÃO
 // ====================================================
-popularFiltrosConsulta();
-renderTabelaFuncionarios();
+(async function iniciarPontosConsulta() {
+  await sincronizarFuncionariosCache();
+  popularFiltrosConsulta();
+  renderTabelaFuncionarios();
+})();
 
 // ====================================================
 // PDF MENSAL DE PONTOS
@@ -1020,8 +1032,7 @@ function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario, secoes) {
 
   // ── DADOS DO FUNCIONÁRIO
   if (secoes.dadosFuncionario) {
-    const usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
-    const dadosFunc = usuarios.find((u) => String(u.registro) === String(registroFuncionario)) || {};
+    const dadosFunc = listarFuncionarios().find((u) => String(u.registro) === String(registroFuncionario)) || {};
     doc.autoTable({
       startY: y,
       body: [

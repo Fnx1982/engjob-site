@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <script src="auth-worker.js"></script>
+  <script src="auth-guard.js"></script>
+  <script src="confirm-modal.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NFS-e (Mão de Obra) — EnJob</title>
+  <link rel="stylesheet" href="nota-fiscal.css" />
+</head>
+<body>
+
+  <main class="container">
+
+    <div class="topo-pagina">
+      <div>
+        <h1>NFS-e — Mão de Obra</h1>
+        <p>Nota fiscal de serviço eletrônica (Padrão Nacional)</p>
+      </div>
+      <a href="home.html" class="btn-voltar">← Voltar</a>
+    </div>
+
+    <div class="aviso-certificado">
+      <b>Emissão real ainda não configurada.</b> Falta o certificado digital A1 da empresa para emitir NFS-e de verdade pelo Padrão Nacional (Curitiba). Por enquanto, esta tela salva e organiza os dados para conferência — nada é enviado à prefeitura ainda.
+    </div>
+
+    <div class="card-secao">
+      <h2 id="tituloFormulario">Nova NFS-e</h2>
+      <input type="hidden" id="campoPropostaId" />
+
+      <div class="grid-campos" style="margin-bottom:16px;">
+        <div class="campo">
+          <label for="campoTomadorNome">Cliente / Tomador do serviço</label>
+          <input type="text" id="campoTomadorNome" placeholder="Nome ou razão social" list="listaContatosDatalist" />
+          <datalist id="listaContatosDatalist"></datalist>
+        </div>
+        <div class="campo">
+          <label for="campoTomadorDocumento">CPF / CNPJ</label>
+          <input type="text" id="campoTomadorDocumento" placeholder="000.000.000-00" />
+        </div>
+        <div class="campo full">
+          <label for="campoTomadorEndereco">Endereço</label>
+          <input type="text" id="campoTomadorEndereco" placeholder="Rua, número, bairro, cidade" />
+        </div>
+      </div>
+
+      <h2 style="margin-top:20px;">Mão de obra / serviços <span class="sub-h2">itens do serviço sendo faturado</span></h2>
+      <table class="tabela-itens" id="tabelaItens">
+        <thead>
+          <tr><th>Descrição</th><th>Qtd.</th><th>Valor unit. (R$)</th><th>Total</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button type="button" class="btn-add-linha" id="btnAddItem">+ Adicionar serviço</button>
+
+      <h2 style="margin-top:24px;">Impostos <span class="sub-h2">% calculado sobre o subtotal dos serviços — ISS, INSS, etc.</span></h2>
+      <table class="tabela-itens" id="tabelaImpostos">
+        <thead>
+          <tr><th>Imposto</th><th>%</th><th>Valor</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button type="button" class="btn-add-linha" id="btnAddImposto">+ Adicionar imposto</button>
+
+      <div class="campo full" style="margin-top:20px;">
+        <label for="campoObservacoes">Observações</label>
+        <textarea id="campoObservacoes" placeholder="Informações adicionais para a nota"></textarea>
+      </div>
+
+      <div class="resumo-valores">
+        <div class="linha-resumo"><span>Subtotal (serviços)</span><span id="resumoSubtotal">R$ 0,00</span></div>
+        <div class="linha-resumo"><span>Impostos</span><span id="resumoImpostos">R$ 0,00</span></div>
+        <div class="linha-resumo total"><span>Total</span><span id="resumoTotal">R$ 0,00</span></div>
+      </div>
+
+      <div class="barra-acoes" style="margin-top:18px;">
+        <button type="button" class="btn-salvar-rascunho" id="btnSalvarRascunho">Salvar rascunho</button>
+        <button type="button" class="btn-emitir" id="btnEmitir">Emitir NFS-e</button>
+        <button type="button" class="btn-salvar-rascunho" id="btnNovaNota">+ Nova nota</button>
+      </div>
+    </div>
+
+    <h2 style="margin-bottom:14px;">NFS-e salvas para conferência</h2>
+    <div class="lista-notas" id="listaNotas"></div>
+    <div class="vazio" id="vazioNotas" style="display:none;">Nenhuma NFS-e registrada ainda.</div>
+
+  </main>
+
+  <script>const TIPO_NOTA_PAGINA = "NFS-e";</script>
+  <script src="nota-fiscal.js"></script>
+</body>
+</html>

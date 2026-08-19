@@ -1,3 +1,8 @@
+// ============================================================
+// login.js — autentica via Worker (server-side). Depende de
+// auth-worker.js estar carregado antes deste arquivo.
+// ============================================================
+
 window.onload = function () {
     var registroSalvo = localStorage.getItem("registroSalvo");
     if (registroSalvo) {
@@ -6,64 +11,48 @@ window.onload = function () {
     }
 };
 
-function logar() {
+async function logar() {
     var registro = document.getElementById("registro").value.trim();
     var senha = document.getElementById("senha").value;
     var lembrar = document.getElementById("lembrar").checked;
 
-    // LOG DE DEPURAÇÃO: abra o Console (F12) para comparar
-    // o que foi digitado com o que está salvo em "usuarios"
-    console.log("Tentativa de login -> registro:", JSON.stringify(registro), "senha:", JSON.stringify(senha));
-
-    var mensagemErroInicio = document.getElementById("mensagemErroLogin");
-    if (mensagemErroInicio) mensagemErroInicio.style.display = "none";
-
-    // Defina aqui os admins fixos
-    var admins = [
-        { registro: "172616320", senha: "123" },
-
-    ];
-
-    // Verifica se é admin
-    var isAdmin = admins.some(admin => admin.registro === registro && admin.senha === senha);
-
-    if (isAdmin) {
-        if (lembrar) {
-            localStorage.setItem("registroSalvo", registro);
-        } else {
-            localStorage.removeItem("registroSalvo");
-        }
-        localStorage.setItem("userType", "ceo");
-        localStorage.setItem("userId", registro);
-        window.location.href = "home.html";
-        return;
-    }
-
-    // Recupera usuários do localStorage
-    var usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
-    console.log("Usuários cadastrados no localStorage:", usuarios);
-
-    // Procura usuário com registro e senha correspondentes
-    var usuarioValido = usuarios.find(function (user) {
-        return String(user.registro).trim() === registro && user.senha === senha;
-    });
-
     var mensagemErro = document.getElementById("mensagemErroLogin");
+    if (mensagemErro) mensagemErro.style.display = "none";
 
-    if (usuarioValido) {
+    var botao = document.querySelector("button.login");
+    var textoOriginal = botao ? botao.textContent : "";
+    if (botao) { botao.disabled = true; botao.textContent = "Entrando..."; }
+
+    try {
+        var resposta = await apiLogin(registro, senha);
+
+        if (!resposta.ok) {
+            if (mensagemErro) {
+                mensagemErro.textContent = resposta.erro || "Registro ou senha incorretos. Tente novamente.";
+                mensagemErro.style.display = "block";
+            }
+            return;
+        }
+
         if (lembrar) {
             localStorage.setItem("registroSalvo", registro);
         } else {
             localStorage.removeItem("registroSalvo");
         }
-        localStorage.setItem("userType", usuarioValido.tipo || "prestador");
-        localStorage.setItem("userId", registro);
+
+        localStorage.setItem("sessionToken", resposta.token);
+        localStorage.setItem("userType", resposta.tipo || "");
+        localStorage.setItem("userId", resposta.registro || "");
+        localStorage.setItem("userNome", resposta.nome || "");
+        localStorage.setItem("userSetor", resposta.setor || "");
+
         window.location.href = "home.html";
-    } else {
-        console.warn("Nenhum usuário encontrado com esse registro/senha.");
+    } catch (e) {
         if (mensagemErro) {
-            mensagemErro.textContent = "Registro ou senha incorretos. Tente novamente.";
+            mensagemErro.textContent = "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.";
             mensagemErro.style.display = "block";
         }
+    } finally {
+        if (botao) { botao.disabled = false; botao.textContent = textoOriginal; }
     }
 }

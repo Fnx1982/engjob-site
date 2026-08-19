@@ -14,6 +14,7 @@ let googleTokenClient;
 let googleTokenExpiresAt = 0;
 let googleApiReady = false;
 let googleApiIniciando = false; // evita inicializar o gapi mais de uma vez
+let googleApiErroInicializacao = null; // guarda o motivo, se a inicialização falhar
 
 // ============================================================
 // Esconde visualmente qualquer iframe/elemento que o Google
@@ -165,6 +166,19 @@ function initGoogleAPI() {
         } else {
           notifyGoogleAuthReady();
         }
+      })
+      .catch((erro) => {
+        // ANTES: se essa chamada falhasse (chave bloqueada por restrição
+        // de domínio ainda propagando, instabilidade do Google, sem
+        // internet, etc.), a Promise rejeitava e NADA acontecia — a tela
+        // ficava travada pra sempre, sem erro visível, parecendo que o
+        // sistema simplesmente "não fazia nada". Agora, qualquer falha
+        // aqui libera a tela (mostrando o botão de login normal, sem
+        // sessão restaurada) e avisa no console qual foi o motivo real.
+        console.error("[google-auth] Falha ao inicializar a Google Calendar API:", erro);
+        googleApiErroInicializacao = erro;
+        googleApiIniciando = false;
+        notifyGoogleAuthReady();
       });
   });
 }
@@ -174,7 +188,6 @@ function googleLoginInterativo(onDone) {
   if (!googleTokenClient) return;
   googleTokenClient.callback = (tokenResponse) => {
     if (tokenResponse.error) {
-      console.log("Falha no login interativo:", tokenResponse.error);
       return;
     }
     gapi.client.setToken(tokenResponse);
