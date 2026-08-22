@@ -501,8 +501,11 @@ const EMPRESA_INFO = {
   cidade: "Curitiba",
   cep: "81880-400",
   estado: "Paraná",
-  fone: "(41) 3 3330-8478",
+  fone: "(41) 9 9990-8478",
+  fone2: "(41) 9 9289-9642",
   email: "contato@engjob.com.br",
+  instagram: "@engjobmanut_",
+  site: "www.engjob.com.br",
 };
 
 function gerarPdfProposta(proposta) {
@@ -512,26 +515,34 @@ function gerarPdfProposta(proposta) {
   const larguraUtil = doc.internal.pageSize.getWidth() - margem * 2;
   let y = 40;
 
-  // ----- Cabeçalho da empresa -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text(EMPRESA_INFO.nome, margem, y);
-  y += 16;
+  // ----- Cabeçalho: logo larga (já traz o nome da empresa desenhado) -----
+  const larguraLogo = 140;
+  const alturaLogo = larguraLogo / (typeof LOGO_ENGJOB_PROPORCAO !== "undefined" ? LOGO_ENGJOB_PROPORCAO : 3.35);
+  try {
+    if (typeof LOGO_ENGJOB_BASE64 !== "undefined") {
+      doc.addImage(LOGO_ENGJOB_BASE64, "JPEG", margem, y - 6, larguraLogo, alturaLogo);
+    }
+  } catch (e) {
+    // Se a logo falhar por algum motivo, o PDF continua sendo gerado
+    // normalmente, só sem a imagem — nunca trava a geração da proposta.
+    console.warn("[propostas-core] Não foi possível desenhar a logo no PDF:", e);
+  }
 
+  const xTextoEmpresa = margem + larguraLogo + 16;
+  let yTexto = y + 6;
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`CNPJ: ${EMPRESA_INFO.cnpj}`, margem, y);
-  doc.text(`Endereço: ${EMPRESA_INFO.endereco}`, margem + 220, y);
-  y += 13;
-  doc.text(`Bairro: ${EMPRESA_INFO.bairro}`, margem, y);
-  doc.text(`CEP: ${EMPRESA_INFO.cep}`, margem + 220, y);
-  y += 13;
-  doc.text(`Cidade: ${EMPRESA_INFO.cidade}`, margem, y);
-  doc.text(`Estado: ${EMPRESA_INFO.estado}`, margem + 220, y);
-  y += 13;
-  doc.text(`Fone: ${EMPRESA_INFO.fone}`, margem, y);
-  doc.text(`E-mail: ${EMPRESA_INFO.email}`, margem + 220, y);
-  y += 20;
+  doc.setFontSize(8.5);
+  doc.text(`${EMPRESA_INFO.endereco} - ${EMPRESA_INFO.bairro} - ${EMPRESA_INFO.cidade}/${EMPRESA_INFO.estado} - CEP ${EMPRESA_INFO.cep}`, xTextoEmpresa, yTexto);
+  yTexto += 12;
+  doc.text(`CNPJ: ${EMPRESA_INFO.cnpj}  •  ${EMPRESA_INFO.email}`, xTextoEmpresa, yTexto);
+  yTexto += 12;
+  // Quebrada em duas linhas — a linha única não cabia na largura
+  // disponível ao lado da logo, estourando a margem direita da página.
+  doc.text(`Fone: ${EMPRESA_INFO.fone} | ${EMPRESA_INFO.fone2}`, xTextoEmpresa, yTexto);
+  yTexto += 12;
+  doc.text(`${EMPRESA_INFO.instagram}  •  ${EMPRESA_INFO.site}`, xTextoEmpresa, yTexto);
+
+  y = Math.max(yTexto, y - 6 + alturaLogo) + 14;
 
   doc.setDrawColor(235, 153, 28);
   doc.setLineWidth(1.2);

@@ -266,6 +266,26 @@ async function tentarEmitir() {
   carregarNotas();
 }
 
+// ── Cancelamento — exige motivo/justificativa ──────────────────
+async function tentarCancelar(notaId, nomeTomador) {
+  const motivo = prompt(`Motivo do cancelamento de "${nomeTomador}":\n\n(campo obrigatório — a SEFAZ/prefeitura exige uma justificativa pra aceitar o cancelamento)`);
+  if (motivo === null) return; // cancelou o prompt, não faz nada
+  if (!motivo.trim()) {
+    mostrarToast("É obrigatório informar o motivo do cancelamento.", "erro");
+    return;
+  }
+
+  const resposta = await apiCancelarNotaFiscal(notaId, motivo);
+  if (!resposta.ok) {
+    mostrarToast(resposta.erro || "Não foi possível cancelar a nota.", "erro");
+    return;
+  }
+  // (quando a integração real estiver pronta, este caminho vai de fato
+  // enviar o evento de cancelamento pra SEFAZ/prefeitura)
+  mostrarToast("Nota cancelada com sucesso!");
+  carregarNotas();
+}
+
 async function salvarRascunhoSilencioso() {
   const tomadorNome = document.getElementById("campoTomadorNome").value.trim();
   if (!tomadorNome) return;
@@ -310,18 +330,28 @@ function renderizarListaNotas() {
 
     const el = document.createElement("div");
     el.className = "item-nota-fiscal";
+    const motivoLinha = nota.motivoCancelamento ? `<div class="meta">Motivo: ${nota.motivoCancelamento}</div>` : "";
     el.innerHTML = `
       <div>
         <div class="nome-tomador">${nota.tomadorNome} <span class="badge-status ${nota.status}">${nota.status}</span></div>
         <div class="meta">${(nota.itens || []).length} item(ns) · ${new Date(nota.atualizadoEm || nota.criadoEm).toLocaleString("pt-BR")}</div>
+        ${motivoLinha}
       </div>
       <div class="valor">${formatarMoeda(subtotal + totalImpostos)}</div>
       <div class="acoes">
         <button class="btn-abrir-nota">Abrir</button>
+        ${nota.status === "emitida" ? '<button class="btn-cancelar-nota">Cancelar</button>' : ""}
         <button class="btn-excluir-nota">Excluir</button>
       </div>
     `;
     el.querySelector(".btn-abrir-nota").addEventListener("click", () => preencherFormulario(nota));
+    const btnCancelar = el.querySelector(".btn-cancelar-nota");
+    if (btnCancelar) {
+      btnCancelar.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        tentarCancelar(nota.id, nota.tomadorNome);
+      });
+    }
     el.querySelector(".btn-excluir-nota").addEventListener("click", async (ev) => {
       ev.stopPropagation();
       const ok = await confirmarAcao(`Excluir esta ${TIPO_NOTA_PAGINA} de "${nota.tomadorNome}"?`, "");

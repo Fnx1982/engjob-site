@@ -187,3 +187,72 @@ body {
 .item-recebido .acoes .btn-excluir-recebido:hover { background: #FDECEA; }
 
 .vazio { text-align: center; padding: 40px; color: var(--texto-3); font-size: 13.5px; }
+
+/* ── Abas: Arquivos / Lixeira ────────────────────────────────── */
+.abas-recebidos {
+  display: inline-flex;
+  background: #e2e2e2;
+  border-radius: 14px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+.aba-recebidos {
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  background: transparent;
+  color: #666;
+  border: none;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.aba-recebidos.active {
+  background: var(--laranja);
+  color: #fff;
+}
+
+.aviso-lixeira {
+  font-size: 12.5px;
+  color: var(--texto-3);
+  background: var(--card-alt);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.item-recebido .acoes .btn-restaurar-recebido { color: var(--verde); border-color: #B7E2C4; }
+.item-recebido .acoes .btn-restaurar-recebido:hover { background: #E7F6EC; }
+
+/* ── Atalhos rápidos entre as telas de Notas ── */
+.atalhos-fluxo {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.atalhos-fluxo a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 100px;
+    padding: 8px 16px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #666;
+    text-decoration: none;
+    transition: 0.15s;
+}
+.atalhos-fluxo a:hover { background: #f7f7f7; border-color: #ccc; }
+.atalhos-fluxo a.atalho-atual {
+    background: rgb(235, 153, 28);
+    border-color: rgb(235, 153, 28);
+    color: #fff;
+    cursor: default;
+    pointer-events: none;
+}

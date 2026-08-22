@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="obras.css" />
   <script src="confirm-modal.js"></script>
   <script src="validacao.js"></script>
+  <script src="logo-empresa.js"></script>
   <script src="propostas-core.js"></script>
 </head>
 <body>
@@ -72,8 +73,43 @@
         <button type="button" class="btn-laranja" id="btnAddMaterialObra">+ Adicionar</button>
       </div>
     </div>
+    <div class="secao-detalhe">
+      <h3>Demandas</h3>
+      <p class="texto-ajuda">Peça uma tarefa pra alguém, com foto e local — a pessoa recebe um aviso, e você recebe outro quando ela marcar como feito.</p>
+      <div class="lista-itens-obra" id="listaDemandasObra"></div>
+
+      <div class="form-rapido-item" style="flex-wrap:wrap;">
+        <input type="text" id="novaDemandaTitulo" placeholder="Título/local (ex: Piso do bloco B)" />
+        <select id="novaDemandaAtribuido"><option value="">Atribuir para...</option></select>
+        <input type="file" id="novaDemandaFoto" accept="image/*" style="max-width:180px;" />
+        <button type="button" class="btn-laranja" id="btnAddDemanda">+ Adicionar demanda</button>
+      </div>
+      <textarea id="novaDemandaDescricao" placeholder="Descrição (opcional)" rows="2" style="width:100%; margin-top:8px; font-family:inherit; padding:8px; border-radius:8px; border:1px solid #ccc;"></textarea>
+    </div>
   </main>
 
+  <!-- Modal: concluir demanda -->
+  <div class="modal-overlay" id="modalConcluirDemanda">
+    <div class="modal-caixa-grande" style="max-width:420px;">
+      <div class="modal-cabecalho">
+        <h2>Marcar como concluída</h2>
+        <button type="button" class="modal-fechar" id="fecharModalConcluirDemanda">&times;</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; padding:4px;">
+        <label>
+          Foto da conclusão (opcional)
+          <input type="file" id="fotoConclusaoDemanda" accept="image/*" style="display:block; margin-top:6px;" />
+        </label>
+        <label>
+          Observação (opcional)
+          <textarea id="obsConclusaoDemanda" rows="2" style="width:100%; margin-top:6px; font-family:inherit; padding:8px; border-radius:8px; border:1px solid #ccc;"></textarea>
+        </label>
+        <button type="button" class="btn-laranja" id="btnConfirmarConclusaoDemanda">Confirmar conclusão</button>
+      </div>
+    </div>
+  </div>
+
   <script src="obra-detalhe.js"></script>
+  <script src="notificacoes.js"></script>
 </body>
 </html>

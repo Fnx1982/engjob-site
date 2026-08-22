@@ -92,11 +92,16 @@ nav.menu.expanded .span-menu {
 
 /* Logo */
 .menu .logo {
-  width: 200px;
+  width: 130px;
   max-width: 90%;
+  aspect-ratio: 1 / 1;
   height: auto;
   display: block;
   margin: 15px auto;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  border: 2px solid rgba(255,255,255,0.15);
 }
 
 /* ==========================================================================

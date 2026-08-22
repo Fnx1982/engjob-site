@@ -31,6 +31,22 @@ function lerCamposExtras() {
 
 document.getElementById("btnAddCampoExtra").addEventListener("click", () => adicionarLinhaExtra());
 
+// ── Abrir/fechar o modal (mesmo padrão do modal de Material — usa os
+// mesmos helpers abrirModal/fecharModalEl já definidos em
+// gestaodematerial.js, carregado antes deste arquivo) ────────────
+const modalServico = document.getElementById("modalServico");
+
+document.getElementById("btnAbrirServico").addEventListener("click", () => {
+  if (servicoEmEdicaoId === null) limparFormulario();
+  abrirModal(modalServico);
+});
+
+document.getElementById("fecharModalServico").addEventListener("click", () => fecharModalEl(modalServico));
+
+function fecharFormularioServico() {
+  fecharModalEl(modalServico);
+}
+
 // ── Formulário: limpar / preencher ──────────────────────────────
 function limparFormulario() {
   servicoEmEdicaoId = null;
@@ -38,7 +54,7 @@ function limparFormulario() {
   ["campoNome", "campoValor", "campoCodigoLC116", "campoCnae", "campoAliquotaIss", "campoObservacao"].forEach((id) => {
     document.getElementById(id).value = "";
   });
-  document.getElementById("campoUnidade").value = "UN";
+  document.getElementById("campoUnidade").value = "UND";
   document.getElementById("listaCamposExtras").innerHTML = "";
   document.getElementById("tituloFormulario").textContent = "Novo serviço";
   document.getElementById("btnCancelarEdicao").style.display = "none";
@@ -49,7 +65,7 @@ function preencherFormulario(servico) {
   document.getElementById("campoId").value = servico.id;
   document.getElementById("campoNome").value = servico.nome || "";
   document.getElementById("campoValor").value = servico.valor || "";
-  document.getElementById("campoUnidade").value = servico.unidade || "UN";
+  definirUnidadeComSeguranca(document.getElementById("campoUnidade"), servico.unidade);
   document.getElementById("campoCodigoLC116").value = servico.codigoServicoLC116 || "";
   document.getElementById("campoCnae").value = servico.cnae || "";
   document.getElementById("campoAliquotaIss").value = servico.aliquotaIss ?? "";
@@ -58,10 +74,10 @@ function preencherFormulario(servico) {
   (servico.camposAdicionais || []).forEach((c) => adicionarLinhaExtra(c));
   document.getElementById("tituloFormulario").textContent = `Editando — ${servico.nome}`;
   document.getElementById("btnCancelarEdicao").style.display = "inline-block";
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  abrirModal(modalServico);
 }
 
-document.getElementById("btnCancelarEdicao").addEventListener("click", limparFormulario);
+document.getElementById("btnCancelarEdicao").addEventListener("click", () => { limparFormulario(); fecharFormularioServico(); });
 
 // ── Salvar ────────────────────────────────────────────────────
 document.getElementById("btnSalvarServico").addEventListener("click", async () => {
@@ -77,7 +93,7 @@ document.getElementById("btnSalvarServico").addEventListener("click", async () =
       id: servicoEmEdicaoId,
       nome,
       valor: document.getElementById("campoValor").value ? Number(document.getElementById("campoValor").value) : 0,
-      unidade: document.getElementById("campoUnidade").value.trim().toUpperCase() || "UN",
+      unidade: document.getElementById("campoUnidade").value.trim().toUpperCase() || "UND",
       codigoServicoLC116: document.getElementById("campoCodigoLC116").value.trim(),
       cnae: document.getElementById("campoCnae").value.trim(),
       aliquotaIss: document.getElementById("campoAliquotaIss").value ? Number(document.getElementById("campoAliquotaIss").value) : null,
@@ -88,6 +104,7 @@ document.getElementById("btnSalvarServico").addEventListener("click", async () =
     if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar.", "erro"); return; }
     mostrarToast("Serviço salvo.");
     limparFormulario();
+    fecharFormularioServico();
     carregarServicos();
   } finally {
     botao.disabled = false;

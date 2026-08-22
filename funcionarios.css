@@ -436,32 +436,32 @@ table {
     font-weight: 600;
 }
 
-/* ===== Total fixo no rodapé ===== */
+/* ===== Total — caixa compacta, perto do conteúdo (não mais rodapé fixo) ===== */
 .total-fixo {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background-color: rgb(235, 153, 28);
-    color: white;
+    width: fit-content;
+    max-width: 100%;
+    margin: 16px auto 24px;
+    background-color: #fff;
+    color: #333;
     display: flex;
     justify-content: center;
     align-items: baseline;
     gap: 10px;
-    padding: 16px;
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
-    z-index: 100;
+    padding: 12px 24px;
+    border-radius: 100px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.12);
 }
 
 .total-fixo-label {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    opacity: 0.9;
+    color: #777;
 }
 
 .total-fixo-valor {
-    font-size: 20px;
+    font-size: 17px;
     font-weight: 700;
+    color: rgb(200, 130, 20);
 }
 
 /* ===== Modais (Obra / Pagamento) ===== */

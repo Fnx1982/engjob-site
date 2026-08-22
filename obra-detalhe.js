@@ -291,6 +291,186 @@ btnAddMaterialObra.addEventListener("click", () => {
 });
 
 // ====================================================
+// DEMANDAS
+// ====================================================
+const WORKER_URL_DEMANDAS = "https://engjob-storage.engjobmanut.workers.dev";
+let demandasCache = [];
+let idDemandaEmConclusao = null;
+
+function uploadFotoDemanda(prefixo, arquivo) {
+  return new Promise((resolve, reject) => {
+    const chave = `demandas/${prefixo}_${Date.now()}_${arquivo.name}`;
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", `${WORKER_URL_DEMANDAS}?action=put&key=${encodeURIComponent(chave)}`);
+    xhr.setRequestHeader("Content-Type", arquivo.type || "application/octet-stream");
+    const token = localStorage.getItem("sessionToken") || "";
+    if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+    xhr.onload = () => { if (xhr.status < 300) resolve(chave); else reject(new Error("Falha ao enviar a foto (" + xhr.status + ")")); };
+    xhr.onerror = () => reject(new Error("Falha de conexão ao enviar a foto"));
+    xhr.send(arquivo);
+  });
+}
+
+function urlFotoDemanda(chave) {
+  const token = localStorage.getItem("sessionToken") || "";
+  return `${WORKER_URL_DEMANDAS}?action=get&key=${encodeURIComponent(chave)}&token=${encodeURIComponent(token)}`;
+}
+
+async function popularSelectAtribuidoDemanda() {
+  const select = document.getElementById("novaDemandaAtribuido");
+  const resposta = await apiListarUsuariosBasico();
+  if (!resposta.ok) return;
+  resposta.usuarios.forEach((u) => {
+    const opt = document.createElement("option");
+    opt.value = u.registro;
+    opt.textContent = u.nome;
+    select.appendChild(opt);
+  });
+}
+
+async function carregarDemandas() {
+  const resposta = await apiListarDemandas(obraId);
+  if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao carregar demandas.", "erro"); return; }
+  demandasCache = resposta.demandas;
+  renderDemandas();
+}
+
+function renderDemandas() {
+  const lista = document.getElementById("listaDemandasObra");
+  lista.innerHTML = "";
+
+  if (demandasCache.length === 0) {
+    lista.innerHTML = `<p class="texto-ajuda">Nenhuma demanda ainda.</p>`;
+    return;
+  }
+
+  const meuRegistro = localStorage.getItem("userId") || "";
+
+  demandasCache.forEach((d) => {
+    const el = document.createElement("div");
+    el.className = "item-obra-linha";
+    const concluida = d.status === "concluida";
+    const souEuQueExecuto = d.atribuidoPara === meuRegistro;
+
+    el.innerHTML = `
+      <div style="display:flex; gap:12px; align-items:flex-start; width:100%;">
+        ${d.fotoChave ? `<img src="${urlFotoDemanda(d.fotoChave)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;" />` : ""}
+        <div style="flex:1;">
+          <div style="font-weight:700; font-size:13.5px;">
+            ${d.titulo}
+            <span style="font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:100px; margin-left:6px; background:${concluida ? "#E7F6EC" : "#FEF3DC"}; color:${concluida ? "#1C8A4B" : "#D07F00"};">${concluida ? "Concluída" : "Aberta"}</span>
+          </div>
+          ${d.descricao ? `<div style="font-size:12px; color:#666; margin-top:2px;">${d.descricao}</div>` : ""}
+          <div style="font-size:11px; color:#999; margin-top:4px;">
+            Pedido por ${d.criadoPorNome} · Atribuído a ${d.atribuidoParaNome}
+          </div>
+          ${concluida && d.observacaoConclusao ? `<div style="font-size:12px; color:#1C8A4B; margin-top:4px;">✓ ${d.observacaoConclusao}</div>` : ""}
+          ${concluida && d.fotoConclusaoChave ? `<img src="${urlFotoDemanda(d.fotoConclusaoChave)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;margin-top:6px;" />` : ""}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          ${!concluida ? `<button type="button" class="btn-concluir-demanda" data-id="${d.id}" style="background:#1C8A4B;color:#fff;border:none;border-radius:100px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;">✓ Marcar feito</button>` : ""}
+          <button type="button" class="btn-excluir-demanda" data-id="${d.id}" style="background:#f7f7f7;border:1px solid #ddd;border-radius:100px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;color:#DC143C;">Excluir</button>
+        </div>
+      </div>
+    `;
+
+    const btnConcluir = el.querySelector(".btn-concluir-demanda");
+    if (btnConcluir) {
+      btnConcluir.addEventListener("click", () => {
+        idDemandaEmConclusao = d.id;
+        document.getElementById("fotoConclusaoDemanda").value = "";
+        document.getElementById("obsConclusaoDemanda").value = "";
+        document.getElementById("modalConcluirDemanda").classList.add("active");
+      });
+    }
+
+    el.querySelector(".btn-excluir-demanda").addEventListener("click", async () => {
+      const ok = await confirmarAcao(`Excluir a demanda "${d.titulo}"?`, "");
+      if (!ok) return;
+      const resp = await apiExcluirDemanda(d.id);
+      if (!resp.ok) { mostrarToast(resp.erro || "Erro ao excluir.", "erro"); return; }
+      mostrarToast("Demanda excluída.");
+      carregarDemandas();
+    });
+
+    lista.appendChild(el);
+  });
+}
+
+document.getElementById("btnAddDemanda").addEventListener("click", async () => {
+  const titulo = document.getElementById("novaDemandaTitulo").value.trim();
+  const atribuidoPara = document.getElementById("novaDemandaAtribuido").value;
+  const atribuidoParaNome = document.getElementById("novaDemandaAtribuido").selectedOptions[0]?.textContent || "";
+  const descricao = document.getElementById("novaDemandaDescricao").value.trim();
+  const arquivoFoto = document.getElementById("novaDemandaFoto").files[0] || null;
+
+  if (!titulo) { mostrarToast("Informe o título/local da demanda.", "erro"); return; }
+  if (!atribuidoPara) { mostrarToast("Escolha pra quem atribuir.", "erro"); return; }
+
+  const botao = document.getElementById("btnAddDemanda");
+  const textoOriginal = botao.textContent;
+  botao.disabled = true;
+
+  try {
+    let fotoChave = "";
+    if (arquivoFoto) {
+      botao.textContent = "Enviando foto...";
+      fotoChave = await uploadFotoDemanda("pedido", arquivoFoto);
+    }
+    botao.textContent = "Salvando...";
+    const resposta = await apiSalvarDemanda({ obraId, titulo, descricao, atribuidoPara, atribuidoParaNome, fotoChave });
+    if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao criar demanda.", "erro"); return; }
+
+    mostrarToast("Demanda criada — a pessoa foi avisada.");
+    document.getElementById("novaDemandaTitulo").value = "";
+    document.getElementById("novaDemandaDescricao").value = "";
+    document.getElementById("novaDemandaFoto").value = "";
+    document.getElementById("novaDemandaAtribuido").value = "";
+    carregarDemandas();
+  } catch (e) {
+    mostrarToast(e.message || "Erro ao criar demanda.", "erro");
+  } finally {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
+});
+
+document.getElementById("fecharModalConcluirDemanda").addEventListener("click", () => {
+  document.getElementById("modalConcluirDemanda").classList.remove("active");
+});
+
+document.getElementById("btnConfirmarConclusaoDemanda").addEventListener("click", async () => {
+  if (!idDemandaEmConclusao) return;
+  const arquivoFoto = document.getElementById("fotoConclusaoDemanda").files[0] || null;
+  const observacao = document.getElementById("obsConclusaoDemanda").value.trim();
+
+  const botao = document.getElementById("btnConfirmarConclusaoDemanda");
+  const textoOriginal = botao.textContent;
+  botao.disabled = true;
+
+  try {
+    let fotoConclusaoChave = "";
+    if (arquivoFoto) {
+      botao.textContent = "Enviando foto...";
+      fotoConclusaoChave = await uploadFotoDemanda("conclusao", arquivoFoto);
+    }
+    botao.textContent = "Confirmando...";
+    const resposta = await apiConcluirDemanda(idDemandaEmConclusao, fotoConclusaoChave, observacao);
+    if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao concluir.", "erro"); return; }
+
+    mostrarToast("Demanda concluída — quem pediu foi avisado.");
+    document.getElementById("modalConcluirDemanda").classList.remove("active");
+    idDemandaEmConclusao = null;
+    carregarDemandas();
+  } catch (e) {
+    mostrarToast(e.message || "Erro ao concluir.", "erro");
+  } finally {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
+});
+
+// ====================================================
 // INICIALIZAÇÃO
 // ====================================================
 function renderTudo() {
@@ -301,3 +481,5 @@ function renderTudo() {
 }
 
 renderTudo();
+popularSelectAtribuidoDemanda();
+carregarDemandas(); 

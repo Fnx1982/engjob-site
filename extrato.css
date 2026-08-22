@@ -526,19 +526,18 @@ tbody tr:last-child td {
 
 /* ===== Total fixo no rodapé (entrada / saída / saldo) ===== */
 .total-fixo {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background-color: rgb(50, 50, 50);
-    color: white;
+    width: fit-content;
+    max-width: 100%;
+    margin: 16px auto 24px;
+    background-color: #fff;
+    color: #333;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 36px;
-    padding: 14px;
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
-    z-index: 100;
+    gap: 28px;
+    padding: 12px 24px;
+    border-radius: 100px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.12);
     flex-wrap: wrap;
 }
 
@@ -549,21 +548,21 @@ tbody tr:last-child td {
 }
 
 .total-fixo .bloco-total span:first-child {
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 600;
-    opacity: 0.7;
+    color: #888;
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
 
 .total-fixo .bloco-total span:last-child {
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 700;
 }
 
-.total-fixo .bloco-total.entrada span:last-child { color: #5fd996; }
-.total-fixo .bloco-total.saida span:last-child { color: #ff8f8a; }
-.total-fixo .bloco-total.saldo span:last-child { color: rgb(245, 180, 80); }
+.total-fixo .bloco-total.entrada span:last-child { color: #1c8a4b; }
+.total-fixo .bloco-total.saida span:last-child { color: #dc143c; }
+.total-fixo .bloco-total.saldo span:last-child { color: rgb(200, 130, 20); }
 
 /* ===== Modais ===== */
 .modal-overlay {
@@ -723,4 +722,34 @@ tbody tr:last-child td {
         font-size: 11px;
         text-transform: uppercase;
     }
+}
+/* ── Atalhos rápidos entre os extratos dos 3 bancos ── */
+.atalhos-fluxo {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.atalhos-fluxo a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 100px;
+    padding: 8px 16px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #666;
+    text-decoration: none;
+    transition: 0.15s;
+}
+.atalhos-fluxo a:hover { background: #f7f7f7; border-color: #ccc; }
+.atalhos-fluxo a.atalho-atual {
+    background: rgb(235, 153, 28);
+    border-color: rgb(235, 153, 28);
+    color: #fff;
+    cursor: default;
+    pointer-events: none;
 }

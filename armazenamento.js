@@ -116,6 +116,10 @@ function parseSizesXml(xml) {
 // ── ESTADO ───────────────────────────────────────────────────
 let pastaAtual  = "";
 let abaAtiva    = "arquivos";
+// Guarda os itens selecionados na lixeira: caminho -> ehPasta.
+// Fica fora do escopo de renderGrid() de propósito, pra sobreviver a
+// re-renderizações (ex: quando o usuário digita na busca).
+let itensSelecionadosLixeira = new Map();
 let itensCached = [];
 let contextAlvo = null;
 let renomearAlvo= null;
@@ -219,6 +223,7 @@ function renderGrid() {
   semItens.style.display = "none";
 
   [...pastas, ...arquivos].forEach(item => grid.appendChild(criarItemEl(item, !item.id)));
+  atualizarBarraSelecaoLixeira();
 }
 
 function criarItemEl(item, ehPasta) {
@@ -228,6 +233,8 @@ function criarItemEl(item, ehPasta) {
 
   const prefix = abaAtiva === "lixeira" ? ".lixeira/" : pastaAtual;
   const caminho = prefix + item.name;
+  el.dataset.caminho = caminho;
+  el.dataset.ehPasta = ehPasta ? "1" : "0";
 
   // "nomeParaAcoes": usado internamente por restaurar/mover/excluir — na
   // lixeira, mantém o caminho original CODIFICADO (com "::" no lugar de
@@ -269,6 +276,7 @@ function criarItemEl(item, ehPasta) {
   }
 
   el.innerHTML = `
+    ${abaAtiva === "lixeira" ? `<input type="checkbox" class="item-checkbox" ${itensSelecionadosLixeira.has(caminho) ? "checked" : ""} />` : ""}
     ${iconeHtml}
     <div class="item-nome">${nomeExibido}</div>
     ${tamanho ? `<div class="item-meta">${tamanho}</div>` : ""}
@@ -276,6 +284,16 @@ function criarItemEl(item, ehPasta) {
     ${badgeLixeira}
     <button class="item-menu-btn" title="Opções">⋯</button>
   `;
+
+  if (abaAtiva === "lixeira") {
+    const checkbox = el.querySelector(".item-checkbox");
+    checkbox.addEventListener("click", (e) => e.stopPropagation()); // não deixa o clique também "selecionar" o card (seleção visual é outra coisa)
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) itensSelecionadosLixeira.set(caminho, ehPasta);
+      else itensSelecionadosLixeira.delete(caminho);
+      atualizarBarraSelecaoLixeira();
+    });
+  }
 
   el.addEventListener("dblclick", () => {
     if (ehPasta) entrarPasta(item.name);
@@ -298,6 +316,65 @@ function criarItemEl(item, ehPasta) {
 
   return el;
 }
+
+// ── SELEÇÃO EM MASSA (lixeira) ──────────────────────────────────
+function atualizarBarraSelecaoLixeira() {
+  const barra = document.getElementById("barraSelecaoLixeira");
+  const btnExcluir = document.getElementById("btnExcluirSelecionados");
+  const texto = document.getElementById("textoSelecionados");
+  const checkTudo = document.getElementById("checkSelecionarTudo");
+
+  if (abaAtiva !== "lixeira") { barra.style.display = "none"; return; }
+  barra.style.display = "flex";
+
+  const qtd = itensSelecionadosLixeira.size;
+  btnExcluir.style.display = qtd > 0 ? "inline-block" : "none";
+  texto.textContent = qtd > 0 ? `${qtd} selecionado(s)` : "Selecionar tudo";
+
+  // Reflete no checkbox "selecionar tudo" se todos os itens VISÍVEIS
+  // (considerando a busca atual) já estão marcados.
+  const visiveisNaTela = document.querySelectorAll(".item-storage").length;
+  checkTudo.checked = visiveisNaTela > 0 && qtd >= visiveisNaTela;
+}
+
+document.getElementById("checkSelecionarTudo").addEventListener("change", (e) => {
+  const marcado = e.target.checked;
+  itensSelecionadosLixeira.clear();
+  if (marcado) {
+    document.querySelectorAll(".item-storage").forEach((el) => {
+      const checkbox = el.querySelector(".item-checkbox");
+      if (!checkbox) return;
+      checkbox.checked = true;
+      itensSelecionadosLixeira.set(el.dataset.caminho, el.dataset.ehPasta === "1");
+    });
+  } else {
+    document.querySelectorAll(".item-checkbox").forEach((c) => { c.checked = false; });
+  }
+  atualizarBarraSelecaoLixeira();
+});
+
+document.getElementById("btnExcluirSelecionados").addEventListener("click", async () => {
+  const qtd = itensSelecionadosLixeira.size;
+  if (qtd === 0) return;
+  const ok = await confirmarAcao(
+    `Excluir ${qtd} item(ns) selecionado(s) definitivamente?`,
+    "Essa ação não pode ser desfeita — os arquivos são apagados de vez do Armazenamento."
+  );
+  if (!ok) return;
+
+  let falhas = 0;
+  for (const [caminho, ehPasta] of itensSelecionadosLixeira) {
+    try {
+      if (ehPasta) await apiDeletePrefix(caminho);
+      else await apiDelete(caminho);
+    } catch (e) { falhas++; }
+  }
+
+  itensSelecionadosLixeira.clear();
+  if (falhas === 0) mostrarToast(`${qtd} item(ns) excluído(s) definitivamente.`);
+  else mostrarToast(`${qtd - falhas} de ${qtd} excluído(s) — ${falhas} falharam.`, "erro");
+  carregarItens();
+});
 
 // ── PASTAS ───────────────────────────────────────────────────
 function entrarPasta(nome) {
@@ -537,6 +614,7 @@ document.querySelectorAll(".aba-storage").forEach(btn => {
     btn.classList.add("active");
     abaAtiva   = btn.dataset.aba;
     pastaAtual = "";
+    itensSelecionadosLixeira.clear();
     atualizarBreadcrumb();
     carregarItens();
   });

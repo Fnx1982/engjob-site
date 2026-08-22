@@ -115,6 +115,42 @@ async function apiExcluirRecebido(id) {
   return chamarWorker("recebidos-excluir", { method: "POST", body: { id } });
 }
 
+// ── Lixeira de Recebidos (unificada com a lixeira do Armazenamento) ──
+async function apiListarLixeiraRecebidos() {
+  return chamarWorker("recebidos-lixeira-list");
+}
+async function apiRestaurarRecebido(id) {
+  return chamarWorker("recebidos-restaurar", { method: "POST", body: { id } });
+}
+async function apiExcluirRecebidoDefinitivo(id) {
+  return chamarWorker("recebidos-excluir-definitivo", { method: "POST", body: { id } });
+}
+
+// ── Demandas (tarefas dentro de uma obra) ────────────────────────
+async function apiListarDemandas(obraId) {
+  return chamarWorker("demandas-list" + (obraId ? `&obraId=${encodeURIComponent(obraId)}` : ""));
+}
+async function apiSalvarDemanda(dados) {
+  return chamarWorker("demandas-salvar", { method: "POST", body: dados });
+}
+async function apiConcluirDemanda(id, fotoConclusaoChave, observacaoConclusao) {
+  return chamarWorker("demandas-concluir", { method: "POST", body: { id, fotoConclusaoChave, observacaoConclusao } });
+}
+async function apiExcluirDemanda(id) {
+  return chamarWorker("demandas-excluir", { method: "POST", body: { id } });
+}
+
+// ── Notificações ──────────────────────────────────────────────
+async function apiListarNotificacoes() {
+  return chamarWorker("notificacoes-list");
+}
+async function apiMarcarNotificacaoLida(id) {
+  return chamarWorker("notificacoes-marcar-lida", { method: "POST", body: { id } });
+}
+async function apiMarcarTodasNotificacoesLidas() {
+  return chamarWorker("notificacoes-marcar-todas-lidas", { method: "POST", body: {} });
+}
+
 // ── Notas fiscais (NF-e / NFS-e) ────────────────────────────────
 async function apiListarNotasFiscais() {
   return chamarWorker("notas-fiscais-list");
@@ -130,6 +166,10 @@ async function apiExcluirNotaFiscal(id) {
 
 async function apiEmitirNotaFiscal(id) {
   return chamarWorker("notas-fiscais-emitir", { method: "POST", body: { id } });
+}
+
+async function apiCancelarNotaFiscal(id, motivo) {
+  return chamarWorker("notas-fiscais-cancelar", { method: "POST", body: { id, motivo } });
 }
 
 // ── Contatos (clientes/fornecedores) ────────────────────────────

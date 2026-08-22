@@ -74,6 +74,17 @@
       </div>
     </div>
 
+    <!-- Barra de seleção em massa — só aparece na aba Lixeira -->
+    <div class="barra-selecao-lixeira" id="barraSelecaoLixeira" style="display:none;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="checkSelecionarTudo" />
+        <span id="textoSelecionados">Selecionar tudo</span>
+      </label>
+      <button type="button" class="btn-excluir-selecionados" id="btnExcluirSelecionados" style="display:none;">
+        🗑 Excluir selecionados definitivamente
+      </button>
+    </div>
+
     <!-- Área principal -->
     <div class="area-arquivos" id="areaArquivos">
 

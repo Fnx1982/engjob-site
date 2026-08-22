@@ -18,8 +18,25 @@
         <h1>Notas Recebidas</h1>
         <p>Documentos fiscais que fornecedores emitiram para o CNPJ da EnJob</p>
       </div>
+
       <a href="home.html" class="btn-voltar">← Voltar</a>
     </div>
+    <div class="atalhos-fluxo">
+      <a href="nfe.html" class="atalho-fluxo">📦 Material</a>
+      <a href="nfse.html" class="atalho-fluxo">🔧 Mão de Obra</a>
+      <a href="consulta-notas.html" class="atalho-fluxo">🔍 Consulta</a>
+      <a href="recebidos.html" class="atalho-fluxo atalho-atual">📥 Recebidos</a>
+      <a href="contatos.html" class="atalho-fluxo">👤 Clientes/Fornecedores</a>
+    </div>
+
+
+    <!-- Abas: Arquivos / Lixeira -->
+    <div class="abas-recebidos">
+      <button type="button" class="aba-recebidos active" id="btnAbaArquivos">Arquivos</button>
+      <button type="button" class="aba-recebidos" id="btnAbaLixeira">🗑 Lixeira</button>
+    </div>
+
+    <div id="painelArquivos">
 
     <!-- Formulário de registro -->
     <div class="card-form">
@@ -84,6 +101,17 @@
 
     <div class="lista-recebidos" id="listaRecebidos"></div>
     <div class="vazio" id="vazioRecebidos" style="display:none;">Nenhuma nota registrada ainda.</div>
+
+    </div><!-- /painelArquivos -->
+
+    <div id="painelLixeira" style="display:none;">
+      <p class="aviso-lixeira">
+        Os arquivos aqui ficam guardados junto com a lixeira do Armazenamento —
+        depois de 30 dias sem restaurar, são apagados automaticamente.
+      </p>
+      <div class="lista-recebidos" id="listaLixeira"></div>
+      <div class="vazio" id="vazioLixeira" style="display:none;">A lixeira está vazia.</div>
+    </div>
 
   </main>
 

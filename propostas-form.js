@@ -7,6 +7,21 @@
 let propostaEmEdicao = null;
 let onSalvarPropostaCallback = null;
 
+const UNIDADES_PADRAO = ["UND", "CM", "CM²", "M", "M²", "ML"];
+
+// Gera as <option> do select de unidade, com o valor atual já
+// selecionado — inclusive se for um valor antigo que não está na
+// lista padrão (nesse caso, adiciona ele como opção extra, pra não
+// perder o dado de itens já cadastrados antes dessa lista existir).
+function opcoesUnidadeHtml(valorAtual) {
+  const valor = (valorAtual || "UND").toUpperCase();
+  let opcoes = UNIDADES_PADRAO.map((u) => `<option value="${u}"${u === valor ? " selected" : ""}>${u}</option>`).join("");
+  if (!UNIDADES_PADRAO.includes(valor)) {
+    opcoes += `<option value="${valor}" selected>${valor} (valor antigo)</option>`;
+  }
+  return opcoes;
+}
+
 function montarModalFormularioProposta() {
   if (document.getElementById("modalProposta")) return;
 
@@ -269,8 +284,7 @@ function renderTabelaMaoDeObra() {
           ${bloqueado ? 'disabled style="opacity:0.4;"' : ''} />
       </td>
       <td>
-        <input type="text" value="${item.unid || ""}" placeholder="un"
-          data-mo-campo="unid" data-mo-index="${index}" />
+        <select data-mo-campo="unid" data-mo-index="${index}">${opcoesUnidadeHtml(item.unid)}</select>
       </td>
       <td>
         <input type="number" min="0" step="0.01" value="${item.valorUnit || ""}"
@@ -362,7 +376,7 @@ function renderTabelaMaoDeObra() {
 }
 
 function adicionarLinhaMaoDeObra() {
-  propostaEmEdicao.itensMaoDeObra.push({ qtd: null, unid: "un", descricao: "", valorUnit: null, valorFinal: null, servicoId: null });
+  propostaEmEdicao.itensMaoDeObra.push({ qtd: null, unid: "UND", descricao: "", valorUnit: null, valorFinal: null, servicoId: null });
   renderTabelaMaoDeObra();
   atualizarTotaisFormulario();
 }
@@ -450,7 +464,7 @@ async function cadastrarMaterialRapido() {
     const novoMaterial = { id: resposta.id, nome, setor, codigo: "", valor, quantidade: 0, observacao: "" };
     materiaisEstoqueCache.push(novoMaterial);
 
-    propostaEmEdicao.itensMateriais.push({ qtd: 1, unid: "un", nome, valorUnit: valor, valorFinal: null, materialId: resposta.id });
+    propostaEmEdicao.itensMateriais.push({ qtd: 1, unid: "UND", nome, valorUnit: valor, valorFinal: null, materialId: resposta.id });
 
     campoNome.value = ""; campoValor.value = ""; campoSetor.value = "";
     renderChecklistMateriaisEstoque();
@@ -488,8 +502,7 @@ function renderTabelaMateriais() {
           ${bloqueado ? 'disabled style="opacity:0.4;"' : ''} />
       </td>
       <td>
-        <input type="text" value="${item.unid || ""}" placeholder="un"
-          data-mat-campo="unid" data-mat-index="${index}" />
+        <select data-mat-campo="unid" data-mat-index="${index}">${opcoesUnidadeHtml(item.unid)}</select>
       </td>
       <td>
         <input type="number" min="0" step="0.01" value="${item.valorUnit || ""}"
@@ -559,7 +572,7 @@ function renderTabelaMateriais() {
 }
 
 function adicionarLinhaMaterial() {
-  propostaEmEdicao.itensMateriais.push({ qtd: null, unid: "un", nome: "", valorUnit: null, valorFinal: null, materialId: null });
+  propostaEmEdicao.itensMateriais.push({ qtd: null, unid: "UND", nome: "", valorUnit: null, valorFinal: null, materialId: null });
   renderTabelaMateriais();
   atualizarTotaisFormulario();
 }

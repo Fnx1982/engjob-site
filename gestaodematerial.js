@@ -5,6 +5,29 @@
 const CHAVE_SETORES = "materiais_setores";
 const CHAVE_MATERIAIS = "materiais_lista";
 
+// Seleciona a unidade no dropdown com segurança: se o valor salvo não
+// bater com nenhuma das opções padrão (dado antigo, de antes dessa
+// lista existir), adiciona uma opção extra temporária em vez de
+// perder silenciosamente o dado.
+function definirUnidadeComSeguranca(selectEl, valor) {
+  valor = (valor || "UND").toUpperCase();
+  // Sempre remove a opção extra do item editado ANTERIORMENTE primeiro
+  // — senão, ao editar um item com unidade padrão logo depois de um
+  // item com unidade antiga, a opção extra antiga fica esquecida ali.
+  const extraAntiga = selectEl.querySelector("option[data-extra]");
+  if (extraAntiga) extraAntiga.remove();
+
+  const jaExiste = [...selectEl.options].some((o) => o.value === valor);
+  if (!jaExiste) {
+    const opt = document.createElement("option");
+    opt.value = valor;
+    opt.textContent = valor + " (valor antigo)";
+    opt.dataset.extra = "1";
+    selectEl.appendChild(opt);
+  }
+  selectEl.value = valor;
+}
+
 // ====================================================
 // ELEMENTOS
 // ====================================================
@@ -73,7 +96,7 @@ btnAbrirMaterial.addEventListener("click", () => {
     form.reset();
     document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
     document.getElementById("origemMaterial").value = "0";
-    document.getElementById("unidadeMaterial").value = "UN";
+    document.getElementById("unidadeMaterial").value = "UND";
     tituloModalMaterial.textContent = "Novo Material";
     btnSubmitMaterial.textContent = "Adicionar";
   }
@@ -279,7 +302,7 @@ form.addEventListener("submit", async (e) => {
     form.reset();
     document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
     document.getElementById("origemMaterial").value = "0";
-    document.getElementById("unidadeMaterial").value = "UN";
+    document.getElementById("unidadeMaterial").value = "UND";
     fecharModalEl(modalMaterial);
     renderTudo();
   } finally {
@@ -302,7 +325,7 @@ function editar(index) {
   document.getElementById("eanMaterial").value = m.ean || "";
   document.getElementById("origemMaterial").value = m.origem || "0";
   document.getElementById("cstCsosnMaterial").value = m.cstCsosn || "";
-  document.getElementById("unidadeMaterial").value = m.unidade || "UN";
+  definirUnidadeComSeguranca(document.getElementById("unidadeMaterial"), m.unidade);
   document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
   (m.camposAdicionais || []).forEach((c) => adicionarLinhaExtraMaterial(c));
   indiceEditando = index;

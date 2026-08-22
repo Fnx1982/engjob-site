@@ -108,17 +108,98 @@ function renderizarLista() {
     `;
 
     el.querySelector(".btn-excluir-recebido").addEventListener("click", async () => {
-      const ok = await confirmarAcao(`Excluir a nota de "${nota.fornecedorNome}"?`, "Isso não apaga o arquivo do Armazenamento, só remove o registro.");
+      const ok = await confirmarAcao(`Mover a nota de "${nota.fornecedorNome}" pra lixeira?`, "Fica guardada na lixeira (junto com o Armazenamento) até você restaurar ou excluir definitivamente.");
       if (!ok) return;
       const resp = await apiExcluirRecebido(nota.id);
-      if (!resp.ok) { mostrarToast(resp.erro || "Erro ao excluir.", "erro"); return; }
-      mostrarToast("Nota excluída.");
+      if (!resp.ok) { mostrarToast(resp.erro || "Erro ao mover pra lixeira.", "erro"); return; }
+      mostrarToast("Movido para a lixeira.");
       carregarRecebidos();
     });
 
     lista.appendChild(el);
   });
 }
+
+// ── Lixeira ──────────────────────────────────────────────────
+async function carregarLixeira() {
+  const resposta = await apiListarLixeiraRecebidos();
+  if (!resposta.ok) {
+    mostrarToast(resposta.erro || "Não foi possível carregar a lixeira.", "erro");
+    return;
+  }
+  renderizarLixeira(resposta.notas);
+}
+
+function renderizarLixeira(notas) {
+  const lista = document.getElementById("listaLixeira");
+  const vazio = document.getElementById("vazioLixeira");
+  lista.innerHTML = "";
+
+  if (notas.length === 0) {
+    vazio.style.display = "block";
+    return;
+  }
+  vazio.style.display = "none";
+
+  notas.forEach((nota) => {
+    const el = document.createElement("div");
+    el.className = "item-recebido";
+
+    const partesMeta = [];
+    if (nota.numeroNota) partesMeta.push(`Nº ${nota.numeroNota}`);
+    if (nota.excluidoEm) partesMeta.push("Excluído em " + new Date(nota.excluidoEm).toLocaleDateString("pt-BR"));
+
+    el.innerHTML = `
+      <div class="info-principal">
+        <div class="icone-tipo">${iconePorTipo(nota.tipo)}</div>
+        <div>
+          <div class="nome-fornecedor">${nota.fornecedorNome}</div>
+          <div class="meta">${nota.tipo} • ${partesMeta.join(" · ")}</div>
+        </div>
+      </div>
+      <div class="valor">${formatarMoeda(nota.valor)}</div>
+      <div class="acoes">
+        ${nota.arquivoChave ? `<a href="${urlArquivoRecebido(nota.arquivoChave)}" target="_blank" rel="noopener">📎 Ver arquivo</a>` : ""}
+        <button class="btn-restaurar-recebido">↩ Restaurar</button>
+        <button class="btn-excluir-recebido">Excluir definitivo</button>
+      </div>
+    `;
+
+    el.querySelector(".btn-restaurar-recebido").addEventListener("click", async () => {
+      const resp = await apiRestaurarRecebido(nota.id);
+      if (!resp.ok) { mostrarToast(resp.erro || "Erro ao restaurar.", "erro"); return; }
+      mostrarToast("Nota restaurada.");
+      carregarLixeira();
+    });
+
+    el.querySelector(".btn-excluir-recebido").addEventListener("click", async () => {
+      const ok = await confirmarAcao(`Excluir definitivamente a nota de "${nota.fornecedorNome}"?`, "Isso apaga o arquivo de vez do Armazenamento. Não tem como desfazer.");
+      if (!ok) return;
+      const resp = await apiExcluirRecebidoDefinitivo(nota.id);
+      if (!resp.ok) { mostrarToast(resp.erro || "Erro ao excluir.", "erro"); return; }
+      mostrarToast("Excluído definitivamente.");
+      carregarLixeira();
+    });
+
+    lista.appendChild(el);
+  });
+}
+
+// ── Abas: Arquivos / Lixeira ──────────────────────────────────
+document.getElementById("btnAbaArquivos").addEventListener("click", () => {
+  document.getElementById("btnAbaArquivos").classList.add("active");
+  document.getElementById("btnAbaLixeira").classList.remove("active");
+  document.getElementById("painelArquivos").style.display = "block";
+  document.getElementById("painelLixeira").style.display = "none";
+});
+
+document.getElementById("btnAbaLixeira").addEventListener("click", () => {
+  document.getElementById("btnAbaLixeira").classList.add("active");
+  document.getElementById("btnAbaArquivos").classList.remove("active");
+  document.getElementById("painelArquivos").style.display = "none";
+  document.getElementById("painelLixeira").style.display = "block";
+  carregarLixeira();
+});
 
 // ── Formulário ────────────────────────────────────────────────
 document.getElementById("campoArquivo").addEventListener("change", (e) => {

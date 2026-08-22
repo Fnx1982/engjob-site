@@ -14,9 +14,18 @@
 <body>
   <main class="container">
     <div class="topo-pagina">
-      <h1>Gestão de Materiais</h1>
+      <h1>Materiais e Serviços</h1>
       <a href="home.html" class="btn-voltar">Voltar</a>
     </div>
+
+    <!-- Abas de nível superior: Materiais / Serviços -->
+    <div class="abas abas-nivel-superior">
+      <button type="button" class="aba active" id="btnAbaMateriais">📦 Materiais</button>
+      <button type="button" class="aba" id="btnAbaServicos">🔧 Serviços</button>
+    </div>
+
+    <!-- ══════════════ PAINEL: MATERIAIS ══════════════ -->
+    <div id="painelMateriais">
 
     <!-- Barra de ações -->
     <div class="barra-acoes">
@@ -57,10 +66,33 @@
     <div class="sem-resultados" id="semResultados" style="display:none;">
       Nenhum material encontrado com esses filtros.
     </div>
+
+    </div><!-- /painelMateriais -->
+
+    <!-- ══════════════ PAINEL: SERVIÇOS ══════════════ -->
+    <div id="painelServicos" style="display:none;">
+
+      <div class="barra-acoes">
+        <div></div>
+        <div class="botoes-cadastro">
+          <button type="button" class="btn-laranja" id="btnAbrirServico">+ Serviço</button>
+        </div>
+      </div>
+
+      <div class="card-filtros">
+        <div class="filtro-busca">
+          <label class="filtro-label" for="buscaServicos">Buscar</label>
+          <input type="text" id="buscaServicos" placeholder="Buscar por descrição, código LC 116 ou CNAE..." />
+        </div>
+      </div>
+
+      <div id="listaServicos" class="lista-servicos"></div>
+      <div class="sem-resultados" id="vazioServicos" style="display:none;">Nenhum serviço cadastrado ainda.</div>
+    </div><!-- /painelServicos -->
   </main>
 
-  <!-- Total fixo no rodapé -->
-  <div class="total-fixo">
+  <!-- Total de materiais (só aparece na aba Materiais) -->
+  <div class="total-fixo" id="totalFixoMateriais">
     <div class="bloco-total">
       <span>Itens exibidos</span>
       <span id="totalItensValor">0</span>
@@ -167,7 +199,14 @@
         </label>
         <label>
           <span class="rotulo-com-opcional">Unidade <span class="texto-opcional">(opcional)</span></span>
-          <input type="text" id="unidadeMaterial" placeholder="UN, KG, M, SC..." value="UN" />
+          <select id="unidadeMaterial">
+            <option value="UND">UND</option>
+            <option value="CM">CM</option>
+            <option value="CM²">CM²</option>
+            <option value="M">M</option>
+            <option value="M²">M²</option>
+            <option value="ML">ML</option>
+          </select>
         </label>
 
         <div class="campo-largura-total">
@@ -181,6 +220,88 @@
     </div>
   </div>
 
+  <!-- Modal: Cadastrar / Editar Serviço -->
+  <div class="modal-overlay" id="modalServico">
+    <div class="modal-caixa">
+      <div class="modal-cabecalho">
+        <h2 id="tituloFormulario">Novo serviço</h2>
+        <button type="button" class="modal-fechar" id="fecharModalServico">&times;</button>
+      </div>
+      <div class="form-modal-grid">
+        <input type="hidden" id="campoId" />
+        <label class="campo-largura-total">
+          Descrição do serviço
+          <input type="text" id="campoNome" placeholder="ex: Instalação elétrica residencial" />
+        </label>
+        <label>
+          Valor padrão (R$)
+          <input type="number" id="campoValor" step="0.01" min="0" placeholder="opcional" />
+        </label>
+        <label>
+          Unidade
+          <select id="campoUnidade">
+            <option value="UND">UND</option>
+            <option value="CM">CM</option>
+            <option value="CM²">CM²</option>
+            <option value="M">M</option>
+            <option value="M²">M²</option>
+            <option value="ML">ML</option>
+          </select>
+        </label>
+        <label>
+          Código de Serviço (LC 116)
+          <input type="text" id="campoCodigoLC116" placeholder="ex: 07.02" />
+        </label>
+        <label>
+          CNAE
+          <input type="text" id="campoCnae" placeholder="ex: 4321-5/00" />
+        </label>
+        <label>
+          Alíquota ISS (%)
+          <input type="number" id="campoAliquotaIss" step="0.01" min="0" max="100" placeholder="ex: 5" />
+        </label>
+        <label class="campo-largura-total">
+          Observação
+          <textarea id="campoObservacao"></textarea>
+        </label>
+
+        <div class="campo-largura-total">
+          <span class="rotulo-codigos-extras">Códigos extras <span class="texto-opcional-inline">— qualquer outro código fiscal que aparecer na nota de referência</span></span>
+          <div id="listaCamposExtras" style="display:flex; flex-direction:column; gap:8px; margin:8px 0;"></div>
+          <button type="button" id="btnAddCampoExtra" class="btn-secundario">+ Adicionar código extra</button>
+        </div>
+
+        <button type="button" id="btnSalvarServico" class="btn-laranja campo-largura-total">Salvar</button>
+        <button type="button" id="btnCancelarEdicao" class="btn-secundario campo-largura-total" style="display:none;">Cancelar edição</button>
+      </div>
+    </div>
+  </div>
+
   <script src="gestaodematerial.js"></script>
+  <script src="servicos.js"></script>
+  <script>
+    // ── Alternância entre as abas de nível superior (Materiais / Serviços) ──
+    const btnAbaMateriais = document.getElementById("btnAbaMateriais");
+    const btnAbaServicos = document.getElementById("btnAbaServicos");
+    const painelMateriais = document.getElementById("painelMateriais");
+    const painelServicos = document.getElementById("painelServicos");
+    const totalFixoMateriais = document.getElementById("totalFixoMateriais");
+
+    btnAbaMateriais.addEventListener("click", () => {
+      btnAbaMateriais.classList.add("active");
+      btnAbaServicos.classList.remove("active");
+      painelMateriais.style.display = "block";
+      painelServicos.style.display = "none";
+      totalFixoMateriais.style.display = "flex";
+    });
+
+    btnAbaServicos.addEventListener("click", () => {
+      btnAbaServicos.classList.add("active");
+      btnAbaMateriais.classList.remove("active");
+      painelMateriais.style.display = "none";
+      painelServicos.style.display = "block";
+      totalFixoMateriais.style.display = "none";
+    });
+  </script>
 </body>
 </html>
