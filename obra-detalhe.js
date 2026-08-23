@@ -139,7 +139,7 @@ function renderFuncionarios() {
     linha.className = "item-obra-linha";
     linha.innerHTML = `
       <div class="info">
-        <strong>${f.nome}</strong><br/>
+        <strong>${escaparHtml(f.nome)}</strong><br/>
         Cobrado: R$ ${formatarMoeda(f.valorCobrado)} · Pago: R$ ${formatarMoeda(f.valorPago)}
       </div>
       <div class="acoes">
@@ -224,7 +224,7 @@ function renderMateriais() {
     linha.className = "item-obra-linha";
     linha.innerHTML = `
       <div class="info">
-        <strong>${m.nome || "(sem nome)"}</strong> ${m.codigo ? `· Código: ${m.codigo}` : ""}<br/>
+        <strong>${escaparHtml(m.nome) || "(sem nome)"}</strong> ${m.codigo ? `· Código: ${escaparHtml(m.codigo)}` : ""}<br/>
         Valor: R$ ${formatarMoeda(m.valor)} · Data: ${dataFormatada}
       </div>
       <div class="acoes">
@@ -357,14 +357,14 @@ function renderDemandas() {
         ${d.fotoChave ? `<img src="${urlFotoDemanda(d.fotoChave)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;" />` : ""}
         <div style="flex:1;">
           <div style="font-weight:700; font-size:13.5px;">
-            ${d.titulo}
+            ${escaparHtml(d.titulo)}
             <span style="font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:100px; margin-left:6px; background:${concluida ? "#E7F6EC" : "#FEF3DC"}; color:${concluida ? "#1C8A4B" : "#D07F00"};">${concluida ? "Concluída" : "Aberta"}</span>
           </div>
-          ${d.descricao ? `<div style="font-size:12px; color:#666; margin-top:2px;">${d.descricao}</div>` : ""}
+          ${d.descricao ? `<div style="font-size:12px; color:#666; margin-top:2px;">${escaparHtml(d.descricao)}</div>` : ""}
           <div style="font-size:11px; color:#999; margin-top:4px;">
-            Pedido por ${d.criadoPorNome} · Atribuído a ${d.atribuidoParaNome}
+            Pedido por ${escaparHtml(d.criadoPorNome)} · Atribuído a ${escaparHtml(d.atribuidoParaNome)}
           </div>
-          ${concluida && d.observacaoConclusao ? `<div style="font-size:12px; color:#1C8A4B; margin-top:4px;">✓ ${d.observacaoConclusao}</div>` : ""}
+          ${concluida && d.observacaoConclusao ? `<div style="font-size:12px; color:#1C8A4B; margin-top:4px;">✓ ${escaparHtml(d.observacaoConclusao)}</div>` : ""}
           ${concluida && d.fotoConclusaoChave ? `<img src="${urlFotoDemanda(d.fotoConclusaoChave)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;margin-top:6px;" />` : ""}
         </div>
         <div style="display:flex; flex-direction:column; gap:6px;">
@@ -482,4 +482,4 @@ function renderTudo() {
 
 renderTudo();
 popularSelectAtribuidoDemanda();
-carregarDemandas(); 
+carregarDemandas();

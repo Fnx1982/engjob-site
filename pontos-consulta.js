@@ -104,13 +104,13 @@ function renderTabelaFuncionarios() {
     const tr = document.createElement("tr");
     const corSaldo = banco.saldo >= 0 ? "#1c8a4b" : "crimson";
     tr.innerHTML = `
-      <td>${f.nome}</td>
-      <td>${f.registro}</td>
+      <td>${escaparHtml(f.nome)}</td>
+      <td>${escaparHtml(f.registro)}</td>
       <td>${formatarHoras(banco.jornada)}/dia</td>
       <td>${formatarHoras(banco.horasTrabalhadas)}</td>
       <td style="color:${corSaldo};font-weight:700;">${banco.saldo >= 0 ? "+" : ""}${formatarHoras(banco.saldo)}</td>
       <td>
-        <button class="btn-editar-mini" data-ver="${f.registro}" data-nome="${f.nome}">Ver Detalhes</button>
+        <button class="btn-editar-mini" data-ver="${escaparHtml(f.registro)}" data-nome="${escaparHtml(f.nome)}">Ver Detalhes</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -282,7 +282,7 @@ function renderModalLancamentos() {
     item.innerHTML = `
       <div class="lancamento-info">
         <span class="lancamento-tipo tipo-${info.efeito}">${info.rotulo}</span>
-        <div class="lancamento-descricao">${formatarDataBR(l.data)}${l.horaInicio && l.horaFim ? " (" + l.horaInicio + " às " + l.horaFim + ")" : ""}${l.feriasInicio && l.feriasFim ? " (férias: " + formatarDataBR(l.feriasInicio) + " a " + formatarDataBR(l.feriasFim) + ")" : ""} ${l.descricao ? "— " + l.descricao : ""} ${renderDocumentoLanc(l)}</div>
+        <div class="lancamento-descricao">${formatarDataBR(l.data)}${l.horaInicio && l.horaFim ? " (" + l.horaInicio + " às " + l.horaFim + ")" : ""}${l.feriasInicio && l.feriasFim ? " (férias: " + formatarDataBR(l.feriasInicio) + " a " + formatarDataBR(l.feriasFim) + ")" : ""} ${l.descricao ? "— " + escaparHtml(l.descricao) : ""} ${renderDocumentoLanc(l)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="lancamento-horas">${info.efeito === "credito" ? "+" : info.efeito === "debito" ? "-" : ""}${formatarHoras(Math.abs(l.horas))}</div>
@@ -634,7 +634,7 @@ function renderLancamentosGestor() {
     item.innerHTML = `
       <div class="lancamento-info">
         <span class="lancamento-tipo tipo-${info.efeito}">${info.rotulo}</span>
-        <div class="lancamento-descricao"><strong>${l.nomeFuncionario}</strong> — ${formatarDataBR(l.data)}${l.horaInicio && l.horaFim ? " (" + l.horaInicio + " às " + l.horaFim + ")" : ""}${l.feriasInicio && l.feriasFim ? " (férias: " + formatarDataBR(l.feriasInicio) + " a " + formatarDataBR(l.feriasFim) + ")" : ""} ${l.descricao ? "— " + l.descricao : ""} ${renderDocumentoLanc(l)}</div>
+        <div class="lancamento-descricao"><strong>${escaparHtml(l.nomeFuncionario)}</strong> — ${formatarDataBR(l.data)}${l.horaInicio && l.horaFim ? " (" + l.horaInicio + " às " + l.horaFim + ")" : ""}${l.feriasInicio && l.feriasFim ? " (férias: " + formatarDataBR(l.feriasInicio) + " a " + formatarDataBR(l.feriasFim) + ")" : ""} ${l.descricao ? "— " + escaparHtml(l.descricao) : ""} ${renderDocumentoLanc(l)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="lancamento-horas">${info.efeito === "credito" ? "+" : info.efeito === "debito" ? "-" : ""}${formatarHoras(Math.abs(l.horas))}</div>
@@ -686,15 +686,15 @@ function renderJornadas() {
     const jornada = getJornadaCompleta(f.registro);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${f.nome}</td>
-      <td>${f.registro}</td>
-      <td><input type="time" id="entrada_${f.registro}" value="${jornada.horaEntrada || ""}"
+      <td>${escaparHtml(f.nome)}</td>
+      <td>${escaparHtml(f.registro)}</td>
+      <td><input type="time" id="entrada_${f.registro}" value="${escaparHtml(jornada.horaEntrada || "")}"
         style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
-      <td><input type="time" id="saida_${f.registro}" value="${jornada.horaSaida || ""}"
+      <td><input type="time" id="saida_${f.registro}" value="${escaparHtml(jornada.horaSaida || "")}"
         style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
-      <td><input type="time" id="almoco_inicio_${f.registro}" value="${jornada.inicioAlmoco || ""}"
+      <td><input type="time" id="almoco_inicio_${f.registro}" value="${escaparHtml(jornada.inicioAlmoco || "")}"
         style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
-      <td><input type="time" id="almoco_fim_${f.registro}" value="${jornada.fimAlmoco || ""}"
+      <td><input type="time" id="almoco_fim_${f.registro}" value="${escaparHtml(jornada.fimAlmoco || "")}"
         style="padding:6px;border:1px solid #ccc;border-radius:6px;font-family:inherit;width:100px;" /></td>
       <td id="jornadaCalc_${f.registro}" style="font-weight:700;color:rgb(180,110,10);">
         ${jornada.horasDia ? formatarHoras(jornada.horasDia) + "/dia" : "—"}

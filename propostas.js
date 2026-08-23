@@ -17,79 +17,6 @@ const abasStatus = document.querySelectorAll("[data-status-aba]");
 
 const NOMES_MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
-// ── Gatilho de emissão a partir da proposta aprovada ─────────────
-// Depois que uma proposta é aprovada, pergunta se a pessoa quer já
-// emitir as notas fiscais dela. Materiais viram itens de NF-e,
-// mão de obra vira itens de NFS-e — cada um numa aba própria, já
-// que são documentos fiscais diferentes.
-function valorFinalItemProposta(item) {
-  if (item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "") {
-    return parseFloat(item.valorFinal) || 0;
-  }
-  return (parseFloat(item.qtd) || 0) * (parseFloat(item.valorUnit) || 0);
-}
-
-function codificarDadosParaUrl(dados) {
-  return btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
-}
-
-async function oferecerEmissaoDeNotas(proposta) {
-  if (!proposta) return;
-
-  const temMateriais = (proposta.itensMateriais || []).some((i) => (i.nome || "").trim());
-  const temMaoDeObra = (proposta.itensMaoDeObra || []).some((i) => (i.descricao || "").trim());
-  if (!temMateriais && !temMaoDeObra) return; // nada pra faturar, não incomoda com a pergunta
-
-  const dadosNfe = temMateriais ? {
-    cliente: proposta.cliente,
-    local: proposta.local,
-    observacao: proposta.observacao,
-    propostaId: proposta.id,
-    itens: proposta.itensMateriais
-      .filter((i) => (i.nome || "").trim())
-      .map((i) => ({ descricao: i.nome, quantidade: parseFloat(i.qtd) || 1, valorUnitario: parseFloat(i.valorUnit) || (valorFinalItemProposta(i) / (parseFloat(i.qtd) || 1)) })),
-  } : null;
-
-  const dadosNfse = temMaoDeObra ? {
-    cliente: proposta.cliente,
-    local: proposta.local,
-    observacao: proposta.observacao,
-    propostaId: proposta.id,
-    itens: proposta.itensMaoDeObra
-      .filter((i) => (i.descricao || "").trim())
-      .map((i) => ({ descricao: i.descricao, quantidade: parseFloat(i.qtd) || 1, valorUnitario: parseFloat(i.valorUnit) || (valorFinalItemProposta(i) / (parseFloat(i.qtd) || 1)) })),
-  } : null;
-
-  // Se a proposta tem só um tipo de item, pergunta direto (sim/não).
-  // Se tem os dois, deixa a pessoa escolher qual quer emitir agora —
-  // nunca abre as duas de uma vez sem perguntar.
-  let destino = null; // "nfe.html?..." ou "nfse.html?..."
-
-  if (temMateriais && !temMaoDeObra) {
-    const quer = await confirmarAcao("Deseja emitir a NF-e desta proposta agora?", "Você vai poder conferir tudo antes de qualquer coisa ser enviada.");
-    if (quer) destino = `nfe.html?dados=${encodeURIComponent(codificarDadosParaUrl(dadosNfe))}`;
-  } else if (temMaoDeObra && !temMateriais) {
-    const quer = await confirmarAcao("Deseja emitir a NFS-e desta proposta agora?", "Você vai poder conferir tudo antes de qualquer coisa ser enviada.");
-    if (quer) destino = `nfse.html?dados=${encodeURIComponent(codificarDadosParaUrl(dadosNfse))}`;
-  } else {
-    const escolha = await escolherOpcao(
-      "Qual nota você quer emitir?",
-      "Esta proposta tem materiais e mão de obra. Escolha uma agora — a outra você pode emitir depois, voltando aqui.",
-      ["NF-e (materiais)", "NFS-e (mão de obra)"]
-    );
-    if (escolha === "NF-e (materiais)") destino = `nfe.html?dados=${encodeURIComponent(codificarDadosParaUrl(dadosNfe))}`;
-    else if (escolha === "NFS-e (mão de obra)") destino = `nfse.html?dados=${encodeURIComponent(codificarDadosParaUrl(dadosNfse))}`;
-  }
-
-  // Sempre navega na MESMA aba (nunca abre aba nova) — troca a página
-  // atual pela tela de emissão da nota escolhida.
-  if (destino) navegarParaNota(destino);
-}
-
-function navegarParaNota(url) {
-  window.location.href = url;
-}
-
 let abaAtiva = "todos";
 
 function propostasDestaPagina() {
@@ -165,8 +92,8 @@ function renderLista() {
     card.innerHTML = `
       <div class="proposta-topo">
         <div>
-          <div class="proposta-cliente">${p.cliente || "(sem nome do cliente)"}</div>
-          <div class="proposta-servico">${p.servico || ""}</div>
+          <div class="proposta-cliente">${escaparHtml(p.cliente) || "(sem nome do cliente)"}</div>
+          <div class="proposta-servico">${escaparHtml(p.servico) || ""}</div>
         </div>
         <span class="selo-status ${corStatus(p)}">${rotuloStatus(p)}</span>
       </div>
@@ -196,7 +123,6 @@ function renderLista() {
       if (!confirmado) return;
       mudarStatusProposta(btn.dataset.aprovarId, "aprovada");
       renderLista();
-      await oferecerEmissaoDeNotas(buscarProposta(btn.dataset.aprovarId));
     });
   });
   listaPropostasEl.querySelectorAll("[data-negar-id]").forEach((btn) => {

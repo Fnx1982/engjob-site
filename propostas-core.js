@@ -27,6 +27,60 @@ function buscarProposta(id) {
   return lerPropostas().find((p) => p.id === id);
 }
 
+// ── Monta os dados de NF-e/NFS-e a partir de uma proposta ────────
+// Usado pelos botões "NF-e"/"NFS-e" direto no card da proposta (em
+// andamento.html) — sem pergunta nenhuma, o clique no botão já é a
+// confirmação. Cada botão só aparece se a proposta tiver o tipo de
+// item correspondente (materiais para NF-e, mão de obra para NFS-e).
+function valorFinalItemProposta(item) {
+  if (item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "") {
+    return parseFloat(item.valorFinal) || 0;
+  }
+  return (parseFloat(item.qtd) || 0) * (parseFloat(item.valorUnit) || 0);
+}
+
+function codificarDadosParaUrl(dados) {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(dados))));
+}
+
+function propostaTemMateriais(proposta) {
+  return (proposta.itensMateriais || []).some((i) => (i.nome || "").trim());
+}
+function propostaTemMaoDeObra(proposta) {
+  return (proposta.itensMaoDeObra || []).some((i) => (i.descricao || "").trim());
+}
+
+function montarDadosNfe(proposta) {
+  return {
+    cliente: proposta.cliente,
+    local: proposta.local,
+    observacao: proposta.observacao,
+    propostaId: proposta.id,
+    itens: (proposta.itensMateriais || [])
+      .filter((i) => (i.nome || "").trim())
+      .map((i) => ({ descricao: i.nome, quantidade: parseFloat(i.qtd) || 1, valorUnitario: parseFloat(i.valorUnit) || (valorFinalItemProposta(i) / (parseFloat(i.qtd) || 1)) })),
+  };
+}
+
+function montarDadosNfse(proposta) {
+  return {
+    cliente: proposta.cliente,
+    local: proposta.local,
+    observacao: proposta.observacao,
+    propostaId: proposta.id,
+    itens: (proposta.itensMaoDeObra || [])
+      .filter((i) => (i.descricao || "").trim())
+      .map((i) => ({ descricao: i.descricao, quantidade: parseFloat(i.qtd) || 1, valorUnitario: parseFloat(i.valorUnit) || (valorFinalItemProposta(i) / (parseFloat(i.qtd) || 1)) })),
+  };
+}
+
+function linkParaNfe(proposta) {
+  return `nfe.html?dados=${encodeURIComponent(codificarDadosParaUrl(montarDadosNfe(proposta)))}`;
+}
+function linkParaNfse(proposta) {
+  return `nfse.html?dados=${encodeURIComponent(codificarDadosParaUrl(montarDadosNfse(proposta)))}`;
+}
+
 function criarPropostaVazia() {
   return {
     id: `prop_${Date.now()}`,
@@ -62,6 +116,14 @@ function salvarProposta(proposta) {
 }
 
 function excluirProposta(id) {
+  // Sincroniza com "Obras": se essa proposta tinha uma obra vinculada,
+  // ela é excluída de vez também (proposta não tem lixeira própria,
+  // então a obra ligada segue a mesma regra "sem volta").
+  const obraLigada = lerObras().find((o) => o.propostaId === id);
+  if (obraLigada) {
+    salvarObras(lerObras().filter((o) => o.id !== obraLigada.id));
+  }
+
   const lista = lerPropostas().filter((p) => p.id !== id);
   salvarPropostas(lista);
 }
@@ -286,11 +348,27 @@ function excluirObra(id) {
     obras[idx].lixeira = true;
     obras[idx].lixeiraEm = new Date().toISOString();
     salvarObras(obras);
+
+    // Sincroniza com "Em Andamento": a proposta ligada some de lá
+    // também, enquanto a obra estiver na lixeira.
+    const propostaLigada = lerPropostas().find((p) => p.id === obras[idx].propostaId);
+    if (propostaLigada) {
+      propostaLigada.lixeiraObra = true;
+      salvarProposta(propostaLigada);
+    }
   }
 }
 
 function excluirObraDefinitivo(id) {
-  salvarObras(lerObras().filter((o) => o.id !== id));
+  const obras = lerObras();
+  const obra = obras.find((o) => o.id === id);
+
+  // Sincroniza com "Em Andamento": exclui a proposta ligada de vez também.
+  if (obra && obra.propostaId) {
+    salvarPropostas(lerPropostas().filter((p) => p.id !== obra.propostaId));
+  }
+
+  salvarObras(obras.filter((o) => o.id !== id));
 }
 
 function restaurarObra(id) {
@@ -300,6 +378,13 @@ function restaurarObra(id) {
     delete obras[idx].lixeira;
     delete obras[idx].lixeiraEm;
     salvarObras(obras);
+
+    // Sincroniza com "Em Andamento": a proposta ligada volta a aparecer.
+    const propostaLigada = lerPropostas().find((p) => p.id === obras[idx].propostaId);
+    if (propostaLigada) {
+      delete propostaLigada.lixeiraObra;
+      salvarProposta(propostaLigada);
+    }
   }
 }
 

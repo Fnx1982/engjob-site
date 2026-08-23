@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <script src="auth-worker.js"></script>
+  <script src="auth-guard.js"></script>
+  <script src="confirm-modal.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visita Técnica — EnJob</title>
+  <link rel="stylesheet" href="contatos.css" />
+  <link rel="stylesheet" href="extrato.css" />
+</head>
+<body>
+
+  <main class="container">
+
+    <div class="topo-pagina">
+      <div>
+        <h1>Visita Técnica</h1>
+        <p>Registre a visita ao local — fotos, descritivo e endereço — pra gerar o orçamento depois</p>
+      </div>
+      <a href="home.html" class="btn-voltar">← Voltar</a>
+    </div>
+    <div class="atalhos-fluxo">
+      <a href="visita-tecnica.html" class="atalho-fluxo atalho-atual">🔍 Visita</a>
+      <a href="orcamento.html" class="atalho-fluxo">📝 Orçamento</a>
+      <a href="propostas.html" class="atalho-fluxo">📋 Propostas</a>
+      <a href="andamento.html" class="atalho-fluxo">⚙ Em Andamento</a>
+      <a href="obras.html" class="atalho-fluxo">🏗 Obras</a>
+    </div>
+
+    <div class="card-secao">
+      <h2 id="tituloFormulario">Nova visita</h2>
+      <input type="hidden" id="campoId" />
+
+      <div class="grid-campos">
+        <div class="campo">
+          <label for="campoClienteNome">Cliente</label>
+          <input type="text" id="campoClienteNome" placeholder="Nome ou razão social" />
+        </div>
+        <div class="campo">
+          <label for="campoTelefone">Telefone</label>
+          <input type="text" id="campoTelefone" placeholder="(41) 99999-9999" />
+        </div>
+        <div class="campo">
+          <label for="campoLocal">Local / bloco / referência</label>
+          <input type="text" id="campoLocal" placeholder="ex: Bloco B, fachada" />
+        </div>
+        <div class="campo">
+          <label for="campoEndereco">Endereço</label>
+          <input type="text" id="campoEndereco" placeholder="Rua, número" />
+        </div>
+        <div class="campo">
+          <label for="campoBairro">Bairro</label>
+          <input type="text" id="campoBairro" />
+        </div>
+        <div class="campo">
+          <label for="campoCidade">Cidade</label>
+          <input type="text" id="campoCidade" placeholder="Curitiba" />
+        </div>
+        <div class="campo full">
+          <label for="campoDescricao">Descritivo da visita</label>
+          <textarea id="campoDescricao" placeholder="O que foi observado, o que precisa ser feito..." rows="3"></textarea>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <label style="display:block; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--texto-3); margin-bottom:8px;">
+          Fotos <span style="text-transform:none;font-weight:400;">(pode escolher várias de uma vez)</span>
+        </label>
+        <input type="file" id="campoFotos" accept="image/*" multiple />
+        <div id="previaFotos" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;"></div>
+      </div>
+
+      <div class="barra-acoes">
+        <button type="button" class="btn-salvar" id="btnSalvarVisita">Salvar visita</button>
+        <button type="button" class="btn-cancelar-edicao" id="btnCancelarEdicao" style="display:none;">Cancelar edição</button>
+      </div>
+    </div>
+
+    <div class="barra-busca">
+      <input type="text" id="buscaVisitas" placeholder="Buscar por cliente ou local..." />
+    </div>
+
+    <div class="lista-contatos" id="listaVisitas"></div>
+    <div class="vazio" id="vazioVisitas" style="display:none;">Nenhuma visita registrada ainda.</div>
+
+  </main>
+
+  <script src="visita-tecnica.js"></script>
+</body>
+</html>

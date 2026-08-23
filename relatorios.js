@@ -526,7 +526,7 @@ function renderListaRelatorios() {
 
     card.innerHTML = `
       <div class="relatorio-info">
-        <div class="relatorio-nome">${r.nome}</div>
+        <div class="relatorio-nome">${escaparHtml(r.nome)}</div>
         <div class="relatorio-meta">
           <span class="tag-tipo ${r.tipo}">${rotuloTipo(r.tipo)}</span>
           ${ (r.tipo === "extrato" || r.tipo === "combinado") && bancosNomes ? `<span>Banco(s): ${bancosNomes}</span>` : "" }

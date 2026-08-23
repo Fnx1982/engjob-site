@@ -7,6 +7,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Extrato — Inter</title>
   <link rel="stylesheet" href="extrato.css" />
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="extrato-export.js"></script>
   <script src="confirm-modal.js"></script>
 </head>
 <body>
@@ -45,6 +49,35 @@
     <div class="barra-acoes">
       <button type="button" class="btn-secundario" id="btnAbrirClassificacao">+ Classificação</button>
       <button type="button" class="btn-laranja" id="btnAbrirLancamento">+ Lançamento</button>
+    </div>
+
+    <!-- Dados da conta — usados pra montar o OFX/CNAB240 corretamente -->
+    <details class="card-filtros" style="margin-bottom:14px;">
+      <summary style="cursor:pointer; font-weight:700; font-size:15px;">Dados da conta (pra OFX/CNAB240)</summary>
+      <div class="filtros" style="margin-top:12px;">
+        <div class="select-simples">
+          <label class="filtro-label" for="dadosContaBanco">Código do banco</label>
+          <input type="text" id="dadosContaBanco" placeholder="ex: 748" maxlength="3" />
+        </div>
+        <div class="select-simples">
+          <label class="filtro-label" for="dadosContaAgencia">Agência</label>
+          <input type="text" id="dadosContaAgencia" placeholder="ex: 1234" />
+        </div>
+        <div class="select-simples">
+          <label class="filtro-label" for="dadosContaConta">Conta</label>
+          <input type="text" id="dadosContaConta" placeholder="ex: 56789-0" />
+        </div>
+        <button type="button" class="btn-limpar-filtros" id="btnSalvarDadosConta">Salvar</button>
+      </div>
+    </details>
+
+    <!-- Exportação -->
+    <div class="barra-acoes" style="flex-wrap:wrap;">
+      <button type="button" class="btn-secundario" id="btnGerarPdfExtrato">📄 Gerar PDF</button>
+      <button type="button" class="btn-secundario" id="btnGerarExcelExtrato">📊 Gerar Planilha</button>
+      <button type="button" class="btn-secundario" id="btnGerarOfxExtrato">🏦 Gerar OFX</button>
+      <button type="button" class="btn-secundario" id="btnGerarCnabExtrato">📋 Gerar CNAB240</button>
+      <button type="button" class="btn-secundario" id="btnImprimirExtrato">🖨 Imprimir</button>
     </div>
 
     <!-- Filtros -->
@@ -180,6 +213,9 @@
     window.EXTRATO_CONFIG = {
       chaveLancamentos: "extrato_inter_lancamentos",
       chaveClassificacoes: "extrato_inter_classificacoes",
+      nomeBanco: "Inter",
+      chaveDadosConta: "extrato_inter_dadosconta",
+      codigoBancoPadrao: "077",
     };
   </script>
   <script src="extrato.js"></script>

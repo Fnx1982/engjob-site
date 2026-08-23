@@ -270,7 +270,7 @@ function criarItemEl(item, ehPasta) {
     iconeHtml = `<div class="item-icone">📁</div>`;
   } else if (ehImagem(nomeExibido)) {
     const url = apiUrl(caminho);
-    iconeHtml = `<img class="item-thumb" src="${url}" alt="${nomeExibido}" loading="lazy" onerror="this.outerHTML='<div class=item-icone>🖼</div>'" />`;
+    iconeHtml = `<img class="item-thumb" src="${url}" alt="${escaparHtml(nomeExibido)}" loading="lazy" onerror="this.outerHTML='<div class=item-icone>🖼</div>'" />`;
   } else {
     iconeHtml = `<div class="item-icone">${iconeArquivo(nomeExibido)}</div>`;
   }
@@ -278,9 +278,9 @@ function criarItemEl(item, ehPasta) {
   el.innerHTML = `
     ${abaAtiva === "lixeira" ? `<input type="checkbox" class="item-checkbox" ${itensSelecionadosLixeira.has(caminho) ? "checked" : ""} />` : ""}
     ${iconeHtml}
-    <div class="item-nome">${nomeExibido}</div>
+    <div class="item-nome">${escaparHtml(nomeExibido)}</div>
     ${tamanho ? `<div class="item-meta">${tamanho}</div>` : ""}
-    ${pastaDeOrigem ? `<div class="item-meta" style="color:#999;" title="Pasta de origem">📁 ${pastaDeOrigem}</div>` : ""}
+    ${pastaDeOrigem ? `<div class="item-meta" style="color:#999;" title="Pasta de origem">📁 ${escaparHtml(pastaDeOrigem)}</div>` : ""}
     ${badgeLixeira}
     <button class="item-menu-btn" title="Opções">⋯</button>
   `;
@@ -505,13 +505,13 @@ function abrirPreview(caminho, nome) {
 
   const ext = nome.split(".").pop().toLowerCase();
   if (["jpg","jpeg","png","gif","webp","svg"].includes(ext)) {
-    corpo.innerHTML = `<img src="${url}" alt="${nome}" />`;
+    corpo.innerHTML = `<img src="${url}" alt="${escaparHtml(nome)}" />`;
   } else if (ext === "pdf") {
     corpo.innerHTML = `<embed src="${url}" type="application/pdf" />`;
   } else if (["mp4","mov","webm"].includes(ext)) {
     corpo.innerHTML = `<video src="${url}" controls></video>`;
   } else {
-    corpo.innerHTML = `<div class="preview-sem-suporte"><div class="ps-icone">${iconeArquivo(nome)}</div><p>Pré-visualização não disponível.</p><br/><a href="${url}" download="${nome}" class="btn-acao">⬇ Baixar arquivo</a></div>`;
+    corpo.innerHTML = `<div class="preview-sem-suporte"><div class="ps-icone">${iconeArquivo(nome)}</div><p>Pré-visualização não disponível.</p><br/><a href="${url}" download="${escaparHtml(nome)}" class="btn-acao">⬇ Baixar arquivo</a></div>`;
   }
   document.getElementById("modalPreview").classList.add("active");
 }

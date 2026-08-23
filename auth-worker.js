@@ -151,6 +151,17 @@ async function apiMarcarTodasNotificacoesLidas() {
   return chamarWorker("notificacoes-marcar-todas-lidas", { method: "POST", body: {} });
 }
 
+// ── Visita Técnica ────────────────────────────────────────────
+async function apiListarVisitas() {
+  return chamarWorker("visitas-list");
+}
+async function apiSalvarVisita(dados) {
+  return chamarWorker("visitas-salvar", { method: "POST", body: dados });
+}
+async function apiExcluirVisita(id) {
+  return chamarWorker("visitas-excluir", { method: "POST", body: { id } });
+}
+
 // ── Notas fiscais (NF-e / NFS-e) ────────────────────────────────
 async function apiListarNotasFiscais() {
   return chamarWorker("notas-fiscais-list");
@@ -234,4 +245,25 @@ async function garantirServicoNoCatalogo(nome, valor) {
 
   const criado = await apiSalvarServico({ nome, valor: valor || 0 });
   return criado.ok ? criado.id : null;
+}
+
+// ============================================================
+// SEGURANÇA: escapar texto antes de inserir em innerHTML
+// ============================================================
+// Qualquer texto que veio de um campo digitado pelo usuário (nome,
+// descrição, observação, endereço, etc.) PRECISA passar por aqui
+// antes de entrar num template `${...}` que vai virar innerHTML.
+// Sem isso, alguém pode digitar algo como
+// "<img src=x onerror='roubaSessao()'>" num campo de nome, e esse
+// código executa de verdade na tela de quem for ver aquele registro
+// depois — inclusive podendo roubar o token de sessão da pessoa
+// (guardado no localStorage) e agir como se fosse ela.
+function escaparHtml(texto) {
+  if (texto === null || texto === undefined) return "";
+  return String(texto)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

@@ -151,7 +151,7 @@ function renderSetores() {
   setores.forEach((s, index) => {
     const chip = document.createElement("div");
     chip.className = "chip-obra";
-    chip.innerHTML = `<span>${s}</span>`;
+    chip.innerHTML = `<span>${escaparHtml(s)}</span>`;
     const btnRemover = document.createElement("button");
     btnRemover.textContent = "×";
     btnRemover.title = "Excluir setor";
@@ -206,8 +206,8 @@ function adicionarLinhaExtraMaterial(campo) {
   const linha = document.createElement("div");
   linha.style.cssText = "display:flex; gap:8px;";
   linha.innerHTML = `
-    <input type="text" class="extra-nome-material" placeholder="Nome do código (ex: cÉnq IPI)" value="${campo.nome || ""}" style="flex:1;" />
-    <input type="text" class="extra-valor-material" placeholder="Valor" value="${campo.valor || ""}" style="flex:1;" />
+    <input type="text" class="extra-nome-material" placeholder="Nome do código (ex: cÉnq IPI)" value="${escaparHtml(campo.nome || "")}" style="flex:1;" />
+    <input type="text" class="extra-valor-material" placeholder="Valor" value="${escaparHtml(campo.valor || "")}" style="flex:1;" />
     <button type="button" class="btn-remover-linha-extra" style="background:none;border:none;color:#DC143C;cursor:pointer;font-size:16px;">✕</button>
   `;
   linha.querySelector(".btn-remover-linha-extra").addEventListener("click", () => linha.remove());
@@ -521,7 +521,7 @@ function renderGrupos() {
     const cabecalho = document.createElement("div");
     cabecalho.className = "grupo-cabecalho";
     cabecalho.innerHTML = `
-      <span class="grupo-titulo"><span class="grupo-seta">▾</span> ${tituloGrupo(itens[0])}</span>
+      <span class="grupo-titulo"><span class="grupo-seta">▾</span> ${escaparHtml(tituloGrupo(itens[0]))}</span>
       <span class="grupo-subtotal">R$ ${formatarMoeda(subtotalValor)}</span>
     `;
     cabecalho.addEventListener("click", () => {
@@ -556,12 +556,12 @@ function renderGrupos() {
       const valorColunaExtra = visaoAtual === "setor" ? m.nome : m.setor;
       const subtotalItem = m.valor * m.quantidade;
       tr.innerHTML = `
-        <td>${valorColunaExtra}</td>
-        <td>${m.codigo}</td>
+        <td>${escaparHtml(valorColunaExtra)}</td>
+        <td>${escaparHtml(m.codigo)}</td>
         <td>R$ ${formatarMoeda(m.valor)}</td>
         <td>${m.quantidade}</td>
         <td>R$ ${formatarMoeda(subtotalItem)}</td>
-        <td class="coluna-obs">${m.observacao || "—"}</td>
+        <td class="coluna-obs">${escaparHtml(m.observacao) || "—"}</td>
         <td>
           <button class="btn-editar" data-edit-index="${m.indexOriginal}">Editar</button>
           <button class="btn-excluir-item" data-delete-index="${m.indexOriginal}">Excluir</button>

@@ -136,7 +136,7 @@ function renderObras() {
   obras.forEach((obra, index) => {
     const chip = document.createElement("div");
     chip.className = "chip-obra";
-    chip.innerHTML = `<span>${obra}</span>`;
+    chip.innerHTML = `<span>${escaparHtml(obra)}</span>`;
     const btnRemover = document.createElement("button");
     btnRemover.textContent = "×";
     btnRemover.title = "Excluir obra";
@@ -392,9 +392,9 @@ function chaveGrupo(item) {
 
 function tituloGrupo(item) {
   if (visaoAtual === "obra") {
-    return `${item.obra} · ${item.mes}`;
+    return `${escaparHtml(item.obra)} · ${item.mes}`;
   }
-  return `${item.nome} · ${item.mes}`;
+  return `${escaparHtml(item.nome)} · ${item.mes}`;
 }
 
 function renderGrupos() {
@@ -467,7 +467,7 @@ function renderGrupos() {
         ? `<button class="btn-view" data-comprovante-index="${f.indexOriginal}">Ver</button>`
         : "—";
       tr.innerHTML = `
-        <td>${valorColunaExtra}</td>
+        <td>${escaparHtml(valorColunaExtra)}</td>
         <td>R$ ${parseFloat(f.valor).toFixed(2)}</td>
         <td>${botaoVer}</td>
         <td>

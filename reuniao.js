@@ -131,7 +131,7 @@ async function carregarSalasFixas() {
       btn.type = "button";
       btn.className = "item-sala-fixa";
       btn.innerHTML = `
-        <span class="nome">🎥 ${sala.nome}${sala.restrita ? '<span class="badge-restrita">Restrita</span>' : ""}</span>
+        <span class="nome">🎥 ${escaparHtml(sala.nome)}${sala.restrita ? '<span class="badge-restrita">Restrita</span>' : ""}</span>
         <span class="seta">Entrar →</span>
       `;
       btn.addEventListener("click", () => {

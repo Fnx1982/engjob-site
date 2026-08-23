@@ -73,7 +73,7 @@ function renderLista() {
           const statusObra = obra.statusObra || "andamento";
           const proposta = obra.propostaId ? buscarProposta(obra.propostaId) : null;
           const numOrc = proposta && proposta.numeroOrcamento
-            ? `<span class="card-obra-num">Nº ${proposta.numeroOrcamento}</span>` : "";
+            ? `<span class="card-obra-num">Nº ${escaparHtml(proposta.numeroOrcamento)}</span>` : "";
           const badgeStatus = statusObra === "finalizada"
             ? `<span class="badge-obra badge-finalizada">✓ Finalizada</span>`
             : `<span class="badge-obra badge-andamento">⚙ Em Andamento</span>`;
@@ -85,8 +85,8 @@ function renderLista() {
             const lixEm = obra.lixeiraEm ? new Date(obra.lixeiraEm).toLocaleDateString("pt-BR") : "—";
             card.innerHTML = `
               ${numOrc}
-              <div class="card-obra-cliente">${obra.cliente||"(sem nome)"}</div>
-              <div class="card-obra-servico">${obra.servico||""}</div>
+              <div class="card-obra-cliente">${escaparHtml(obra.cliente)||"(sem nome)"}</div>
+              <div class="card-obra-servico">${escaparHtml(obra.servico)||""}</div>
               <div class="card-obra-data" style="color:var(--vermelho,crimson);">Excluída em ${lixEm}</div>
               <div class="card-obra-acoes">
                 <button class="btn-restaurar-obra" data-id="${obra.id}">↩ Restaurar</button>
@@ -98,8 +98,8 @@ function renderLista() {
                 ${numOrc}
                 ${badgeStatus}
               </div>
-              <div class="card-obra-cliente">${obra.cliente||"(sem nome)"}</div>
-              <div class="card-obra-servico">${obra.servico||""}</div>
+              <div class="card-obra-cliente">${escaparHtml(obra.cliente)||"(sem nome)"}</div>
+              <div class="card-obra-servico">${escaparHtml(obra.servico)||""}</div>
               <div class="card-obra-lucro ${lucro>=0?"positivo":"negativo"}">
                 Lucro: R$ ${formatarMoeda(lucro)}
               </div>

@@ -325,7 +325,7 @@ body {
     margin-top: 12px;
 }
 
-.btn-pdf, .btn-editar, .btn-excluir-item, .btn-aprovar, .btn-negar, .btn-andamento, .btn-finalizar {
+.btn-pdf, .btn-editar, .btn-excluir-item, .btn-aprovar, .btn-negar, .btn-andamento, .btn-finalizar, .btn-gerar-nota {
     padding: 7px 16px;
     border: none;
     border-radius: 20px;
@@ -341,6 +341,9 @@ body {
 
 .btn-editar { background-color: #eb991c; color: white; }
 .btn-editar:hover { background-color: #d87f00; }
+
+.btn-gerar-nota { background-color: #6b46c1; color: white; }
+.btn-gerar-nota:hover { background-color: #553399; }
 
 .btn-excluir-item { background-color: crimson; color: white; }
 .btn-excluir-item:hover { background-color: #a30000; }

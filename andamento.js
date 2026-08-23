@@ -19,7 +19,7 @@ const NOMES_MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julh
 let abaAtiva = "andamento";
 
 function propostasDestaPagina() {
-  return lerPropostas().filter((p) => p.status === "andamento" || p.status === "finalizada");
+  return lerPropostas().filter((p) => (p.status === "andamento" || p.status === "finalizada") && !p.lixeiraObra);
 }
 
 function popularFiltrosMesAno() {
@@ -81,7 +81,7 @@ function renderLista() {
     const card = document.createElement("div");
     card.className = `proposta-card status-${corStatus(p)}`;
     const dataFormatada = new Date(p.criadoEm).toLocaleDateString("pt-BR");
-    const numOrc = p.numeroOrcamento ? `<span style="font-size:11px;color:#888;font-weight:600;">Nº ${p.numeroOrcamento}</span>` : "";
+    const numOrc = p.numeroOrcamento ? `<span style="font-size:11px;color:#888;font-weight:600;">Nº ${escaparHtml(p.numeroOrcamento)}</span>` : "";
 
     // Status de obra independente do status da proposta
     const statusObraAtual = p.statusObra || (p.status === "finalizada" ? "finalizada" : "andamento");
@@ -93,14 +93,21 @@ function renderLista() {
       ? `<button class="btn-finalizar" data-finalizar-obra="${p.id}">Finalizar Obra</button>`
       : `<button class="btn-andamento" data-reabrir-obra="${p.id}">Reabrir Obra</button>`;
 
+    const botaoNfe = propostaTemMateriais(p)
+      ? `<button class="btn-gerar-nota" data-nfe-id="${p.id}">NF-e</button>`
+      : "";
+    const botaoNfse = propostaTemMaoDeObra(p)
+      ? `<button class="btn-gerar-nota" data-nfse-id="${p.id}">NFS-e</button>`
+      : "";
+
     card.innerHTML = `
       <div class="proposta-topo">
         <div style="display:flex;flex-direction:column;gap:4px;">
           <div style="display:flex;align-items:center;gap:8px;">
-            <div class="proposta-cliente">${p.cliente || "(sem nome do cliente)"}</div>
+            <div class="proposta-cliente">${escaparHtml(p.cliente) || "(sem nome do cliente)"}</div>
             ${numOrc}
           </div>
-          <div class="proposta-servico">${p.servico || ""}</div>
+          <div class="proposta-servico">${escaparHtml(p.servico) || ""}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
           <span class="selo-status ${corStatus(p)}">${rotuloStatus(p)}</span>
@@ -114,6 +121,8 @@ function renderLista() {
       <div class="proposta-acoes">
         <button class="btn-pdf" data-pdf-id="${p.id}">Baixar PDF</button>
         <button class="btn-editar" data-edit-id="${p.id}">Editar</button>
+        ${botaoNfe}
+        ${botaoNfse}
         ${botaoStatusObra}
         <button class="btn-negar" data-reverter-id="${p.id}">Voltar para Propostas</button>
         <button class="btn-excluir-item" data-delete-id="${p.id}">Excluir</button>
@@ -127,6 +136,18 @@ function renderLista() {
   });
   listaPropostasEl.querySelectorAll("[data-edit-id]").forEach((btn) => {
     btn.addEventListener("click", () => abrirFormularioProposta(btn.dataset.editId, renderLista));
+  });
+  listaPropostasEl.querySelectorAll("[data-nfe-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const p = buscarProposta(btn.dataset.nfeId);
+      if (p) navegarParaNotaAndamento(linkParaNfe(p));
+    });
+  });
+  listaPropostasEl.querySelectorAll("[data-nfse-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const p = buscarProposta(btn.dataset.nfseId);
+      if (p) navegarParaNotaAndamento(linkParaNfse(p));
+    });
   });
   listaPropostasEl.querySelectorAll("[data-finalizar-obra]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -184,3 +205,7 @@ btnLimparFiltros.addEventListener("click", () => {
 });
 
 renderLista();
+
+function navegarParaNotaAndamento(url) {
+  window.location.href = url;
+}

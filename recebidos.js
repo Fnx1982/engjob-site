@@ -87,16 +87,16 @@ function renderizarLista() {
     el.className = "item-recebido";
 
     const partesMeta = [];
-    if (nota.numeroNota) partesMeta.push(`Nº ${nota.numeroNota}`);
-    if (nota.fornecedorCnpj) partesMeta.push(nota.fornecedorCnpj);
+    if (nota.numeroNota) partesMeta.push(`Nº ${escaparHtml(nota.numeroNota)}`);
+    if (nota.fornecedorCnpj) partesMeta.push(escaparHtml(nota.fornecedorCnpj));
     if (nota.dataEmissao) partesMeta.push(formatarData(nota.dataEmissao));
-    if (nota.descricao) partesMeta.push(nota.descricao);
+    if (nota.descricao) partesMeta.push(escaparHtml(nota.descricao));
 
     el.innerHTML = `
       <div class="info-principal">
         <div class="icone-tipo">${iconePorTipo(nota.tipo)}</div>
         <div>
-          <div class="nome-fornecedor">${nota.fornecedorNome}</div>
+          <div class="nome-fornecedor">${escaparHtml(nota.fornecedorNome)}</div>
           <div class="meta">${nota.tipo} • ${partesMeta.join(" · ")}</div>
         </div>
       </div>
@@ -146,14 +146,14 @@ function renderizarLixeira(notas) {
     el.className = "item-recebido";
 
     const partesMeta = [];
-    if (nota.numeroNota) partesMeta.push(`Nº ${nota.numeroNota}`);
+    if (nota.numeroNota) partesMeta.push(`Nº ${escaparHtml(nota.numeroNota)}`);
     if (nota.excluidoEm) partesMeta.push("Excluído em " + new Date(nota.excluidoEm).toLocaleDateString("pt-BR"));
 
     el.innerHTML = `
       <div class="info-principal">
         <div class="icone-tipo">${iconePorTipo(nota.tipo)}</div>
         <div>
-          <div class="nome-fornecedor">${nota.fornecedorNome}</div>
+          <div class="nome-fornecedor">${escaparHtml(nota.fornecedorNome)}</div>
           <div class="meta">${nota.tipo} • ${partesMeta.join(" · ")}</div>
         </div>
       </div>

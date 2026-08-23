@@ -17,7 +17,7 @@ function opcoesUnidadeHtml(valorAtual) {
   const valor = (valorAtual || "UND").toUpperCase();
   let opcoes = UNIDADES_PADRAO.map((u) => `<option value="${u}"${u === valor ? " selected" : ""}>${u}</option>`).join("");
   if (!UNIDADES_PADRAO.includes(valor)) {
-    opcoes += `<option value="${valor}" selected>${valor} (valor antigo)</option>`;
+    opcoes += `<option value="${escaparHtml(valor)}" selected>${escaparHtml(valor)} (valor antigo)</option>`;
   }
   return opcoes;
 }
@@ -194,10 +194,11 @@ function aplicarMascaraTelefoneProposta(event) {
   input.value = valor.trim();
 }
 
-async function abrirFormularioProposta(id, onSalvar) {
+async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos) {
   montarModalFormularioProposta();
   onSalvarPropostaCallback = onSalvar || null;
   propostaEmEdicao = id ? JSON.parse(JSON.stringify(buscarProposta(id))) : criarPropostaVazia();
+  if (!id && dadosPreenchidos) Object.assign(propostaEmEdicao, dadosPreenchidos);
 
   document.getElementById("tituloModalProposta").textContent = id ? "Editar Orçamento" : "Novo Orçamento";
   document.getElementById("campoNumeroOrcamento").value = propostaEmEdicao.numeroOrcamento || "";
@@ -259,7 +260,7 @@ function valorFinalItem(item) {
 function atualizarDatalistServicos() {
   const datalist = document.getElementById("listaServicosPropostaDatalist");
   if (!datalist) return;
-  datalist.innerHTML = servicosCatalogoCache.map((s) => `<option value="${s.nome}"></option>`).join("");
+  datalist.innerHTML = servicosCatalogoCache.map((s) => `<option value="${escaparHtml(s.nome)}"></option>`).join("");
 }
 
 function renderTabelaMaoDeObra() {
@@ -275,7 +276,7 @@ function renderTabelaMaoDeObra() {
     tr.innerHTML = `
       <td class="col-descricao">
         ${rotuloVinculo}
-        <input type="text" value="${item.descricao || ""}" placeholder="Descrição do serviço"
+        <input type="text" value="${escaparHtml(item.descricao || "")}" placeholder="Descrição do serviço"
           data-mo-campo="descricao" data-mo-index="${index}" list="listaServicosPropostaDatalist" />
       </td>
       <td>
@@ -493,7 +494,7 @@ function renderTabelaMateriais() {
     tr.innerHTML = `
       <td class="col-descricao">
         ${rotuloVinculo}
-        <input type="text" value="${item.nome || ""}" placeholder="Nome do material"
+        <input type="text" value="${escaparHtml(item.nome || "")}" placeholder="Nome do material"
           data-mat-campo="nome" data-mat-index="${index}" />
       </td>
       <td>

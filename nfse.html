@@ -38,13 +38,13 @@
       <h2 id="tituloFormulario">Nova NFS-e</h2>
       <input type="hidden" id="campoPropostaId" />
 
-      <div class="grid-campos" style="margin-bottom:16px;">
-        <div class="campo">
+      <div class="grid-campos" style="margin-bottom:16px; grid-template-columns: 2fr 1fr;">
+        <div class="campo campo-alinha-base">
           <label for="campoTomadorNome">Cliente / Tomador do serviço</label>
           <input type="text" id="campoTomadorNome" placeholder="Nome ou razão social" list="listaContatosDatalist" />
           <datalist id="listaContatosDatalist"></datalist>
         </div>
-        <div class="campo">
+        <div class="campo campo-alinha-base">
           <label for="campoTomadorDocumento">CPF / CNPJ</label>
           <input type="text" id="campoTomadorDocumento" placeholder="000.000.000-00" />
         </div>

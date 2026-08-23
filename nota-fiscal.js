@@ -28,7 +28,7 @@ async function carregarAutocompleteContatos() {
     contatosCache = resposta.contatos;
     const datalist = document.getElementById("listaContatosDatalist");
     if (!datalist) return;
-    datalist.innerHTML = contatosCache.map((c) => `<option value="${c.nome}"></option>`).join("");
+    datalist.innerHTML = contatosCache.map((c) => `<option value="${escaparHtml(c.nome)}"></option>`).join("");
   } catch (e) { /* autocomplete é um extra — se falhar, formulário continua funcionando normalmente */ }
 }
 
@@ -50,13 +50,13 @@ async function carregarAutocompleteMateriais() {
       if (!resposta.ok) return;
       materiaisCache = resposta.materiais;
       const datalist = document.getElementById("listaMateriaisDatalist");
-      if (datalist) datalist.innerHTML = materiaisCache.map((m) => `<option value="${m.nome}"></option>`).join("");
+      if (datalist) datalist.innerHTML = materiaisCache.map((m) => `<option value="${escaparHtml(m.nome)}"></option>`).join("");
     } else if (TIPO_NOTA_PAGINA === "NFS-e") {
       const resposta = await apiListarServicos();
       if (!resposta.ok) return;
       servicosCache = resposta.servicos;
       const datalist = document.getElementById("listaServicosDatalist");
-      if (datalist) datalist.innerHTML = servicosCache.map((s) => `<option value="${s.nome}"></option>`).join("");
+      if (datalist) datalist.innerHTML = servicosCache.map((s) => `<option value="${escaparHtml(s.nome)}"></option>`).join("");
     }
   } catch (e) { /* idem — extra, não bloqueia o uso manual */ }
 }
@@ -86,7 +86,7 @@ function adicionarLinhaItem(item) {
   const tbody = document.querySelector("#tabelaItens tbody");
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td><input type="text" class="item-descricao" placeholder="Descrição" value="${item.descricao || ""}" list="listaMateriaisDatalist" /></td>
+    <td><input type="text" class="item-descricao" placeholder="Descrição" value="${escaparHtml(item.descricao || "")}" list="listaMateriaisDatalist" /></td>
     <td style="width:90px;"><input type="number" class="item-quantidade" min="0" step="0.01" value="${item.quantidade ?? 1}" /></td>
     <td style="width:130px;"><input type="number" class="item-valor-unitario" min="0" step="0.01" value="${item.valorUnitario ?? 0}" /></td>
     <td class="col-valor item-valor-total">${formatarMoeda((item.quantidade ?? 1) * (item.valorUnitario ?? 0))}</td>
@@ -106,7 +106,7 @@ function adicionarLinhaImposto(imposto) {
   const tbody = document.querySelector("#tabelaImpostos tbody");
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td><input type="text" class="imposto-nome" placeholder="ex: ISS" value="${imposto.nome || ""}" /></td>
+    <td><input type="text" class="imposto-nome" placeholder="ex: ISS" value="${escaparHtml(imposto.nome || "")}" /></td>
     <td style="width:110px;"><input type="number" class="imposto-percentual" min="0" step="0.01" value="${imposto.percentual ?? 0}" /> %</td>
     <td class="col-valor imposto-valor-calculado">${formatarMoeda(0)}</td>
     <td class="col-remover"><button type="button" class="btn-remover-linha" title="Remover">✕</button></td>
@@ -309,7 +309,10 @@ async function salvarRascunhoSilencioso() {
 async function carregarNotas() {
   const resposta = await apiListarNotasFiscais();
   if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao carregar notas.", "erro"); return; }
-  notasCache = resposta.notas.filter((n) => n.tipo === TIPO_NOTA_PAGINA);
+  // Só mostra RASCUNHOS (ainda não emitidas) — notas emitidas OU
+  // canceladas (que já foram emitidas em algum momento) passam a
+  // aparecer só na Consulta.
+  notasCache = resposta.notas.filter((n) => n.tipo === TIPO_NOTA_PAGINA && n.status !== "emitida" && n.status !== "cancelada");
   renderizarListaNotas();
 }
 
@@ -330,10 +333,10 @@ function renderizarListaNotas() {
 
     const el = document.createElement("div");
     el.className = "item-nota-fiscal";
-    const motivoLinha = nota.motivoCancelamento ? `<div class="meta">Motivo: ${nota.motivoCancelamento}</div>` : "";
+    const motivoLinha = nota.motivoCancelamento ? `<div class="meta">Motivo: ${escaparHtml(nota.motivoCancelamento)}</div>` : "";
     el.innerHTML = `
       <div>
-        <div class="nome-tomador">${nota.tomadorNome} <span class="badge-status ${nota.status}">${nota.status}</span></div>
+        <div class="nome-tomador">${escaparHtml(nota.tomadorNome)} <span class="badge-status ${nota.status}">${nota.status}</span></div>
         <div class="meta">${(nota.itens || []).length} item(ns) · ${new Date(nota.atualizadoEm || nota.criadoEm).toLocaleString("pt-BR")}</div>
         ${motivoLinha}
       </div>

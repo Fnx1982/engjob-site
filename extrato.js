@@ -144,7 +144,7 @@
     classificacoes.forEach((c, index) => {
       const chip = document.createElement("div");
       chip.className = "chip-obra";
-      chip.innerHTML = `<span>${c}</span>`;
+      chip.innerHTML = `<span>${escaparHtml(c)}</span>`;
       const btnRemover = document.createElement("button");
       btnRemover.textContent = "×";
       btnRemover.title = "Excluir classificação";
@@ -428,9 +428,9 @@
 
       tr.innerHTML = `
         <td data-label="Data">${formatarData(l.data)}</td>
-        <td data-label="Descrição">${l.descricao}</td>
-        <td data-label="Classificação"><span class="tag-classificacao">${l.classificacao}</span></td>
-        <td data-label="Observação" class="coluna-observacao">${l.observacao || "—"}</td>
+        <td data-label="Descrição">${escaparHtml(l.descricao)}</td>
+        <td data-label="Classificação"><span class="tag-classificacao">${escaparHtml(l.classificacao)}</span></td>
+        <td data-label="Observação" class="coluna-observacao">${escaparHtml(l.observacao) || "—"}</td>
         <td data-label="Valor" class="${valorClasse}">${valorSinal} R$ ${formatarMoeda(l.valor)}</td>
         <td data-label="Ações">
           <button class="btn-editar" data-edit-index="${l.indexOriginal}">Editar</button>
@@ -497,6 +497,76 @@
   ["dataLancamento", "descricao", "valor", "classificacao"].forEach((id) => {
     limparErroAoEditar(document.getElementById(id));
   });
+
+  // ====================================================
+  // EXPORTAÇÃO (PDF, Excel, OFX, CNAB240, Impressão)
+  // ====================================================
+  const CHAVE_DADOS_CONTA = config.chaveDadosConta;
+  const nomeBancoAtual = config.nomeBanco || "Banco";
+
+  function lerDadosConta() {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_DADOS_CONTA) || "null");
+    return salvo || { banco: config.codigoBancoPadrao || "", agencia: "", conta: "" };
+  }
+
+  const campoContaBanco = document.getElementById("dadosContaBanco");
+  const campoContaAgencia = document.getElementById("dadosContaAgencia");
+  const campoContaConta = document.getElementById("dadosContaConta");
+  const btnSalvarDadosConta = document.getElementById("btnSalvarDadosConta");
+
+  if (campoContaBanco) {
+    const dadosSalvos = lerDadosConta();
+    campoContaBanco.value = dadosSalvos.banco || "";
+    campoContaAgencia.value = dadosSalvos.agencia || "";
+    campoContaConta.value = dadosSalvos.conta || "";
+
+    btnSalvarDadosConta.addEventListener("click", () => {
+      const dados = { banco: campoContaBanco.value.trim(), agencia: campoContaAgencia.value.trim(), conta: campoContaConta.value.trim() };
+      localStorage.setItem(CHAVE_DADOS_CONTA, JSON.stringify(dados));
+      mostrarToast("Dados da conta salvos.");
+    });
+  }
+
+  // Todos os botões de exportação trabalham em cima do que está
+  // FILTRADO na tela (mesma lista que aparece na tabela), não em
+  // cima de todos os lançamentos existentes — assim exporta
+  // exatamente o que a pessoa está vendo.
+  const btnGerarPdf = document.getElementById("btnGerarPdfExtrato");
+  const btnGerarExcel = document.getElementById("btnGerarExcelExtrato");
+  const btnGerarOfx = document.getElementById("btnGerarOfxExtrato");
+  const btnGerarCnab = document.getElementById("btnGerarCnabExtrato");
+  const btnImprimir = document.getElementById("btnImprimirExtrato");
+
+  if (btnGerarPdf) {
+    btnGerarPdf.addEventListener("click", () => {
+      try { gerarPdfExtrato(aplicarFiltros(), nomeBancoAtual); }
+      catch (e) { mostrarToast("Erro ao gerar PDF: " + e.message, "erro"); }
+    });
+  }
+  if (btnGerarExcel) {
+    btnGerarExcel.addEventListener("click", () => {
+      try { gerarExcelExtrato(aplicarFiltros(), nomeBancoAtual); }
+      catch (e) { mostrarToast("Erro ao gerar planilha: " + e.message, "erro"); }
+    });
+  }
+  if (btnGerarOfx) {
+    btnGerarOfx.addEventListener("click", () => {
+      try { gerarOfxExtrato(aplicarFiltros(), nomeBancoAtual, lerDadosConta()); }
+      catch (e) { mostrarToast("Erro ao gerar OFX: " + e.message, "erro"); }
+    });
+  }
+  if (btnGerarCnab) {
+    btnGerarCnab.addEventListener("click", () => {
+      try { gerarCnab240Extrato(aplicarFiltros(), nomeBancoAtual, lerDadosConta()); }
+      catch (e) { mostrarToast("Erro ao gerar CNAB240: " + e.message, "erro"); }
+    });
+  }
+  if (btnImprimir) {
+    btnImprimir.addEventListener("click", () => {
+      try { imprimirExtrato(aplicarFiltros(), nomeBancoAtual); }
+      catch (e) { mostrarToast("Erro ao imprimir: " + e.message, "erro"); }
+    });
+  }
 
   definirTipoModal("entrada");
   renderTudo();

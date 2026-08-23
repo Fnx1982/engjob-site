@@ -141,7 +141,10 @@ function calcularTotalNota(nota) {
 async function carregarConsulta() {
   const resposta = await apiListarNotasFiscais();
   if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao carregar notas.", "erro"); return; }
-  todasAsNotas = resposta.notas;
+  // Só mostra notas que JÁ foram emitidas (ou canceladas, que também
+  // passaram por emissão em algum momento) — rascunhos ainda em
+  // conferência ficam só nas telas de NF-e/NFS-e.
+  todasAsNotas = resposta.notas.filter((n) => n.status === "emitida" || n.status === "cancelada");
   renderizarConsulta();
 }
 
@@ -167,7 +170,7 @@ function renderizarConsulta() {
     el.innerHTML = `
       <div>
         <div class="nome-tomador">
-          ${nota.tomadorNome}
+          ${escaparHtml(nota.tomadorNome)}
           <span class="badge-status ${nota.status}">${nota.status}</span>
           <span class="badge-status" style="background:#EDEDED;color:#555;">${nota.tipo}</span>
         </div>
@@ -185,13 +188,13 @@ function renderizarConsulta() {
     painelDetalhes.style.cssText = "display:none;padding:14px 18px;background:#fafafa;border-top:1px solid #eee;font-size:13px;";
     const linhasItens = (nota.itens || []).map((i) =>
       `<div style="display:flex;justify-content:space-between;padding:3px 0;">
-        <span>${i.descricao} (${i.quantidade}×${formatarMoedaConsulta(i.valorUnitario)})</span>
+        <span>${escaparHtml(i.descricao)} (${i.quantidade}×${formatarMoedaConsulta(i.valorUnitario)})</span>
         <span>${formatarMoedaConsulta((i.quantidade || 0) * (i.valorUnitario || 0))}</span>
       </div>`
     ).join("");
     painelDetalhes.innerHTML = `
-      <div><b>Documento:</b> ${nota.tomadorDocumento || "—"}</div>
-      <div><b>Endereço:</b> ${nota.tomadorEndereco || "—"}</div>
+      <div><b>Documento:</b> ${escaparHtml(nota.tomadorDocumento) || "—"}</div>
+      <div><b>Endereço:</b> ${escaparHtml(nota.tomadorEndereco) || "—"}</div>
       ${nota.motivoCancelamento ? `<div style="color:var(--vermelho);"><b>Motivo do cancelamento:</b> ${nota.motivoCancelamento}</div>` : ""}
       <div style="margin-top:8px;"><b>Itens:</b></div>
       ${linhasItens || "<div>Nenhum item.</div>"}

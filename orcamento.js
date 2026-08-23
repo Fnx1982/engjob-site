@@ -83,8 +83,8 @@ function renderLista() {
     card.innerHTML = `
       <div class="proposta-topo">
         <div>
-          <div class="proposta-cliente">${p.cliente || "(sem nome do cliente)"}</div>
-          <div class="proposta-servico">${p.servico || ""}</div>
+          <div class="proposta-cliente">${escaparHtml(p.cliente) || "(sem nome do cliente)"}</div>
+          <div class="proposta-servico">${escaparHtml(p.servico) || ""}</div>
         </div>
         <span class="selo-status ${corStatus(p)}">${rotuloStatus(p)}</span>
       </div>
@@ -138,3 +138,17 @@ btnLimparFiltros.addEventListener("click", () => {
 });
 
 renderLista();
+
+// Se veio de uma Visita Técnica ("Gerar orçamento"), abre o formulário
+// novo já preenchido com os dados da visita.
+(function tentarAbrirComDadosDaVisita() {
+  const params = new URLSearchParams(window.location.search);
+  const dadosCodificados = params.get("dadosVisita");
+  if (!dadosCodificados) return;
+  try {
+    const dados = JSON.parse(decodeURIComponent(escape(atob(dadosCodificados))));
+    abrirFormularioProposta(null, renderLista, dados);
+  } catch (e) {
+    console.warn("[orcamento] Não foi possível ler os dados da visita na URL:", e);
+  }
+})();

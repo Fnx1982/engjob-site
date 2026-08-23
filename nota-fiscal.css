@@ -286,3 +286,13 @@ body {
     cursor: default;
     pointer-events: none;
 }
+
+/* Alinha os campos de um grid-campos pela BASE (onde fica o input),
+   não pelo topo — evita que um rótulo de 2 linhas (ex: "Cliente /
+   Tomador do Serviço") desalinhe o campo vizinho que tem rótulo de
+   1 linha só (ex: "CPF / CNPJ"). */
+.campo-alinha-base {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}

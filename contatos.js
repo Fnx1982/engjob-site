@@ -203,8 +203,8 @@ function renderizarLista() {
     el.className = "item-contato";
     el.innerHTML = `
       <div>
-        <div class="nome">${c.nome}<span class="badge-tipo">${c.tipoPessoa}</span></div>
-        <div class="meta">${c.documento} ${c.cidade ? "· " + c.cidade + (c.uf ? "/" + c.uf : "") : ""}</div>
+        <div class="nome">${escaparHtml(c.nome)}<span class="badge-tipo">${c.tipoPessoa}</span></div>
+        <div class="meta">${escaparHtml(c.documento)} ${c.cidade ? "· " + escaparHtml(c.cidade) + (c.uf ? "/" + escaparHtml(c.uf) : "") : ""}</div>
       </div>
       <div class="acoes">
         <button class="btn-editar-contato">Editar</button>

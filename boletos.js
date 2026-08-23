@@ -389,19 +389,19 @@ function renderLista() {
     card.innerHTML = `
       <div class="boleto-topo">
         <div>
-          <span class="boleto-nome">${b.nome || "(sem nome)"}</span>
+          <span class="boleto-nome">${escaparHtml(b.nome) || "(sem nome)"}</span>
           <span class="boleto-tag-tipo ${b.tipo}">${b.tipo === "despesa" ? "Despesa" : "Entrada"}</span>
         </div>
         <span class="selo-status ${status}">${status === "pendente" ? "Pendente" : status === "atrasado" ? "Atrasado" : "Pago"}</span>
       </div>
       <div class="boleto-meta">
-        <span>Código: ${b.codigo || "—"}</span>
+        <span>Código: ${escaparHtml(b.codigo) || "—"}</span>
         <span class="boleto-valor">${formatarMoeda(b.valor)}</span>
         <span>Cadastro: ${formatarDataBR(b.dataCadastro)}</span>
         <span>Vencimento: ${formatarDataBR(b.dataVencimento)}</span>
         <span><strong>${textoPrazo(b)}</strong></span>
       </div>
-      ${b.observacao ? `<div class="boleto-observacao">${b.observacao}</div>` : ""}
+      ${b.observacao ? `<div class="boleto-observacao">${escaparHtml(b.observacao)}</div>` : ""}
       <div class="boleto-acoes">
         ${botoesArquivo.join("")}
         <button class="btn-editar" data-edit="${b.indexOriginal}">Editar</button>

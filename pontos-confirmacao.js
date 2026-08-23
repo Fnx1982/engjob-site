@@ -83,7 +83,7 @@ function renderBatidasHoje() {
   batidas.forEach((b, i) => {
     const chip = document.createElement("div");
     chip.className = "chip-batida";
-    const linkMaps = b.lat ? `<a href="https://www.google.com/maps?q=${b.lat},${b.lng}" target="_blank" style="font-size:11px;color:#2b6cb0;text-decoration:none;">📍 ${b.endereco || "Ver no mapa"}</a>` : "";
+    const linkMaps = b.lat ? `<a href="https://www.google.com/maps?q=${b.lat},${b.lng}" target="_blank" style="font-size:11px;color:#2b6cb0;text-decoration:none;">📍 ${escaparHtml(b.endereco) || "Ver no mapa"}</a>` : "";
     chip.innerHTML = `
       <span class="numero">#${i + 1}</span>
       <span class="horario">${formatarHoraBR(b.dataHora)}</span>
@@ -212,7 +212,7 @@ function renderLancamentos() {
     item.innerHTML = `
       <div class="lancamento-info">
         <span class="lancamento-tipo tipo-${info.efeito}">${info.rotulo}</span>
-        <div class="lancamento-descricao">${formatarDataBR(l.data)} ${l.descricao ? "— " + l.descricao : ""} ${l.documento ? '<span style="color:#2b6cb0;font-size:12px;">📄 ' + l.documento + '</span>' : ""}</div>
+        <div class="lancamento-descricao">${formatarDataBR(l.data)} ${l.descricao ? "— " + escaparHtml(l.descricao) : ""} ${l.documento ? '<span style="color:#2b6cb0;font-size:12px;">📄 ' + escaparHtml(l.documento) + '</span>' : ""}</div>
       </div>
       <div class="lancamento-horas" style="color:${info.efeito === "credito" ? "#1c8a4b" : info.efeito === "debito" ? "crimson" : "#2b6cb0"};">
         ${info.efeito === "credito" ? "+" : info.efeito === "debito" ? "-" : ""}${formatarHoras(Math.abs(l.horas))}
