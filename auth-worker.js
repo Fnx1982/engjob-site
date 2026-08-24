@@ -54,6 +54,10 @@ async function apiSolicitarReset(registro) {
   return chamarWorker("reset-request", { method: "POST", body: { registro }, autenticado: false });
 }
 
+async function apiTrocarSenhaPrimeiroAcesso(novaSenha) {
+  return chamarWorker("trocar-senha-primeiro-acesso", { method: "POST", body: { novaSenha } });
+}
+
 async function apiListarResetsPendentes() {
   return chamarWorker("reset-list");
 }

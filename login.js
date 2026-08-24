@@ -46,7 +46,7 @@ async function logar() {
         localStorage.setItem("userNome", resposta.nome || "");
         localStorage.setItem("userSetor", resposta.setor || "");
 
-        window.location.href = "home.html";
+        navegarLogin(resposta.deveTrocarSenha ? "trocar-senha.html" : "home.html");
     } catch (e) {
         if (mensagemErro) {
             mensagemErro.textContent = "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.";
@@ -55,4 +55,43 @@ async function logar() {
     } finally {
         if (botao) { botao.disabled = false; botao.textContent = textoOriginal; }
     }
+}
+
+// ── Recuperar senha ──────────────────────────────────────────
+document.getElementById("linkRecuperarSenha").addEventListener("click", (e) => {
+    e.preventDefault();
+    document.getElementById("campoRegistroRecuperar").value = document.getElementById("registro").value || "";
+    document.getElementById("mensagemRecuperarSenha").textContent = "";
+    document.getElementById("modalRecuperarSenha").style.display = "flex";
+});
+
+document.getElementById("btnCancelarRecuperar").addEventListener("click", () => {
+    document.getElementById("modalRecuperarSenha").style.display = "none";
+});
+
+document.getElementById("btnEnviarRecuperar").addEventListener("click", async () => {
+    const registro = document.getElementById("campoRegistroRecuperar").value.trim();
+    const mensagem = document.getElementById("mensagemRecuperarSenha");
+    if (!registro) { mensagem.style.color = "crimson"; mensagem.textContent = "Informe o registro."; return; }
+
+    const botao = document.getElementById("btnEnviarRecuperar");
+    botao.disabled = true;
+    botao.textContent = "Enviando...";
+    try {
+        const resposta = await apiSolicitarReset(registro);
+        mensagem.style.color = resposta.ok ? "#1C8A4B" : "crimson";
+        mensagem.textContent = resposta.ok
+            ? "Se o registro existir e tiver e-mail cadastrado, a senha temporária já foi enviada. Confira sua caixa de entrada."
+            : (resposta.erro || "Erro ao solicitar recuperação.");
+    } catch (e) {
+        mensagem.style.color = "crimson";
+        mensagem.textContent = "Não foi possível conectar ao servidor.";
+    } finally {
+        botao.disabled = false;
+        botao.textContent = "Enviar";
+    }
+});
+
+function navegarLogin(url) {
+    window.location.href = url;
 }
