@@ -112,7 +112,7 @@ function renderLista() {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Enviar para análise?", "O orçamento vai para a aba de Propostas, onde pode ser aprovado ou negado.");
       if (!confirmado) return;
-      mudarStatusProposta(btn.dataset.enviarId, "analise");
+      await mudarStatusProposta(btn.dataset.enviarId, "analise");
       renderLista();
     });
   });
@@ -120,7 +120,7 @@ function renderLista() {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Excluir orçamento?", "Essa ação não pode ser desfeita.");
       if (!confirmado) return;
-      excluirProposta(btn.dataset.deleteId);
+      await excluirProposta(btn.dataset.deleteId);
       renderLista();
     });
   });
@@ -152,3 +152,4 @@ renderLista();
     console.warn("[orcamento] Não foi possível ler os dados da visita na URL:", e);
   }
 })();
+carregarObrasCache();

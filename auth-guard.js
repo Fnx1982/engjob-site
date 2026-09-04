@@ -10,15 +10,19 @@
 // expulso de volta pro login mesmo com a sessão válida. Por isso
 // tentamos de novo algumas vezes, com um pequeno intervalo, antes de
 // desistir e redirecionar.
+//
+// IMPORTANTE — botão Voltar do navegador: quando alguém clica
+// "Sair" e depois aperta Voltar, o navegador pode restaurar esta
+// página direto do cache local dele (bfcache), SEM executar o
+// carregamento normal de novo — então a checagem abaixo não rodaria
+// e a tela antiga (de antes do logout) ficaria visível como se a
+// pessoa ainda estivesse logada. O listener "pageshow" no fim do
+// arquivo existe exatamente pra cobrir esse caso: ele detecta
+// quando a página voltou do cache do navegador (não de um
+// carregamento novo) e reconfirma a sessão do zero.
 // ============================================================
 
 (function () {
-  const token = localStorage.getItem("sessionToken");
-  if (!token) {
-    window.location.href = "login.html";
-    return;
-  }
-
   const TENTATIVAS = 3;
   const INTERVALO_MS = 600;
 
@@ -27,6 +31,9 @@
   }
 
   async function verificarSessao() {
+    const token = localStorage.getItem("sessionToken");
+    if (!token) return null;
+
     for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa++) {
       try {
         const r = await fetch("https://engjob-storage.engjobmanut.workers.dev?action=auth-session-check", {
@@ -44,19 +51,37 @@
     return null; // esgotou as tentativas — sessão realmente inválida/expirada
   }
 
-  verificarSessao().then((data) => {
-    if (!data) {
-      localStorage.removeItem("sessionToken");
-      localStorage.removeItem("userType");
-      localStorage.removeItem("userId");
-      localStorage.removeItem("userNome");
+  function limparSessaoEExpulsar() {
+    localStorage.removeItem("sessionToken");
+    localStorage.removeItem("userType");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userNome");
+    localStorage.removeItem("userSetor");
+    window.location.href = "login.html";
+  }
+
+  function rodarChecagem() {
+    if (!localStorage.getItem("sessionToken")) {
       window.location.href = "login.html";
       return;
     }
-    // Mantém os dados de sessão sincronizados
-    localStorage.setItem("userType", data.tipo || "");
-    localStorage.setItem("userId", data.registro || "");
-    localStorage.setItem("userNome", data.nome || "");
-    localStorage.setItem("userSetor", data.setor || "");
+    verificarSessao().then((data) => {
+      if (!data) { limparSessaoEExpulsar(); return; }
+      // Mantém os dados de sessão sincronizados
+      localStorage.setItem("userType", data.tipo || "");
+      localStorage.setItem("userId", data.registro || "");
+      localStorage.setItem("userNome", data.nome || "");
+      localStorage.setItem("userSetor", data.setor || "");
+    });
+  }
+
+  // Checagem normal, ao carregar a página pela primeira vez.
+  rodarChecagem();
+
+  // Checagem extra, quando a página é restaurada do cache do
+  // navegador (botão Voltar/Avançar) em vez de carregada do zero —
+  // "event.persisted" é true exatamente nesse caso.
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) rodarChecagem();
   });
 })();

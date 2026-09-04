@@ -11,13 +11,7 @@ function getObraIdDaUrl() {
 }
 
 const obraId = getObraIdDaUrl();
-let obraAtual = buscarObra(obraId);
-
-if (!obraAtual) {
-  // Redireciona direto, sem popup bloqueante. O parâmetro avisa a
-  // tela de obras para mostrar um aviso discreto, se quiser tratar.
-  window.location.href = "obras.html?erro=obra_nao_encontrada";
-}
+let obraAtual = null; // preenchida em inicializarObraDetalhe(), depois do cache carregar
 
 const tituloObraEl = document.getElementById("tituloObra");
 const clienteObraEl = document.getElementById("clienteObra");
@@ -77,29 +71,29 @@ function renderCabecalho() {
       </span>
     `;
     document.getElementById("btnAlternarStatusObra").addEventListener("click", async () => {
-      if (!propostaVinculada) return;
-      const novoStatus = eFinalizada ? "andamento" : "finalizada";
       const ok = await confirmarAcao(
         eFinalizada ? "Reabrir esta obra?" : "Finalizar esta obra?",
         eFinalizada ? "O status volta para Em Andamento." : "A obra será marcada como Finalizada."
       );
       if (!ok) return;
-      propostaVinculada.statusObra = novoStatus;
-      propostaVinculada.status = novoStatus;
-      salvarProposta(propostaVinculada);
+      // Usa a função central (não mexe só na proposta) — garante que
+      // a Obra em si também recebe statusObra/dataFinalizacao certos,
+      // que é o que a Comissão usa pra agrupar por mês.
+      await alternarStatusObra(obraAtual.id);
+      obraAtual = buscarObra(obraAtual.id);
       renderCabecalho();
     });
   }
 }
 
 // Salva a observação automaticamente, com um pequeno debounce
-// para não gravar no localStorage a cada tecla digitada.
+// para não gravar a cada tecla digitada.
 let debounceObservacao = null;
 campoObservacaoObra.addEventListener("input", () => {
   clearTimeout(debounceObservacao);
-  debounceObservacao = setTimeout(() => {
+  debounceObservacao = setTimeout(async () => {
     obraAtual.observacao = campoObservacaoObra.value;
-    salvarObra(obraAtual);
+    await salvarObra(obraAtual);
   }, 500);
 });
 
@@ -151,20 +145,20 @@ function renderFuncionarios() {
   });
 
   listaFuncionariosObraEl.querySelectorAll("[data-edit-func]").forEach((btn) => {
-    btn.addEventListener("click", () => editarFuncionarioInline(btn.dataset.editFunc));
+    btn.addEventListener("click", async () => editarFuncionarioInline(btn.dataset.editFunc));
   });
   listaFuncionariosObraEl.querySelectorAll("[data-del-func]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Excluir funcionário desta obra?", "Isso também remove o pagamento vinculado no Financeiro de Funcionários.");
       if (!confirmado) return;
-      excluirFuncionarioDaObra(obraAtual.id, btn.dataset.delFunc);
+      await excluirFuncionarioDaObra(obraAtual.id, btn.dataset.delFunc);
       obraAtual = buscarObra(obraAtual.id);
       renderTudo();
     });
   });
 }
 
-function editarFuncionarioInline(funcionarioId) {
+async function editarFuncionarioInline(funcionarioId) {
   const func = obraAtual.funcionarios.find((f) => f.id === funcionarioId);
   if (!func) return;
 
@@ -175,7 +169,7 @@ function editarFuncionarioInline(funcionarioId) {
   const novoPagoStr = prompt("Valor pago:", func.valorPago);
   if (novoPagoStr === null) return;
 
-  editarFuncionarioNaObra(obraAtual.id, funcionarioId, {
+  await editarFuncionarioNaObra(obraAtual.id, funcionarioId, {
     nome: novoNome.trim() || func.nome,
     valorCobrado: parseFloat(novoCobradoStr) || 0,
     valorPago: parseFloat(novoPagoStr) || 0,
@@ -185,7 +179,7 @@ function editarFuncionarioInline(funcionarioId) {
   renderTudo();
 }
 
-btnAddFuncionarioObra.addEventListener("click", () => {
+btnAddFuncionarioObra.addEventListener("click", async () => {
   const nome = novoFuncNome.value.trim();
   if (!nome) {
     marcarCampoComErro(novoFuncNome, "Informe o nome do funcionário.");
@@ -196,7 +190,7 @@ btnAddFuncionarioObra.addEventListener("click", () => {
   const valorCobrado = parseFloat(novoFuncCobrado.value) || 0;
   const valorPago = parseFloat(novoFuncPago.value) || 0;
 
-  adicionarFuncionarioNaObra(obraAtual.id, { nome, valorCobrado, valorPago });
+  await adicionarFuncionarioNaObra(obraAtual.id, { nome, valorCobrado, valorPago });
   obraAtual = buscarObra(obraAtual.id);
 
   novoFuncNome.value = "";
@@ -236,20 +230,20 @@ function renderMateriais() {
   });
 
   listaMateriaisObraEl.querySelectorAll("[data-edit-mat]").forEach((btn) => {
-    btn.addEventListener("click", () => editarMaterialInline(btn.dataset.editMat));
+    btn.addEventListener("click", async () => editarMaterialInline(btn.dataset.editMat));
   });
   listaMateriaisObraEl.querySelectorAll("[data-del-mat]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Excluir material anotado?", "Essa ação não pode ser desfeita.");
       if (!confirmado) return;
-      excluirMaterialDaObra(obraAtual.id, btn.dataset.delMat);
+      await excluirMaterialDaObra(obraAtual.id, btn.dataset.delMat);
       obraAtual = buscarObra(obraAtual.id);
       renderTudo();
     });
   });
 }
 
-function editarMaterialInline(materialId) {
+async function editarMaterialInline(materialId) {
   const mat = obraAtual.materiais.find((m) => m.id === materialId);
   if (!mat) return;
 
@@ -262,7 +256,7 @@ function editarMaterialInline(materialId) {
   const novaDataStr = prompt("Data (AAAA-MM-DD):", mat.data);
   if (novaDataStr === null) return;
 
-  editarMaterialNaObra(obraAtual.id, materialId, {
+  await editarMaterialNaObra(obraAtual.id, materialId, {
     nome: novoNome.trim(),
     codigo: novoCodigo.trim(),
     valor: parseFloat(novoValorStr) || 0,
@@ -273,8 +267,8 @@ function editarMaterialInline(materialId) {
   renderTudo();
 }
 
-btnAddMaterialObra.addEventListener("click", () => {
-  adicionarMaterialNaObra(obraAtual.id, {
+btnAddMaterialObra.addEventListener("click", async () => {
+  await adicionarMaterialNaObra(obraAtual.id, {
     nome: novoMatNome.value.trim(),
     codigo: novoMatCodigo.value.trim(),
     valor: parseFloat(novoMatValor.value) || 0,
@@ -480,6 +474,18 @@ function renderTudo() {
   renderMateriais();
 }
 
-renderTudo();
-popularSelectAtribuidoDemanda();
-carregarDemandas();
+(async function inicializarObraDetalhe() {
+  await carregarObrasCache();
+  obraAtual = buscarObra(obraId);
+
+  if (!obraAtual) {
+    // Redireciona direto, sem popup bloqueante. O parâmetro avisa a
+    // tela de obras para mostrar um aviso discreto, se quiser tratar.
+    window.location.href = "obras.html?erro=obra_nao_encontrada";
+    return;
+  }
+
+  renderTudo();
+  popularSelectAtribuidoDemanda();
+  carregarDemandas();
+})();

@@ -13,6 +13,29 @@ if (!_temPermissaoPontos) {
   setTimeout(() => window.location.href = "home.html", 1500);
 }
 
+// ── Upload de anexo de lançamento (atestado, comprovante...) ──────
+// Mesmo padrão usado em Visita Técnica/Armazenamento: sobe o arquivo
+// de verdade pro R2 e guarda só a CHAVE no lançamento — nunca um link
+// direto, e nunca um blob local (que sumiria ao recarregar a página
+// ou não existiria em outro dispositivo).
+function uploadAnexoLancamento(arquivo) {
+  return new Promise((resolve, reject) => {
+    const chave = `pontos-lancamentos/${Date.now()}_${arquivo.name}`;
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", `${AUTH_WORKER_URL}?action=put&key=${encodeURIComponent(chave)}`);
+    xhr.setRequestHeader("Content-Type", arquivo.type || "application/octet-stream");
+    const token = localStorage.getItem("sessionToken") || "";
+    if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+    xhr.onload = () => { if (xhr.status < 300) resolve(chave); else reject(new Error("Falha ao enviar anexo (" + xhr.status + ")")); };
+    xhr.onerror = () => reject(new Error("Falha de conexão ao enviar anexo"));
+    xhr.send(arquivo);
+  });
+}
+function urlAnexoLancamento(chave) {
+  const token = pegarTokenDownloadCache();
+  return `${AUTH_WORKER_URL}?action=get&key=${encodeURIComponent(chave)}&token=${encodeURIComponent(token)}`;
+}
+
 const NOMES_MESES = NOMES_MESES_PONTO;
 const TIPOS_COM_PERIODO = ["abono", "atestado", "declaracao"];
 let abaAtiva = "funcionarios";
@@ -251,7 +274,7 @@ function renderModalBatidas() {
     btn.addEventListener("click", async () => {
       const ok = await confirmarAcao("Excluir esta batida?", "Essa ação não pode ser desfeita.");
       if (!ok) return;
-      excluirBatida(btn.dataset.delBat);
+      await excluirBatida(btn.dataset.delBat);
       renderModalBatidas();
       renderModalBanco();
       renderTabelaFuncionarios();
@@ -260,8 +283,8 @@ function renderModalBatidas() {
 }
 
 function renderDocumentoLanc(l) {
-  if (!l.documentoUrl) return "";
-  return `<button class="btn-editar-mini" onclick="window.open('${l.documentoUrl}','_blank')" style="background:rgba(43,108,176,0.15);color:#2b6cb0;">📄 ${l.documentoNome || "Ver doc"}</button>`;
+  if (!l.documentoChave) return "";
+  return `<button class="btn-editar-mini" onclick="window.open('${urlAnexoLancamento(l.documentoChave)}','_blank')" style="background:rgba(43,108,176,0.15);color:#2b6cb0;">📄 ${escaparHtml(l.documentoNome) || "Ver doc"}</button>`;
 }
 
 function renderModalLancamentos() {
@@ -302,7 +325,7 @@ function renderModalLancamentos() {
     btn.addEventListener("click", async () => {
       const ok = await confirmarAcao("Excluir lançamento?", "Essa ação não pode ser desfeita.");
       if (!ok) return;
-      excluirLancamento(btn.dataset.delLanc);
+      await excluirLancamento(btn.dataset.delLanc);
       renderModalLancamentos();
       renderModalBanco();
       renderTabelaFuncionarios();
@@ -381,7 +404,7 @@ function abrirModalBatida(id) {
 document.getElementById("fecharModalBatida").addEventListener("click", () => document.getElementById("modalBatida").classList.remove("active"));
 document.getElementById("cancelarModalBatida").addEventListener("click", () => document.getElementById("modalBatida").classList.remove("active"));
 
-document.getElementById("salvarModalBatida").addEventListener("click", () => {
+document.getElementById("salvarModalBatida").addEventListener("click", async () => {
   const dataHoraVal = document.getElementById("campoDataHoraBatida").value;
   const tipo = document.getElementById("campoTipoBatida").value;
   const obs = document.getElementById("campoObsBatida").value.trim();
@@ -390,20 +413,19 @@ document.getElementById("salvarModalBatida").addEventListener("click", () => {
 
   const dataHoraISO = new Date(dataHoraVal).toISOString();
 
+  let resposta;
   if (batidaEditandoId) {
-    editarBatida(batidaEditandoId, { dataHora: dataHoraISO, tipo, obs });
+    resposta = await editarBatida(batidaEditandoId, { dataHora: dataHoraISO, tipo, obs });
   } else {
-    const registros = lerRegistros();
-    registros.push({
-      id: `bat_${Date.now()}`,
+    resposta = await criarBatidaManual({
       registroFuncionario: funcSelecionado.registro,
       nomeFuncionario: funcSelecionado.nome,
       dataHora: dataHoraISO,
       tipo,
       obs,
     });
-    salvarRegistros(registros);
   }
+  if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar a batida.", "erro"); return; }
 
   document.getElementById("modalBatida").classList.remove("active");
   renderModalBatidas();
@@ -430,11 +452,11 @@ function popularSelectFuncionarios(registroFixo) {
   else select.disabled = false;
 }
 
-let _urlDocumentoAtual = null; // URL do arquivo do lançamento sendo editado
+let _documentoChaveAtual = null; // chave R2 do anexo do lançamento sendo editado
 
 function abrirModalLancamento(id) {
   lancamentoEditandoId = id || null;
-  _urlDocumentoAtual = null;
+  _documentoChaveAtual = null;
   document.getElementById("tituloModalLancamento").textContent = id ? "Editar Lançamento" : "Novo Lançamento";
   document.getElementById("campoDataLancamento").value = dataHoje();
   document.getElementById("campoArquivoLancamento").value = "";
@@ -468,8 +490,8 @@ function abrirModalLancamento(id) {
         if (l.feriasFim) document.getElementById("campoFeriasFim").value = l.feriasFim;
         calcularDiasUteisFerias();
       }
-      if (l.documentoUrl) {
-        _urlDocumentoAtual = l.documentoUrl;
+      if (l.documentoChave) {
+        _documentoChaveAtual = l.documentoChave;
         document.getElementById("docAtualNome").textContent = l.documentoNome || "documento";
         document.getElementById("docAtualLancamento").style.display = "block";
       }
@@ -488,7 +510,7 @@ function abrirModalLancamento(id) {
 document.getElementById("fecharModalLancamento").addEventListener("click", () => document.getElementById("modalLancamento").classList.remove("active"));
 document.getElementById("cancelarModalLancamento").addEventListener("click", () => document.getElementById("modalLancamento").classList.remove("active"));
 document.getElementById("btnRemoverDocLancamento").addEventListener("click", () => {
-  _urlDocumentoAtual = null;
+  _documentoChaveAtual = null;
   document.getElementById("docAtualLancamento").style.display = "none";
 });
 
@@ -561,7 +583,7 @@ function calcularHorasDoPeriodo() {
 document.getElementById("campoHoraInicio").addEventListener("change", calcularHorasDoPeriodo);
 document.getElementById("campoHoraFim").addEventListener("change", calcularHorasDoPeriodo);
 
-document.getElementById("salvarModalLancamento").addEventListener("click", () => {
+document.getElementById("salvarModalLancamento").addEventListener("click", async () => {
   const registroFunc = document.getElementById("campoFuncLancamento").value;
   const tipo = document.getElementById("campoTipoLancamento").value;
   const data = document.getElementById("campoDataLancamento").value;
@@ -582,30 +604,51 @@ document.getElementById("salvarModalLancamento").addEventListener("click", () =>
   const funcObj = listarFuncionarios().find((f) => String(f.registro) === String(registroFunc));
   const nomeFuncionario = funcObj ? funcObj.nome : registroFunc;
 
-  // Processa arquivo: se novo arquivo selecionado, cria URL; senão mantém o atual
-  let documentoUrl = _urlDocumentoAtual;
+  const botaoSalvar = document.getElementById("salvarModalLancamento");
+  const textoOriginalBotao = botaoSalvar.textContent;
+
+  // Processa arquivo: se um arquivo novo foi escolhido, sobe ele de
+  // verdade pro R2 agora; senão mantém a chave já salva no lançamento.
+  let documentoChave = null;
   let documentoNome = null;
   if (arquivo) {
-    documentoUrl = URL.createObjectURL(arquivo);
-    documentoNome = arquivo.name;
-  } else if (_urlDocumentoAtual) {
+    botaoSalvar.disabled = true;
+    botaoSalvar.textContent = "Enviando anexo...";
+    try {
+      documentoChave = await uploadAnexoLancamento(arquivo);
+      documentoNome = arquivo.name;
+    } catch (e) {
+      mostrarToast(e.message || "Erro ao enviar o anexo.", "erro");
+      botaoSalvar.disabled = false;
+      botaoSalvar.textContent = textoOriginalBotao;
+      return;
+    }
+  } else if (_documentoChaveAtual) {
+    documentoChave = _documentoChaveAtual;
     const l = lancamentoEditandoId ? lerLancamentos().find((x) => x.id === lancamentoEditandoId) : null;
     documentoNome = l ? l.documentoNome : null;
   }
 
   const dadosLanc = {
-    tipo, data, horas, descricao, documentoUrl, documentoNome,
+    tipo, data, horas, descricao, documentoChave, documentoNome,
     horaInicio: document.getElementById("campoHoraInicio").value || null,
     horaFim: document.getElementById("campoHoraFim").value || null,
     feriasInicio: document.getElementById("campoFeriasInicio").value || null,
     feriasFim: document.getElementById("campoFeriasFim").value || null,
   };
 
+  botaoSalvar.disabled = true;
+  botaoSalvar.textContent = "Salvando...";
+  let resposta;
   if (lancamentoEditandoId) {
-    editarLancamento(lancamentoEditandoId, dadosLanc);
+    resposta = await editarLancamento(lancamentoEditandoId, dadosLanc);
   } else {
-    adicionarLancamento({ registroFuncionario: registroFunc, nomeFuncionario, ...dadosLanc });
+    resposta = await adicionarLancamento({ registroFuncionario: registroFunc, nomeFuncionario, ...dadosLanc });
   }
+  botaoSalvar.disabled = false;
+  botaoSalvar.textContent = textoOriginalBotao;
+
+  if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar o lançamento.", "erro"); return; }
 
   document.getElementById("modalLancamento").classList.remove("active");
   if (funcSelecionado) { renderModalLancamentos(); renderModalBanco(); }
@@ -654,7 +697,7 @@ function renderLancamentosGestor() {
     btn.addEventListener("click", async () => {
       const ok = await confirmarAcao("Excluir lançamento?", "Essa ação não pode ser desfeita.");
       if (!ok) return;
-      excluirLancamento(btn.dataset.glDel);
+      await excluirLancamento(btn.dataset.glDel);
       renderLancamentosGestor();
       renderTabelaFuncionarios();
     });
@@ -734,15 +777,16 @@ function renderJornadas() {
   });
 
   tbody.querySelectorAll("[data-salvar-jornada]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const reg = btn.dataset.salvarJornada;
       const entrada = document.getElementById(`entrada_${reg}`).value;
       const saida = document.getElementById(`saida_${reg}`).value;
       const almocoInicio = document.getElementById(`almoco_inicio_${reg}`).value;
       const almocoFim = document.getElementById(`almoco_fim_${reg}`).value;
       if (!entrada || !saida) { mostrarToast("Informe entrada e saída.", "erro"); return; }
-      const horasDia = setJornadaFuncionario(reg, entrada, saida, almocoInicio, almocoFim);
-      document.getElementById(`jornadaCalc_${reg}`).textContent = formatarHoras(horasDia) + "/dia";
+      const resposta = await setJornadaFuncionario(reg, entrada, saida, almocoInicio, almocoFim);
+      if (!resposta.ok) { mostrarToast(resposta.erro || "Não foi possível salvar a jornada.", "erro"); return; }
+      document.getElementById(`jornadaCalc_${reg}`).textContent = formatarHoras(resposta.horasDia) + "/dia";
       mostrarToast("Jornada salva.");
       renderTabelaFuncionarios();
     });
@@ -824,7 +868,7 @@ function renderFeriadosNacionais(podeEditar) {
         const ok = await confirmarAcao("Remover este feriado?", "Valerá para todos os funcionários.");
         if (!ok) return;
         const nova = lista.filter((d) => d !== btn.dataset.delFeriado);
-        salvarFeriadosNacionais(nova);
+        await salvarFeriadosNacionais(nova);
         renderFeriadosNacionais(podeEditar);
       });
     });
@@ -841,7 +885,7 @@ function abrirModalEditarFeriadoNacional(mmdd) {
 }
 
 // Delegation para modal de editar feriado (elementos sempre presentes no DOM)
-document.addEventListener("click", (e) => {
+document.addEventListener("click", async (e) => {
   if (e.target.id === "fecharModalEditarFeriado" || e.target.id === "cancelarEditarFeriado") {
     document.getElementById("modalEditarFeriado").classList.remove("active");
   }
@@ -853,7 +897,7 @@ document.addEventListener("click", (e) => {
     lista = lista.filter((d) => d !== _feriadoEditando);
     if (!lista.includes(novoMmdd)) lista.push(novoMmdd);
     lista.sort();
-    salvarFeriadosNacionais(lista);
+    await salvarFeriadosNacionais(lista);
     if (novoNome) NOMES_FERIADOS_PADRAO[novoMmdd] = novoNome;
     if (_feriadoEditando !== novoMmdd) delete NOMES_FERIADOS_PADRAO[_feriadoEditando];
     document.getElementById("modalEditarFeriado").classList.remove("active");
@@ -863,7 +907,7 @@ document.addEventListener("click", (e) => {
 });
 
 // Event delegation — funciona mesmo com elementos dentro de abas ocultas
-document.addEventListener("click", (e) => {
+document.addEventListener("click", async (e) => {
   // Adicionar feriado nacional
   if (e.target.id === "btnAdicionarFeriadoNacional") {
     const val = document.getElementById("novoFeriadoNacional").value.trim();
@@ -872,7 +916,7 @@ document.addEventListener("click", (e) => {
     if (lista.includes(val)) { mostrarToast("Feriado já cadastrado.", "erro"); return; }
     lista.push(val);
     lista.sort();
-    salvarFeriadosNacionais(lista);
+    await salvarFeriadosNacionais(lista);
     NOMES_FERIADOS_PADRAO[val] = document.getElementById("novoFeriadoNacionalNome").value.trim() || "Feriado";
     document.getElementById("novoFeriadoNacional").value = "";
     document.getElementById("novoFeriadoNacionalNome").value = "";
@@ -889,7 +933,7 @@ document.addEventListener("click", (e) => {
     if (lista.includes(data)) { mostrarToast("Data já cadastrada.", "erro"); return; }
     lista.push(data);
     lista.sort();
-    salvarFeriadosFuncionario(reg, lista);
+    await salvarFeriadosFuncionario(reg, lista);
     document.getElementById("novoFeriadoFunc").value = "";
     renderFeriadosFuncionario(podeEditarFeriados());
     mostrarToast("Feriado adicionado.");
@@ -941,7 +985,7 @@ function renderFeriadosFuncionario(podeEditar) {
         const ok = await confirmarAcao("Remover este feriado?", "");
         if (!ok) return;
         const nova = lista.filter((d) => d !== btn.dataset.delFuncFeriado);
-        salvarFeriadosFuncionario(reg, nova);
+        await salvarFeriadosFuncionario(reg, nova);
         renderFeriadosFuncionario(podeEditar);
       });
     });
@@ -952,7 +996,7 @@ function renderFeriadosFuncionario(podeEditar) {
 // INICIALIZAÇÃO
 // ====================================================
 (async function iniciarPontosConsulta() {
-  await sincronizarFuncionariosCache();
+  await Promise.all([sincronizarFuncionariosCache(), carregarDadosPontosCache()]);
   popularFiltrosConsulta();
   renderTabelaFuncionarios();
 })();
@@ -1009,7 +1053,7 @@ function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario, secoes) {
     doc.setFontSize(7);
     doc.setTextColor(160);
     doc.text(
-      "EnJob Engenharia e Manutenção — Extrato de Ponto — " + nomeFuncionario + " — " + nomeMes + "/" + ano + " — Pág. " + n,
+      "Eng Job Engenharia e Manutenção — Extrato de Ponto — " + nomeFuncionario + " — " + nomeMes + "/" + ano + " — Pág. " + n,
       PW / 2, PH - 18, { align: "center" }
     );
     doc.setTextColor(0);
@@ -1026,7 +1070,7 @@ function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario, secoes) {
   doc.text("EXTRATO DE PONTO MENSAL", ML, 30);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("EnJob Engenharia e Manutenção", ML, 46);
+  doc.text("Eng Job Engenharia e Manutenção", ML, 46);
   doc.setTextColor(0);
   y = 75;
 
@@ -1367,11 +1411,11 @@ function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario, secoes) {
     const xResp = ML+largAssin+40;
     doc.line(xResp, y+40, xResp+largAssin, y+40);
     doc.text("Responsável / Gestor", xResp+largAssin/2, y+52, {align:"center"});
-    doc.text("EnJob Engenharia", xResp+largAssin/2, y+63, {align:"center"});
+    doc.text("Eng Job Engenharia", xResp+largAssin/2, y+63, {align:"center"});
     y += 80;
     doc.setFontSize(7); doc.setTextColor(160);
     doc.text(
-      "Documento gerado em " + new Date().toLocaleString("pt-BR") + " — Sistema EnJob — Dados extraídos do registro eletrônico de ponto",
+      "Documento gerado em " + new Date().toLocaleString("pt-BR") + " — Sistema Eng Job — Dados extraídos do registro eletrônico de ponto",
       PW/2, y, {align:"center"}
     );
   }
@@ -1381,3 +1425,198 @@ function gerarPdfMensalPontos(registroFuncionario, nomeFuncionario, secoes) {
 }
 
 const NOMES_MESES_PT = NOMES_MESES_PONTO;
+
+// ====================================================
+// EXTRATO POR PERÍODO — uma linha resumo por funcionário, no
+// mesmo formato do relatório "Extrato por Período" do Control iD.
+// ====================================================
+function gerarExtratoPontoPDF(registroFuncionario, nomeFuncionario, mes, ano) {
+  const nomeMes = NOMES_MESES_PONTO[mes];
+  const dataIni = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
+  const ultimoDia = diasDoMes(mes, ano).length;
+  const dataFim = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
+
+  const r = calcularApuracaoPeriodo(registroFuncionario, dataIni, dataFim);
+  const banco = calcularBancoHorasCompleto(registroFuncionario);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const PW = doc.internal.pageSize.getWidth();
+  const ML = 40, MR = 40;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(30, 30, 30);
+  doc.text("Extrato", ML, 50);
+  doc.text("por Período", ML, 78);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text("Emitido em " + new Date().toLocaleString("pt-BR"), PW - MR, 30, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(220, 20, 60);
+  doc.text(`DE ${dataIni.split("-").reverse().join("/")} ATÉ ${dataFim.split("-").reverse().join("/")}`, PW - MR, 50, { align: "right" });
+  doc.setTextColor(0);
+
+  const fmt = (h) => {
+    const neg = h < 0;
+    const abs = Math.abs(h);
+    const hh = Math.floor(abs);
+    const mm = Math.round((abs - hh) * 60);
+    return `${neg ? "-" : ""}${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  };
+
+  doc.autoTable({
+    startY: 105,
+    head: [["Nome do Funcionário", "Total\nNormais", "Total\nNoturno", "Dia\nFalta", "Falta e\nAtraso", "Abono", "Extra\nDiurna", "Extra\nNoturna", "Banco\nTotal", "Banco\nSaldo"]],
+    body: [[
+      nomeFuncionario,
+      fmt(r.totalNormais), r.totalNoturno ? fmt(r.totalNoturno) : "",
+      r.diaFalta ? fmt(r.diaFalta) : "", r.faltaEAtraso ? fmt(r.faltaEAtraso) : "",
+      r.abono ? fmt(r.abono) : "", r.extraDiurna ? fmt(r.extraDiurna) : "", r.extraNoturna ? fmt(r.extraNoturna) : "",
+      fmt(r.bancoTotal), fmt(banco.saldo),
+    ]],
+    foot: [["TOTAL: 1 FUNCIONÁRIO",
+      fmt(r.totalNormais), r.totalNoturno ? fmt(r.totalNoturno) : "",
+      r.diaFalta ? fmt(r.diaFalta) : "", r.faltaEAtraso ? fmt(r.faltaEAtraso) : "",
+      r.abono ? fmt(r.abono) : "", r.extraDiurna ? fmt(r.extraDiurna) : "", r.extraNoturna ? fmt(r.extraNoturna) : "",
+      fmt(r.bancoTotal), fmt(banco.saldo),
+    ]],
+    margin: { left: ML, right: MR },
+    styles: { fontSize: 8.5, cellPadding: 5, halign: "center" },
+    columnStyles: { 0: { halign: "left", fontStyle: "bold" } },
+    headStyles: { fillColor: 255, textColor: 30, fontStyle: "bold", fontSize: 7.5, lineWidth: 0.5, lineColor: 220 },
+    footStyles: { fillColor: 255, textColor: 30, fontStyle: "bold", lineWidth: 0.5, lineColor: 220 },
+    theme: "plain",
+  });
+
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(7);
+  doc.setTextColor(160);
+  doc.text(
+    "⚠ Relatório gerado pelo sistema Eng Job — \"Falta e Atraso\" reflete apenas lançamentos manuais desse tipo (sem detecção automática de atraso por horário). Confira contra o Control iD antes de usar para fins de pagamento.",
+    ML, doc.lastAutoTable.finalY + 20, { maxWidth: PW - ML - MR }
+  );
+
+  doc.save(`extrato_${nomeFuncionario.replace(/\s+/g, "_").toLowerCase()}_${nomeMes}_${ano}.pdf`);
+}
+
+// ====================================================
+// APURAÇÃO DE PONTO — dia a dia, até 3 pares de entrada/saída por
+// dia, no mesmo formato do relatório "Apuração de Ponto" do
+// Control iD.
+// ====================================================
+function gerarApuracaoPontoPDF(registroFuncionario, nomeFuncionario, mes, ano) {
+  const nomeMes = NOMES_MESES_PONTO[mes];
+  const dataIni = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
+  const ultimoDia = diasDoMes(mes, ano).length;
+  const dataFim = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
+  const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+  const r = calcularApuracaoPeriodo(registroFuncionario, dataIni, dataFim);
+
+  // Saldo acumulado ANTES do período começar, pra dar contexto de
+  // onde o "Banco Total" deste mês se encaixa no saldo geral —
+  // sem isso, um "+02:00" no mês pareceria sempre bom, mesmo que a
+  // pessoa já estivesse devendo 30h de meses anteriores.
+  const registrosOriginais = _batidasCache;
+  _batidasCache = registrosOriginais.filter((b) => b.dataHora.slice(0, 10) < dataIni);
+  const saldoAntes = calcularBancoHorasCompleto(registroFuncionario).saldo;
+  _batidasCache = registrosOriginais;
+  const saldoDepois = saldoAntes + r.bancoTotal;
+
+  const fmt = (h) => {
+    const neg = h < 0;
+    const abs = Math.abs(h);
+    const hh = Math.floor(abs);
+    const mm = Math.round((abs - hh) * 60);
+    return `${neg ? "-" : ""}${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  };
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const PW = doc.internal.pageSize.getWidth();
+  const ML = 30, MR = 30;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.setTextColor(30, 30, 30);
+  doc.text("Apuração de Ponto", ML, 30);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`${nomeFuncionario}  —  ${nomeMes} / ${ano}`, ML, 46);
+  doc.setTextColor(120);
+  doc.setFontSize(8);
+  doc.text(`Saldo acumulado antes do período: ${fmt(saldoAntes)}   |   Saldo acumulado depois: ${fmt(saldoDepois)}`, ML, 58);
+  doc.setTextColor(0);
+
+  const corpo = r.linhasDia.map((linha) => {
+    const dataObj = new Date(linha.data + "T12:00:00");
+    const diaSemana = DIAS_SEMANA[dataObj.getDay()];
+    const ents = linha.batidas.filter((b) => b.tipo === "entrada").map((b) => formatarHoraBR(b.dataHora));
+    const sais = linha.batidas.filter((b) => b.tipo === "saida").map((b) => formatarHoraBR(b.dataHora));
+
+    if (!linha.diaUtil && linha.batidas.length === 0) {
+      return [linha.data.split("-").reverse().join("/"), diaSemana, "Folga", "Folga", "Folga", "Folga", "Folga", "Folga", "", "", "", "", "", "", "", ""];
+    }
+
+    const temAbono = linha.lancamentos.some((l) => (TIPOS_LANCAMENTO[l.tipo] || {}).efeito === "abono");
+    const normalDia = linha.diaUtil ? Math.min(linha.horasDia, getJornadaFuncionario(registroFuncionario)) : 0;
+    const extraDia = !linha.diaUtil ? linha.horasDia : Math.max(0, linha.horasDia - getJornadaFuncionario(registroFuncionario));
+    const faltaDia = linha.diaUtil && linha.batidas.length === 0 && !temAbono ? getJornadaFuncionario(registroFuncionario) : 0;
+    const abonoDia = linha.lancamentos.filter((l) => (TIPOS_LANCAMENTO[l.tipo] || {}).efeito === "abono").reduce((s, l) => s + Math.abs(l.horas || 0), 0);
+    const faltaAtrasoDia = linha.lancamentos.filter((l) => l.tipo === "falta").reduce((s, l) => s + Math.abs(l.horas || 0), 0);
+
+    return [
+      linha.data.split("-").reverse().join("/"), diaSemana,
+      ents[0] || "", sais[0] || "", ents[1] || "", sais[1] || "", ents[2] || "", sais[2] || "",
+      normalDia ? fmt(normalDia) : "", "", faltaDia ? fmt(faltaDia) : "", faltaAtrasoDia ? fmt(faltaAtrasoDia) : "",
+      abonoDia ? fmt(abonoDia) : "", extraDia ? fmt(extraDia) : "", "",
+    ];
+  });
+
+  doc.autoTable({
+    startY: 68,
+    head: [["Dia", "", "Ent.1", "Saí.1", "Ent.2", "Saí.2", "Ent.3", "Saí.3", "Total\nNormais", "Total\nNoturno", "Dia\nFalta", "Falta e\nAtraso", "Abono", "Extra\nDiurna", "Extra\nNoturna"]],
+    body: corpo,
+    foot: [["Total", "", "", "", "", "", "", "",
+      fmt(r.totalNormais), "", r.diaFalta ? fmt(r.diaFalta) : "", r.faltaEAtraso ? fmt(r.faltaEAtraso) : "",
+      r.abono ? fmt(r.abono) : "", r.extraDiurna ? fmt(r.extraDiurna) : "", "",
+    ]],
+    margin: { left: ML, right: MR },
+    styles: { fontSize: 7, cellPadding: 3, halign: "center" },
+    columnStyles: { 0: { halign: "left", fontStyle: "bold" }, 1: { halign: "center" } },
+    headStyles: { fillColor: [235, 153, 28], textColor: 255, fontSize: 6.5 },
+    footStyles: { fillColor: [245, 245, 245], textColor: 30, fontStyle: "bold" },
+    didParseCell: (data) => {
+      if (data.section === "body" && data.row.raw[2] === "Folga") {
+        data.cell.styles.textColor = [170, 170, 170];
+      }
+    },
+    theme: "striped",
+  });
+
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(6.5);
+  doc.setTextColor(160);
+  doc.text(
+    "⚠ \"Falta e Atraso\" reflete apenas lançamentos manuais desse tipo. Confira contra o Control iD antes de usar para fins de pagamento.",
+    ML, doc.lastAutoTable.finalY + 16
+  );
+
+  doc.save(`apuracao_${nomeFuncionario.replace(/\s+/g, "_").toLowerCase()}_${nomeMes}_${ano}.pdf`);
+}
+
+document.getElementById("btnExtratoPonto").addEventListener("click", () => {
+  if (!funcSelecionado) return;
+  const mes = parseInt(document.getElementById("modalFiltroMes").value);
+  const ano = parseInt(document.getElementById("modalFiltroAno").value);
+  gerarExtratoPontoPDF(funcSelecionado.registro, funcSelecionado.nome, mes, ano);
+});
+document.getElementById("btnApuracaoPonto").addEventListener("click", () => {
+  if (!funcSelecionado) return;
+  const mes = parseInt(document.getElementById("modalFiltroMes").value);
+  const ano = parseInt(document.getElementById("modalFiltroAno").value);
+  gerarApuracaoPontoPDF(funcSelecionado.registro, funcSelecionado.nome, mes, ano);
+});

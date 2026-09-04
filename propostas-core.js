@@ -11,7 +11,7 @@
 // ============================================================
 
 const CHAVE_PROPOSTAS = "propostas_lista";
-const CHAVE_OBRAS = "obras_lista";
+let obrasCache = []; // preenchido por carregarObrasCache() — Obras já vive no banco central (KV), não em localStorage
 
 // ====================================================
 // LEITURA / ESCRITA
@@ -115,13 +115,13 @@ function salvarProposta(proposta) {
   salvarPropostas(lista);
 }
 
-function excluirProposta(id) {
+async function excluirProposta(id) {
   // Sincroniza com "Obras": se essa proposta tinha uma obra vinculada,
   // ela é excluída de vez também (proposta não tem lixeira própria,
   // então a obra ligada segue a mesma regra "sem volta").
   const obraLigada = lerObras().find((o) => o.propostaId === id);
   if (obraLigada) {
-    salvarObras(lerObras().filter((o) => o.id !== obraLigada.id));
+    await excluirObraDefinitivo(obraLigada.id);
   }
 
   const lista = lerPropostas().filter((p) => p.id !== id);
@@ -131,7 +131,7 @@ function excluirProposta(id) {
 // ====================================================
 // TRANSIÇÕES DE STATUS
 // ====================================================
-function mudarStatusProposta(id, novoStatus) {
+async function mudarStatusProposta(id, novoStatus) {
   const lista = lerPropostas();
   const proposta = lista.find((p) => p.id === id);
   if (!proposta) return;
@@ -144,7 +144,7 @@ function mudarStatusProposta(id, novoStatus) {
   if (novoStatus === "aprovada") {
     proposta.status = "andamento";
     proposta.statusExecucao = "andamento";
-    criarObraAPartirDaProposta(proposta);
+    await criarObraAPartirDaProposta(proposta);
   }
 
   proposta.atualizadoEm = new Date().toISOString();
@@ -296,10 +296,11 @@ function corStatus(proposta) {
 // OBRAS (criadas automaticamente ao aprovar uma proposta)
 // ====================================================
 function lerObras() {
-  return JSON.parse(localStorage.getItem(CHAVE_OBRAS)) || [];
+  return obrasCache;
 }
-function salvarObras(lista) {
-  localStorage.setItem(CHAVE_OBRAS, JSON.stringify(lista));
+async function carregarObrasCache() {
+  const resp = await apiListarObras();
+  obrasCache = resp.ok ? resp.obras : [];
 }
 function buscarObra(id) {
   return lerObras().find((o) => o.id === id);
@@ -307,9 +308,8 @@ function buscarObra(id) {
 
 // Cria a obra a partir da proposta aprovada. Se a proposta já tiver
 // uma obra vinculada (ex: aprovação repetida), não duplica.
-function criarObraAPartirDaProposta(proposta) {
-  const obras = lerObras();
-  const jaExiste = obras.some((o) => o.propostaId === proposta.id);
+async function criarObraAPartirDaProposta(proposta) {
+  const jaExiste = lerObras().some((o) => o.propostaId === proposta.id);
   if (jaExiste) return;
 
   const obra = {
@@ -323,89 +323,96 @@ function criarObraAPartirDaProposta(proposta) {
     observacao: "",
     funcionarios: [], // { id, nome, valorCobrado, valorPago, pagamentoMes }
     materiais: [], // { id, nome, codigo, valor, data }
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
+    statusObra: "andamento",
   };
 
-  obras.push(obra);
-  salvarObras(obras);
+  const resp = await apiSalvarObra(obra);
+  if (resp.ok) obrasCache.push(resp.obra);
 }
 
-function salvarObra(obra) {
-  const obras = lerObras();
-  obra.atualizadoEm = new Date().toISOString();
-  const idx = obras.findIndex((o) => o.id === obra.id);
-  if (idx !== -1) obras[idx] = obra;
-  else obras.push(obra);
-  salvarObras(obras);
+async function salvarObra(obra) {
+  const resp = await apiSalvarObra(obra);
+  if (resp.ok) {
+    const idx = obrasCache.findIndex((o) => o.id === obra.id);
+    if (idx !== -1) obrasCache[idx] = resp.obra;
+    else obrasCache.push(resp.obra);
+  }
+  return resp;
 }
 
-function excluirObra(id) {
+async function excluirObra(id) {
   // Move para lixeira em vez de excluir definitivo
-  const obras = lerObras();
-  const idx = obras.findIndex((o) => o.id === id);
+  const resp = await apiExcluirObra(id);
+  if (!resp.ok) return resp;
+
+  const idx = obrasCache.findIndex((o) => o.id === id);
   if (idx !== -1) {
-    obras[idx].lixeira = true;
-    obras[idx].lixeiraEm = new Date().toISOString();
-    salvarObras(obras);
+    obrasCache[idx].lixeira = true;
+    obrasCache[idx].lixeiraEm = new Date().toISOString();
 
     // Sincroniza com "Em Andamento": a proposta ligada some de lá
     // também, enquanto a obra estiver na lixeira.
-    const propostaLigada = lerPropostas().find((p) => p.id === obras[idx].propostaId);
+    const propostaLigada = lerPropostas().find((p) => p.id === obrasCache[idx].propostaId);
     if (propostaLigada) {
       propostaLigada.lixeiraObra = true;
       salvarProposta(propostaLigada);
     }
   }
+  return resp;
 }
 
-function excluirObraDefinitivo(id) {
-  const obras = lerObras();
-  const obra = obras.find((o) => o.id === id);
+async function excluirObraDefinitivo(id) {
+  const obra = lerObras().find((o) => o.id === id);
 
   // Sincroniza com "Em Andamento": exclui a proposta ligada de vez também.
   if (obra && obra.propostaId) {
     salvarPropostas(lerPropostas().filter((p) => p.id !== obra.propostaId));
   }
 
-  salvarObras(obras.filter((o) => o.id !== id));
+  const resp = await apiExcluirObraDefinitivo(id);
+  if (resp.ok) obrasCache = obrasCache.filter((o) => o.id !== id);
+  return resp;
 }
 
-function restaurarObra(id) {
-  const obras = lerObras();
-  const idx = obras.findIndex((o) => o.id === id);
+async function restaurarObra(id) {
+  const resp = await apiRestaurarObra(id);
+  if (!resp.ok) return resp;
+
+  const idx = obrasCache.findIndex((o) => o.id === id);
   if (idx !== -1) {
-    delete obras[idx].lixeira;
-    delete obras[idx].lixeiraEm;
-    salvarObras(obras);
+    delete obrasCache[idx].lixeira;
+    delete obrasCache[idx].lixeiraEm;
 
     // Sincroniza com "Em Andamento": a proposta ligada volta a aparecer.
-    const propostaLigada = lerPropostas().find((p) => p.id === obras[idx].propostaId);
+    const propostaLigada = lerPropostas().find((p) => p.id === obrasCache[idx].propostaId);
     if (propostaLigada) {
       delete propostaLigada.lixeiraObra;
       salvarProposta(propostaLigada);
     }
   }
+  return resp;
 }
 
 function lerObrasAtivas()   { return lerObras().filter((o) => !o.lixeira && (!o.statusObra || o.statusObra !== "finalizada")); }
 function lerObrasFinaliz()  { return lerObras().filter((o) => !o.lixeira && o.statusObra === "finalizada"); }
 function lerObrasLixeira()  { return lerObras().filter((o) => !!o.lixeira); }
 
-function alternarStatusObra(id) {
-  const obras = lerObras();
-  const idx = obras.findIndex((o) => o.id === id);
-  if (idx === -1) return;
-  obras[idx].statusObra = obras[idx].statusObra === "finalizada" ? "andamento" : "finalizada";
-  obras[idx].atualizadoEm = new Date().toISOString();
-  salvarObras(obras);
+async function alternarStatusObra(id) {
+  const obra = lerObras().find((o) => o.id === id);
+  if (!obra) return;
+  const vaiFinalizarAgora = obra.statusObra !== "finalizada";
+  obra.statusObra = vaiFinalizarAgora ? "finalizada" : "andamento";
+  // Guarda quando finalizou, pra Comissão conseguir agrupar por mês —
+  // some de novo se voltar pra "andamento" por engano.
+  obra.dataFinalizacao = vaiFinalizarAgora ? new Date().toISOString() : null;
+  await salvarObra(obra);
   // Sincroniza com proposta vinculada se existir
-  const propostaId = obras[idx].propostaId;
+  const propostaId = obra.propostaId;
   if (propostaId) {
     const p = buscarProposta(propostaId);
     if (p) {
-      p.statusObra = obras[idx].statusObra;
-      p.status = obras[idx].statusObra;
+      p.statusObra = obra.statusObra;
+      p.status = obra.statusObra;
       salvarProposta(p);
     }
   }
@@ -424,7 +431,7 @@ const NOMES_MESES_OBRA = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
 // Adiciona um funcionário na obra E cria automaticamente o
 // pagamento correspondente no Financeiro de Funcionários, usando
 // o nome da obra (cliente + serviço) como referência de "obra".
-function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
+async function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
   const obra = buscarObra(obraId);
   if (!obra) return;
 
@@ -463,7 +470,7 @@ function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
     vinculoObraId: vinculoId,
   });
 
-  salvarObra(obra);
+  await salvarObra(obra);
 }
 
 function nomeObraParaFinanceiro(obra) {
@@ -473,7 +480,7 @@ function nomeObraParaFinanceiro(obra) {
 
 // Atualiza um funcionário já existente na obra, e sincroniza o
 // valor pago de volta no Financeiro de Funcionários.
-function editarFuncionarioNaObra(obraId, funcionarioId, dadosNovos) {
+async function editarFuncionarioNaObra(obraId, funcionarioId, dadosNovos) {
   const obra = buscarObra(obraId);
   if (!obra) return;
 
@@ -497,16 +504,16 @@ function editarFuncionarioNaObra(obraId, funcionarioId, dadosNovos) {
     }
   }
 
-  salvarObra(obra);
+  await salvarObra(obra);
 }
 
-function excluirFuncionarioDaObra(obraId, funcionarioId) {
+async function excluirFuncionarioDaObra(obraId, funcionarioId) {
   const obra = buscarObra(obraId);
   if (!obra) return;
 
   const func = obra.funcionarios.find((f) => f.id === funcionarioId);
   obra.funcionarios = obra.funcionarios.filter((f) => f.id !== funcionarioId);
-  salvarObra(obra);
+  await salvarObra(obra);
 
   // Remove também o pagamento vinculado no Financeiro, se existir
   // (procurado pelo ID de vínculo, não por posição no array).
@@ -518,7 +525,7 @@ function excluirFuncionarioDaObra(obraId, funcionarioId) {
 }
 
 // ----- Materiais da obra (anotação livre, sem vínculo de estoque) -----
-function adicionarMaterialNaObra(obraId, dadosMaterial) {
+async function adicionarMaterialNaObra(obraId, dadosMaterial) {
   const obra = buscarObra(obraId);
   if (!obra) return;
   obra.materiais.push({
@@ -528,10 +535,10 @@ function adicionarMaterialNaObra(obraId, dadosMaterial) {
     valor: dadosMaterial.valor || 0,
     data: dadosMaterial.data || "",
   });
-  salvarObra(obra);
+  await salvarObra(obra);
 }
 
-function editarMaterialNaObra(obraId, materialId, dadosNovos) {
+async function editarMaterialNaObra(obraId, materialId, dadosNovos) {
   const obra = buscarObra(obraId);
   if (!obra) return;
   const mat = obra.materiais.find((m) => m.id === materialId);
@@ -540,14 +547,14 @@ function editarMaterialNaObra(obraId, materialId, dadosNovos) {
   mat.codigo = dadosNovos.codigo || "";
   mat.valor = dadosNovos.valor || 0;
   mat.data = dadosNovos.data || "";
-  salvarObra(obra);
+  await salvarObra(obra);
 }
 
-function excluirMaterialDaObra(obraId, materialId) {
+async function excluirMaterialDaObra(obraId, materialId) {
   const obra = buscarObra(obraId);
   if (!obra) return;
   obra.materiais = obra.materiais.filter((m) => m.id !== materialId);
-  salvarObra(obra);
+  await salvarObra(obra);
 }
 
 // ----- Cálculos de lucro -----

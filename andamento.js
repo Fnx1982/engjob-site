@@ -179,7 +179,7 @@ function renderLista() {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Excluir obra?", "Essa ação não pode ser desfeita.");
       if (!confirmado) return;
-      excluirProposta(btn.dataset.deleteId);
+      await excluirProposta(btn.dataset.deleteId);
       renderLista();
     });
   });
@@ -209,3 +209,4 @@ renderLista();
 function navegarParaNotaAndamento(url) {
   window.location.href = url;
 }
+carregarObrasCache();

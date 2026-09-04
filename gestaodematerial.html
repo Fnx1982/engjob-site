@@ -61,10 +61,16 @@
       </div>
     </div>
 
+    <div class="card-filtros" id="blocoPendentesMateriais" style="display:none;">
+      <h2>Pendentes <span style="font-weight:normal; font-size:12px; color:#888;">(rascunhos salvos automaticamente, ainda não finalizados)</span></h2>
+      <div class="lista-servicos" id="listaPendentesMateriais"></div>
+    </div>
+
     <!-- Conteúdo agrupado (setor ou material) -->
     <div id="grupos"></div>
     <div class="sem-resultados" id="semResultados" style="display:none;">
-      Nenhum material encontrado com esses filtros.
+      <p id="semResultadosTexto">Nenhum material encontrado com esses filtros.</p>
+      <button type="button" class="btn-laranja" id="btnCadastrarDaBusca" style="display:none;">+ Cadastrar como material novo</button>
     </div>
 
     </div><!-- /painelMateriais -->
@@ -86,8 +92,16 @@
         </div>
       </div>
 
+      <div class="card-filtros" id="blocoPendentesServicos" style="display:none;">
+        <h2>Pendentes <span style="font-weight:normal; font-size:12px; color:#888;">(rascunhos salvos automaticamente, ainda não finalizados)</span></h2>
+        <div class="lista-servicos" id="listaPendentesServicos"></div>
+      </div>
+
       <div id="listaServicos" class="lista-servicos"></div>
-      <div class="sem-resultados" id="vazioServicos" style="display:none;">Nenhum serviço cadastrado ainda.</div>
+      <div class="sem-resultados" id="vazioServicos" style="display:none;">
+        <p id="vazioServicosTexto">Nenhum serviço cadastrado ainda.</p>
+        <button type="button" class="btn-laranja" id="btnCadastrarServicoDaBusca" style="display:none;">+ Cadastrar como serviço novo</button>
+      </div>
     </div><!-- /painelServicos -->
   </main>
 

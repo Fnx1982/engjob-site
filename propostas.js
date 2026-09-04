@@ -121,7 +121,7 @@ function renderLista() {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Aprovar esta proposta?", "Ela vai para 'Em Andamento' automaticamente.");
       if (!confirmado) return;
-      mudarStatusProposta(btn.dataset.aprovarId, "aprovada");
+      await mudarStatusProposta(btn.dataset.aprovarId, "aprovada");
       renderLista();
     });
   });
@@ -129,7 +129,7 @@ function renderLista() {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Negar esta proposta?", "Ela ficará marcada como negada.");
       if (!confirmado) return;
-      mudarStatusProposta(btn.dataset.negarId, "negada");
+      await mudarStatusProposta(btn.dataset.negarId, "negada");
       renderLista();
     });
   });
@@ -137,7 +137,7 @@ function renderLista() {
     btn.addEventListener("click", async () => {
       const confirmado = await confirmarAcao("Excluir proposta?", "Essa ação não pode ser desfeita.");
       if (!confirmado) return;
-      excluirProposta(btn.dataset.deleteId);
+      await excluirProposta(btn.dataset.deleteId);
       renderLista();
     });
   });
@@ -163,3 +163,7 @@ btnLimparFiltros.addEventListener("click", () => {
 });
 
 renderLista();
+// Carrega o cache de Obras em segundo plano — precisa estar pronto
+// antes de aprovar/excluir uma proposta (evita duplicar obra se
+// aprovar duas vezes rápido, por exemplo).
+carregarObrasCache();

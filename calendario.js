@@ -94,12 +94,26 @@ function listarEventos() {
     .then((response) => {
       const eventos = response.result.items || [];
 
-      const eventosFormatados = eventos.map((ev) => ({
-        id: ev.id,
-        title: ev.summary,
-        start: ev.start.dateTime || ev.start.date,
-        end: ev.end?.dateTime || ev.end?.date,
-      }));
+      const eventosFormatados = eventos.map((ev) => {
+        const clientePagamento = ev.extendedProperties?.private?.clientePagamento || "";
+        return {
+          id: ev.id,
+          // No grid do calendário, mostra "Cliente: Título" quando tiver
+          // cliente/pagamento preenchido — ajuda a bater o olho sem
+          // precisar abrir o evento. O título "puro" (sem esse prefixo)
+          // fica guardado à parte, em extendedProps, pra reaparecer
+          // certo no campo de edição.
+          title: clientePagamento ? `${clientePagamento}: ${ev.summary || ""}` : (ev.summary || ""),
+          start: ev.start.dateTime || ev.start.date,
+          end: ev.end?.dateTime || ev.end?.date,
+          extendedProps: {
+            tituloOriginal: ev.summary || "",
+            location: ev.location || "",
+            description: ev.description || "",
+            clientePagamento,
+          },
+        };
+      });
 
       calendar.removeAllEvents();
       calendar.addEventSource(eventosFormatados);
@@ -112,6 +126,9 @@ function listarEventos() {
 function abrirModalNovo(data) {
   eventoSelecionado = null;
   document.getElementById("eventTitle").value = "";
+  document.getElementById("eventClientePagamento").value = "";
+  document.getElementById("eventEndereco").value = "";
+  document.getElementById("eventDescricao").value = "";
   document.getElementById("eventStart").value = data + "T09:00";
   document.getElementById("eventEnd").value = data + "T10:00";
   document.querySelector("#eventModal h3").textContent = "Novo Evento";
@@ -123,7 +140,10 @@ function abrirModalNovo(data) {
 
 function abrirModalEditar(event) {
   eventoSelecionado = event;
-  document.getElementById("eventTitle").value = event.title;
+  document.getElementById("eventTitle").value = event.extendedProps?.tituloOriginal ?? event.title;
+  document.getElementById("eventClientePagamento").value = event.extendedProps?.clientePagamento || "";
+  document.getElementById("eventEndereco").value = event.extendedProps?.location || "";
+  document.getElementById("eventDescricao").value = event.extendedProps?.description || "";
   document.getElementById("eventStart").value = event.startStr.slice(0, 16);
   document.getElementById("eventEnd").value = event.endStr ? event.endStr.slice(0, 16) : "";
   document.querySelector("#eventModal h3").textContent = "Editar Evento";
@@ -139,6 +159,9 @@ function fecharModal() {
 
 function salvarEvento() {
   const title = document.getElementById("eventTitle").value;
+  const clientePagamento = document.getElementById("eventClientePagamento").value.trim();
+  const endereco = document.getElementById("eventEndereco").value.trim();
+  const descricao = document.getElementById("eventDescricao").value.trim();
   const start = document.getElementById("eventStart").value;
   const end = document.getElementById("eventEnd").value;
 
@@ -149,8 +172,11 @@ function salvarEvento() {
 
   const evento = {
     summary: title,
+    location: endereco,
+    description: descricao,
     start: { dateTime: new Date(start).toISOString() },
     end: { dateTime: new Date(end).toISOString() },
+    extendedProperties: { private: { clientePagamento } },
   };
 
   gapi.client.calendar.events
@@ -172,13 +198,19 @@ function editarEvento() {
   if (!eventoSelecionado) return;
 
   const title = document.getElementById("eventTitle").value;
+  const clientePagamento = document.getElementById("eventClientePagamento").value.trim();
+  const endereco = document.getElementById("eventEndereco").value.trim();
+  const descricao = document.getElementById("eventDescricao").value.trim();
   const start = document.getElementById("eventStart").value;
   const end = document.getElementById("eventEnd").value;
 
   const eventoAtualizado = {
     summary: title,
+    location: endereco,
+    description: descricao,
     start: { dateTime: new Date(start).toISOString() },
     end: { dateTime: new Date(end).toISOString() },
+    extendedProperties: { private: { clientePagamento } },
   };
 
   gapi.client.calendar.events

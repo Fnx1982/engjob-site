@@ -68,9 +68,10 @@ async function apiDeletePrefix(prefix) {
 
 function apiUrl(key) {
   // Usado em <img src>, <a href download>, <embed>, <video> — essas tags
-  // não conseguem enviar o header Authorization, então o token vai como
-  // parâmetro de URL aqui (o Worker aceita os dois formatos para a ação "get").
-  const token = localStorage.getItem("sessionToken") || "";
+  // não conseguem enviar o header Authorization, então usa um token de
+  // DOWNLOAD de vida curta (10min), nunca o token de sessão de 12h —
+  // ver garantirTokenDownload() em auth-worker.js.
+  const token = pegarTokenDownloadCache();
   return `${WORKER_URL}?action=get&key=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}`;
 }
 
@@ -690,5 +691,7 @@ function mostrarToast(msg, tipo) {
 }
 
 // ── INICIALIZAÇÃO ─────────────────────────────────────────────
-atualizarBreadcrumb();
-carregarItens();
+garantirTokenDownload().then(() => {
+  atualizarBreadcrumb();
+  carregarItens();
+});

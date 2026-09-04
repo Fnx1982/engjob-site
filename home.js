@@ -16,6 +16,11 @@ async function logout() {
 
     localStorage.removeItem("montante");
     localStorage.removeItem("observacao");
+    localStorage.removeItem("sessionToken");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userType");
+    localStorage.removeItem("userNome");
+    localStorage.removeItem("userSetor");
 
     window.location.href = "login.html";
   } catch (err) {
@@ -25,6 +30,8 @@ async function logout() {
     localStorage.removeItem("sessionToken");
     localStorage.removeItem("userId");
     localStorage.removeItem("userType");
+    localStorage.removeItem("userNome");
+    localStorage.removeItem("userSetor");
     window.location.href = "login.html";
   }
 }
@@ -129,9 +136,11 @@ async function updateMenuVisibility() {
   await sincronizarDadosCompartilhados();
 
   // CEO/login fixo do sistema (ver login.js) não tem um setor
-  // cadastrado de verdade — esse caso continua liberando tudo.
+  // cadastrado de verdade — esse caso continua liberando tudo. E
+  // qualquer pessoa do setor "Diretoria" também tem acesso total,
+  // sem precisar configurar cada permissão manualmente.
   const userType = (localStorage.getItem("userType") || "").toLowerCase();
-  const ehLoginFixo = userType === "ceo" && !nomeSetor;
+  const ehLoginFixo = userType === "ceo" || nomeSetor === "Diretoria";
 
   const idsPermitidos = ehLoginFixo ? "todos" : getPermissoesDoSetor(nomeSetor);
 

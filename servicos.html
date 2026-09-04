@@ -6,7 +6,7 @@
   <script src="confirm-modal.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Serviços — EnJob</title>
+  <title>Serviços — Eng Job</title>
   <link rel="stylesheet" href="contatos.css" />
 </head>
 <body>
@@ -81,6 +81,11 @@
 
     <div class="barra-busca">
       <input type="text" id="buscaServicos" placeholder="Buscar por descrição, código LC 116 ou CNAE..." />
+    </div>
+
+    <div class="card-secao" id="blocoPendentes" style="display:none;">
+      <h2>Pendentes <span style="font-weight:normal; font-size:12px; color:#888;">(rascunhos salvos automaticamente, ainda não finalizados)</span></h2>
+      <div class="lista-contatos" id="listaPendentes"></div>
     </div>
 
     <div class="lista-contatos" id="listaServicos"></div>

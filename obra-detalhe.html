@@ -27,13 +27,13 @@
       <div class="servico" id="servicoObra"></div>
       <div id="statusObraDetalhe" style="margin-top:10px;"></div>
 
-      <div class="detalhe-observacao">
+      <div class="detalhe-observacao" id="blocoObservacao">
         <label for="campoObservacaoObra">Observação</label>
         <textarea id="campoObservacaoObra" rows="3" placeholder="Anotações sobre esta obra..."></textarea>
       </div>
     </div>
 
-    <div class="cards-lucro">
+    <div class="cards-lucro" id="blocoLucros">
       <div class="card-lucro">
         <div class="rotulo">Lucro Mão de Obra</div>
         <div class="valor" id="lucroMaoDeObraValor">R$ 0,00</div>
@@ -51,18 +51,20 @@
       </div>
     </div>
 
-    <div class="secao-detalhe">
+    <div class="secao-detalhe" id="blocoFuncionarios">
       <h3>Funcionários nesta obra</h3>
       <div class="lista-itens-obra" id="listaFuncionariosObra"></div>
       <div class="form-rapido-item">
-        <input type="text" id="novoFuncNome" placeholder="Nome do funcionário" />
+        <select id="novoFuncNome">
+          <option value="" disabled selected>Selecione o funcionário</option>
+        </select>
         <input type="number" id="novoFuncCobrado" placeholder="Valor cobrado (opcional)" step="0.01" min="0" />
         <input type="number" id="novoFuncPago" placeholder="Valor pago (opcional)" step="0.01" min="0" />
         <button type="button" class="btn-laranja" id="btnAddFuncionarioObra">+ Adicionar</button>
       </div>
     </div>
 
-    <div class="secao-detalhe">
+    <div class="secao-detalhe" id="blocoMateriais">
       <h3>Materiais anotados</h3>
       <div class="lista-itens-obra" id="listaMateriaisObra"></div>
       <div class="form-rapido-item">

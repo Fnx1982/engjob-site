@@ -6,6 +6,7 @@ let visitaEmEdicaoId = null;
 let visitasCache = [];
 let fotosSelecionadas = []; // arquivos escolhidos, ainda não enviados
 let fotosJaSalvas = []; // chaves R2 de fotos já salvas (ao editar uma visita existente)
+let rascunhoAtualId = null; // id do rascunho de auto-save em andamento (null = ainda não criado)
 
 const WORKER_URL_VISITA = "https://engjob-storage.engjobmanut.workers.dev";
 
@@ -24,9 +25,22 @@ function uploadFotoVisita(arquivo) {
 }
 
 function urlFotoVisita(chave) {
-  const token = localStorage.getItem("sessionToken") || "";
+  const token = pegarTokenDownloadCache();
   return `${WORKER_URL_VISITA}?action=get&key=${encodeURIComponent(chave)}&token=${encodeURIComponent(token)}`;
 }
+
+// ── Máscara de telefone: (41) 9 9999-9999 ──────────────────────
+function aplicarMascaraTelefoneVisita(event) {
+  let input = event.target;
+  let valor = input.value.replace(/\D/g, "");
+  if (valor.length > 11) valor = valor.slice(0, 11);
+  if (valor.length > 7) valor = valor.replace(/^(\d{2})(\d{1})(\d{4})(\d{0,4}).*/, "($1) $2 $3-$4");
+  else if (valor.length > 3) valor = valor.replace(/^(\d{2})(\d{1})(\d{0,4})/, "($1) $2 $3");
+  else if (valor.length > 2) valor = valor.replace(/^(\d{2})(\d{0,1})/, "($1) $2");
+  else if (valor.length > 0) valor = valor.replace(/^(\d{0,2})/, "($1");
+  input.value = valor.trim();
+}
+document.getElementById("campoTelefone").addEventListener("input", aplicarMascaraTelefoneVisita);
 
 // ── Prévia das fotos escolhidas (antes de salvar) ────────────────
 document.getElementById("campoFotos").addEventListener("change", (e) => {
@@ -71,6 +85,7 @@ function renderPreviaFotos() {
 // ── Formulário: limpar / preencher ──────────────────────────────
 function limparFormulario() {
   visitaEmEdicaoId = null;
+  rascunhoAtualId = null;
   document.getElementById("campoId").value = "";
   ["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao"].forEach((id) => {
     document.getElementById(id).value = "";
@@ -85,6 +100,7 @@ function limparFormulario() {
 
 function preencherFormulario(visita) {
   visitaEmEdicaoId = visita.id;
+  rascunhoAtualId = null;
   document.getElementById("campoId").value = visita.id;
   document.getElementById("campoClienteNome").value = visita.clienteNome || "";
   document.getElementById("campoTelefone").value = visita.telefone || "";
@@ -102,6 +118,107 @@ function preencherFormulario(visita) {
 }
 
 document.getElementById("btnCancelarEdicao").addEventListener("click", limparFormulario);
+
+// ====================================================
+// RASCUNHO AUTOMÁTICO (auto-save) — salva sozinho ao sair de
+// qualquer campo, e ao trocar/fechar a aba. Fotos ainda não
+// enviadas (selecionadas mas sem upload concluído) NÃO entram no
+// rascunho — só o que já está de fato no R2.
+// ====================================================
+function coletarDadosRascunhoVisita() {
+  return {
+    id: visitaEmEdicaoId,
+    clienteNome: document.getElementById("campoClienteNome").value.trim(),
+    telefone: document.getElementById("campoTelefone").value.trim(),
+    local: document.getElementById("campoLocal").value.trim(),
+    endereco: document.getElementById("campoEndereco").value.trim(),
+    bairro: document.getElementById("campoBairro").value.trim(),
+    cidade: document.getElementById("campoCidade").value.trim(),
+    descricao: document.getElementById("campoDescricao").value.trim(),
+    fotos: [...fotosJaSalvas],
+  };
+}
+
+function formularioVisitaTemConteudo(d) {
+  return !!(d.clienteNome || d.telefone || d.local || d.endereco || d.bairro || d.cidade || d.descricao || d.fotos.length);
+}
+
+async function salvarRascunhoAtual() {
+  const dados = coletarDadosRascunhoVisita();
+  if (!formularioVisitaTemConteudo(dados)) return;
+  const resposta = await apiSalvarRascunho("visita", rascunhoAtualId, dados);
+  if (resposta.ok) { rascunhoAtualId = resposta.id; renderPendentes(); }
+}
+
+function salvarRascunhoAtualImediato() {
+  const dados = coletarDadosRascunhoVisita();
+  if (!formularioVisitaTemConteudo(dados)) return;
+  if (!rascunhoAtualId) rascunhoAtualId = `rascunho_visita_${Date.now()}`;
+  apiSalvarRascunhoImediato("visita", rascunhoAtualId, dados);
+}
+
+["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao"].forEach((idCampo) => {
+  document.getElementById(idCampo).addEventListener("blur", salvarRascunhoAtual);
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") salvarRascunhoAtualImediato(); });
+window.addEventListener("beforeunload", salvarRascunhoAtualImediato);
+
+function preencherFormularioComRascunho(dados, idRascunho) {
+  rascunhoAtualId = idRascunho;
+  visitaEmEdicaoId = dados.id || null;
+  document.getElementById("campoId").value = dados.id || "";
+  document.getElementById("campoClienteNome").value = dados.clienteNome || "";
+  document.getElementById("campoTelefone").value = dados.telefone || "";
+  document.getElementById("campoLocal").value = dados.local || "";
+  document.getElementById("campoEndereco").value = dados.endereco || "";
+  document.getElementById("campoBairro").value = dados.bairro || "";
+  document.getElementById("campoCidade").value = dados.cidade || "";
+  document.getElementById("campoDescricao").value = dados.descricao || "";
+  fotosSelecionadas = [];
+  fotosJaSalvas = [...(dados.fotos || [])];
+  renderPreviaFotos();
+  document.getElementById("tituloFormulario").textContent = dados.clienteNome ? `Continuando rascunho — ${dados.clienteNome}` : "Continuando rascunho";
+  document.getElementById("btnCancelarEdicao").style.display = "inline-block";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function renderPendentes() {
+  const resposta = await apiListarRascunhos("visita");
+  const bloco = document.getElementById("blocoPendentes");
+  const listaEl = document.getElementById("listaPendentes");
+  if (!bloco || !listaEl) return;
+  if (!resposta.ok || !resposta.rascunhos || resposta.rascunhos.length === 0) {
+    bloco.style.display = "none";
+    listaEl.innerHTML = "";
+    return;
+  }
+  bloco.style.display = "block";
+  listaEl.innerHTML = "";
+  resposta.rascunhos.forEach((r) => {
+    const d = r.dados || {};
+    const dataFormatada = new Date(r.atualizadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    const el = document.createElement("div");
+    el.className = "item-contato";
+    el.innerHTML = `
+      <div>
+        <div class="nome">${escaparHtml(d.clienteNome) || "(sem cliente)"} <span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">Pendente</span></div>
+        <div class="meta">Salvo automaticamente em ${dataFormatada}</div>
+      </div>
+      <div class="acoes">
+        <button class="btn-continuar-rascunho">Continuar editando</button>
+        <button class="btn-excluir-rascunho">Excluir</button>
+      </div>
+    `;
+    el.querySelector(".btn-continuar-rascunho").addEventListener("click", () => preencherFormularioComRascunho(d, r.id));
+    el.querySelector(".btn-excluir-rascunho").addEventListener("click", async () => {
+      const ok = await confirmarAcao("Excluir rascunho pendente?", "Essa ação não pode ser desfeita.");
+      if (!ok) return;
+      await apiExcluirRascunho("visita", r.id);
+      renderPendentes();
+    });
+    listaEl.appendChild(el);
+  });
+}
 
 // ── Salvar ────────────────────────────────────────────────────
 document.getElementById("btnSalvarVisita").addEventListener("click", async () => {
@@ -137,8 +254,10 @@ document.getElementById("btnSalvarVisita").addEventListener("click", async () =>
     const resposta = await apiSalvarVisita(dados);
     if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar.", "erro"); return; }
     mostrarToast("Visita salva.");
+    if (rascunhoAtualId) { await apiExcluirRascunho("visita", rascunhoAtualId); rascunhoAtualId = null; }
     limparFormulario();
     carregarVisitas();
+    renderPendentes();
   } catch (e) {
     mostrarToast(e.message || "Erro ao salvar a visita.", "erro");
   } finally {
@@ -223,4 +342,7 @@ function navegarParaOrcamento(url) {
 }
 
 limparFormulario();
-carregarVisitas();
+garantirTokenDownload().then(() => {
+  carregarVisitas();
+  renderPendentes();
+});

@@ -17,11 +17,13 @@ const CHAVE_SETORES_PERMISSOES = "setoresPermissoes";
 const ITENS_MENU_DISPONIVEIS = [
   { id: "gerenciarcontas-menu", rotulo: "Cadastro" },
   { id: "financeiro-menu", rotulo: "Financeiro" },
+  { id: "comissao-menu", rotulo: "Comissão" },
   { id: "relatorios-menu", rotulo: "Relatórios" },
   { id: "obras-menu", rotulo: "Obras" },
   { id: "gestaomaterial-menu", rotulo: "Gestão de Material" },
   { id: "armazenamento-menu", rotulo: "Armazenamento" },
   { id: "boletos-menu", rotulo: "Boletos" },
+  { id: "clientes-crm-menu", rotulo: "Contatos (quadro)" },
   { id: "notas-menu", rotulo: "Notas" },
   { id: "propostas-menu", rotulo: "Propostas" },
   { id: "reuniao-menu", rotulo: "Reunião" },

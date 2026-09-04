@@ -45,12 +45,30 @@
     <div class="modal-content">
       <span class="close" onclick="fecharModal()">&times;</span>
       <h3>Novo Evento</h3>
-      <input type="text" id="eventTitle" placeholder="Título do evento">
+
+      <label for="eventTitle">Título do evento</label>
+      <input type="text" id="eventTitle" placeholder="Ex: Reunião, Vistoria..." />
+
+      <label for="eventClientePagamento">Nome do cliente ou do pagamento</label>
+      <input type="text" id="eventClientePagamento" placeholder="Ex: João Silva, Boleto Sicredi..." />
+
+      <label for="eventEndereco">Endereço</label>
+      <input type="text" id="eventEndereco" placeholder="Rua, número, bairro, cidade" />
+
+      <label for="eventStart">Início</label>
       <input type="datetime-local" id="eventStart">
+
+      <label for="eventEnd">Fim</label>
       <input type="datetime-local" id="eventEnd">
-      <button id="btnSalvar" onclick="salvarEvento()">Salvar</button>
-      <button id="btnEditar" onclick="editarEvento()" style="display:none;">Editar</button>
-      <button id="btnExcluir" onclick="excluirEvento()" style="display:none;">Excluir</button>
+
+      <label for="eventDescricao">Descritivo / Observação</label>
+      <textarea id="eventDescricao" rows="3" placeholder="Detalhes sobre o evento..."></textarea>
+
+      <div class="modal-actions">
+        <button id="btnSalvar" onclick="salvarEvento()">Salvar</button>
+        <button id="btnEditar" onclick="editarEvento()" style="display:none;">Editar</button>
+        <button id="btnExcluir" onclick="excluirEvento()" style="display:none;">Excluir</button>
+      </div>
     </div>
   </div>
 

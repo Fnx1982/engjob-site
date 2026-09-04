@@ -42,14 +42,20 @@ document.getElementById("btnBaterPonto").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Aguardando localização...";
 
-  const batida = await baterPonto(registroUsuario, nomeUsuario);
+  try {
+    const resposta = await baterPonto(registroUsuario, nomeUsuario);
+    if (!resposta.ok) { mostrarToast(resposta.erro || "Não foi possível registrar o ponto.", "erro"); return; }
 
-  btn.disabled = false;
-  btn.textContent = "Registrar Ponto";
-
-  const localTexto = batida.endereco ? ` — 📍 ${batida.endereco}` : "";
-  mostrarToast(`Ponto registrado: ${batida.tipo === "entrada" ? "Entrada" : "Saída"} às ${formatarHoraBR(batida.dataHora)}${localTexto}`);
-  renderTudo();
+    const batida = resposta.batida;
+    const localTexto = batida.endereco ? ` — 📍 ${batida.endereco}` : "";
+    mostrarToast(`Ponto registrado: ${batida.tipo === "entrada" ? "Entrada" : "Saída"} às ${formatarHoraBR(batida.dataHora)}${localTexto}`);
+    renderTudo();
+  } finally {
+    // "finally" garante que o botão nunca fica travado, mesmo se
+    // algo inesperado (erro de rede, etc.) acontecer no meio do caminho.
+    btn.disabled = false;
+    btn.textContent = "Registrar Ponto";
+  }
 });
 
 // ====================================================
@@ -232,5 +238,8 @@ function renderTudo() {
   renderLancamentos();
 }
 
-popularFiltrosMesPonto();
-renderTudo();
+(async function iniciarPontosConfirmacao() {
+  await Promise.all([carregarDadosPontosCache(), garantirTokenDownload()]);
+  popularFiltrosMesPonto();
+  renderTudo();
+})();

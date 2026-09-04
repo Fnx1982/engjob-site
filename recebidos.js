@@ -1,6 +1,6 @@
 // ============================================================
 // recebidos.js — registro de notas que fornecedores emitem
-// para o CNPJ da EnJob (não é emissão, é organização/arquivo).
+// para o CNPJ da Eng Job (não é emissão, é organização/arquivo).
 // ============================================================
 
 const WORKER_URL_RECEBIDOS = "https://engjob-storage.engjobmanut.workers.dev";
@@ -24,7 +24,7 @@ function uploadArquivoRecebido(id, arquivo) {
 }
 
 function urlArquivoRecebido(chave) {
-  const token = localStorage.getItem("sessionToken") || "";
+  const token = pegarTokenDownloadCache();
   return `${WORKER_URL_RECEBIDOS}?action=get&key=${encodeURIComponent(chave)}&token=${encodeURIComponent(token)}`;
 }
 
@@ -259,4 +259,4 @@ document.getElementById("formRecebido").addEventListener("submit", async (e) => 
 document.getElementById("buscaRecebidos").addEventListener("input", renderizarLista);
 document.getElementById("filtroTipo").addEventListener("change", renderizarLista);
 
-carregarRecebidos();
+garantirTokenDownload().then(carregarRecebidos);

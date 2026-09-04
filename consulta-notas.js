@@ -6,17 +6,16 @@
 
 let todasAsNotas = [];
 let filtroTipoAtual = "todas"; // "todas" | "NF-e" | "NFS-e"
-
-// Dados da empresa pro cabeçalho do PDF — versão local, só com o
-// necessário aqui (evita carregar propostas-core.js inteiro só por
-// causa de um cabeçalho).
-const EMPRESA_INFO_CONSULTA = {
-  nome: "ENGJOB ENGENHARIA E MANUTENÇÃO",
-  cnpj: "14.426.042/0001-01",
-  endereco: "Rua La Salle, 300 - Casa 7 - Pinheirinho - Curitiba/Paraná - CEP 81880-400",
-};
+let dadosEmpresaConsulta = null; // carregado uma vez, usado no PDF e nos detalhes
 
 const WORKER_URL_CONSULTA = "https://engjob-storage.engjobmanut.workers.dev";
+
+async function carregarDadosEmpresaConsulta() {
+  try {
+    const resposta = await apiDataGet("empresaFiscal");
+    dadosEmpresaConsulta = (resposta.ok && resposta.valor) ? resposta.valor : null;
+  } catch (e) { /* sem conexão — usa null, o PDF cai pro texto padrão */ }
+}
 
 function uploadBlobParaArmazenamento(chave, blob, contentType) {
   return new Promise((resolve, reject) => {
@@ -31,6 +30,45 @@ function uploadBlobParaArmazenamento(chave, blob, contentType) {
   });
 }
 
+function formatarMoedaConsulta(valor) {
+  return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// Calcula os totais de uma nota, usando os campos estruturados de
+// verdade quando existem (notas criadas pelas telas novas de
+// NF-e/NFS-e). Pra alguma nota antiga que só tenha o "impostos" em %
+// genérico (do jeito antigo), cai num cálculo mais simples, só pra
+// não quebrar — mas o normal, daqui pra frente, é sempre ter
+// dadosEstruturados.
+function calcularTotalNota(nota) {
+  const subtotal = (nota.itens || []).reduce((s, i) => s + (i.quantidade || 0) * (i.valorUnitario || 0), 0);
+  const de = nota.dadosEstruturados || {};
+  const num = (v) => Number(v) || 0;
+
+  if (!nota.dadosEstruturados) {
+    // Nota antiga, do modelo genérico anterior.
+    const totalImpostos = (nota.impostos || []).reduce((s, i) => s + subtotal * ((i.percentual || 0) / 100), 0);
+    return { subtotal, totalImpostos, total: subtotal + totalImpostos, baseCalculo: subtotal, valorIss: 0 };
+  }
+
+  if (nota.tipo === "NFS-e") {
+    const descCond = num(de.campoDescCondicional);
+    const descIncond = num(de.campoDescIncondicional);
+    const deducoes = num(de.campoDeducoes);
+    const baseCalculo = Math.max(0, subtotal - descCond - descIncond - deducoes);
+    const aliqIss = num(de.campoAliqIss);
+    const valorIss = baseCalculo * (aliqIss / 100);
+    const issRetido = de.campoIssRetido === "SIM";
+    const totalRetencoes = num(de.campoInssRetido) + num(de.campoIrrfRetido) + num(de.campoPisCofinsCsllRetidos) + num(de.campoOutrasRetencoes) + (issRetido ? valorIss : 0);
+    return { subtotal, totalImpostos: totalRetencoes, total: subtotal - totalRetencoes, baseCalculo, valorIss };
+  }
+
+  // NF-e
+  const extras = num(de.campoValorIpi) + num(de.campoValorFrete) + num(de.campoValorSeguro) + num(de.campoOutrasDespesas) - num(de.campoDesconto);
+  return { subtotal, totalImpostos: extras, total: subtotal + extras, baseCalculo: subtotal, valorIss: 0 };
+}
+
+
 // Gera o PDF de uma nota fiscal (NF-e ou NFS-e) — layout simples,
 // com a logo real e os dados do tomador/itens/impostos.
 function gerarPdfNotaFiscal(nota) {
@@ -40,6 +78,7 @@ function gerarPdfNotaFiscal(nota) {
   const larguraUtil = doc.internal.pageSize.getWidth() - margem * 2;
   let y = 40;
 
+  const emp = dadosEmpresaConsulta || {};
   const larguraLogo = 140;
   const alturaLogo = larguraLogo / (typeof LOGO_ENGJOB_PROPORCAO !== "undefined" ? LOGO_ENGJOB_PROPORCAO : 3.35);
   try {
@@ -49,10 +88,11 @@ function gerarPdfNotaFiscal(nota) {
   const xTexto = margem + larguraLogo + 16;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
-  doc.text(EMPRESA_INFO_CONSULTA.endereco, xTexto, y + 6);
-  doc.text(`CNPJ: ${EMPRESA_INFO_CONSULTA.cnpj}`, xTexto, y + 18);
+  doc.text(emp.razaoSocial || "Eng Job Engenharia e Manutenção Ltda", xTexto, y + 6);
+  doc.text(`${emp.endereco || ""} — ${emp.municipio || "Curitiba"}/${emp.uf || "PR"}`, xTexto, y + 18);
+  doc.text(`CNPJ: ${emp.cnpj || "14.426.042/0001-01"}${nota.tipo === "NFS-e" && emp.inscMunicipal ? "  |  Insc. Municipal: " + emp.inscMunicipal : ""}`, xTexto, y + 30);
 
-  y = Math.max(y + 18, y - 6 + alturaLogo) + 16;
+  y = Math.max(y + 30, y - 6 + alturaLogo) + 16;
   doc.setDrawColor(235, 153, 28);
   doc.setLineWidth(1.2);
   doc.line(margem, y, margem + larguraUtil, y);
@@ -63,38 +103,82 @@ function gerarPdfNotaFiscal(nota) {
   doc.text(nota.tipo === "NF-e" ? "NOTA FISCAL DE MATERIAL (rascunho/conferência)" : "NOTA FISCAL DE SERVIÇO (rascunho/conferência)", margem, y + 14);
   y += 30;
 
+  // ── Dados do Tomador/Destinatário ──────────────────────────
   doc.setFontSize(10);
-  doc.setFont("helvetica", "bold"); doc.text("Cliente/Tomador:", margem, y);
-  doc.setFont("helvetica", "normal"); doc.text(nota.tomadorNome || "-", margem + 110, y);
-  y += 15;
-  doc.setFont("helvetica", "bold"); doc.text("Documento:", margem, y);
-  doc.setFont("helvetica", "normal"); doc.text(nota.tomadorDocumento || "-", margem + 110, y);
-  y += 15;
-  doc.setFont("helvetica", "bold"); doc.text("Endereço:", margem, y);
-  doc.setFont("helvetica", "normal"); doc.text(nota.tomadorEndereco || "-", margem + 110, y);
-  y += 25;
+  const linhaCampo = (rotulo, valor) => {
+    doc.setFont("helvetica", "bold"); doc.text(rotulo, margem, y);
+    doc.setFont("helvetica", "normal"); doc.text(valor || "-", margem + 130, y);
+    y += 15;
+  };
+  linhaCampo("Cliente/Tomador:", nota.tomadorNome);
+  linhaCampo("Documento:", nota.tomadorDocumento);
+  linhaCampo("Endereço:", nota.tomadorEndereco);
+  const municipioTomador = [nota.tomadorMunicipio, nota.tomadorUf].filter(Boolean).join("/");
+  if (municipioTomador) linhaCampo("Município:", municipioTomador + (nota.tomadorCep ? " — CEP " + nota.tomadorCep : ""));
+  if (nota.tomadorInscMunicipal) linhaCampo("Insc. Municipal:", nota.tomadorInscMunicipal);
+  if (nota.tomadorInscEstadual) linhaCampo("Insc. Estadual:", nota.tomadorInscEstadual);
+  y += 10;
 
-  const linhasItens = (nota.itens || []).map((i) => [
-    i.descricao, String(i.quantidade || 0), formatarMoedaConsulta(i.valorUnitario),
-    formatarMoedaConsulta((i.quantidade || 0) * (i.valorUnitario || 0)),
-  ]);
+  // ── Itens ───────────────────────────────────────────────────
+  const de = nota.dadosEstruturados || {};
+  const ehNFe = nota.tipo === "NF-e";
+  const linhasItens = (nota.itens || []).map((i) => ehNFe
+    ? [i.codigo || "-", i.descricao, i.ncm || "-", i.cfop || "-", String(i.quantidade || 0), formatarMoedaConsulta(i.valorUnitario), formatarMoedaConsulta((i.quantidade || 0) * (i.valorUnitario || 0))]
+    : [i.descricao, String(i.quantidade || 0), formatarMoedaConsulta(i.valorUnitario), formatarMoedaConsulta((i.quantidade || 0) * (i.valorUnitario || 0))]
+  );
   doc.autoTable({
     startY: y,
-    head: [["Descrição", "Qtd.", "Valor Unit.", "Total"]],
-    body: linhasItens.length ? linhasItens : [["Nenhum item cadastrado.", "-", "-", "-"]],
+    head: [ehNFe ? ["Código", "Descrição", "NCM", "CFOP", "Qtd.", "Valor Unit.", "Total"] : ["Descrição", "Qtd.", "Valor Unit.", "Total"]],
+    body: linhasItens.length ? linhasItens : [Array(ehNFe ? 7 : 4).fill("-")],
     headStyles: { fillColor: [235, 153, 28] },
+    styles: { fontSize: 8.5 },
     margin: { left: margem, right: margem },
   });
-  y = doc.lastAutoTable.finalY + 20;
+  y = doc.lastAutoTable.finalY + 16;
 
-  const { subtotal, totalImpostos, total } = calcularTotalNota(nota);
+  // ── Tributação (o que existir de dadosEstruturados) ─────────
+  if (nota.dadosEstruturados) {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text(nota.tipo === "NFS-e" ? "Tributação de ISSQN" : "Cálculo do Imposto", margem, y);
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    const camposResumo = nota.tipo === "NFS-e"
+      ? [["Natureza da Operação", de.campoNaturezaOperacao], ["ISS Retido", de.campoIssRetido], ["Local de Prestação", de.campoLocalPrestacao], ["Município de Incidência", de.campoMunicipioIncidencia], ["Alíquota ISS", de.campoAliqIss ? de.campoAliqIss + "%" : null]]
+      : [["Natureza da Operação", de.campoNaturezaOperacao], ["BC ICMS", de.campoBcIcms ? formatarMoedaConsulta(de.campoBcIcms) : null], ["Valor ICMS", de.campoValorIcms ? formatarMoedaConsulta(de.campoValorIcms) : null], ["Valor IPI", de.campoValorIpi ? formatarMoedaConsulta(de.campoValorIpi) : null]];
+    camposResumo.filter(([, v]) => v).forEach(([rotulo, valor]) => {
+      doc.text(`${rotulo}: ${valor}`, margem, y);
+      y += 12;
+    });
+    y += 8;
+  }
+
+  // ── Totais ────────────────────────────────────────────────
+  const { subtotal, baseCalculo, valorIss, totalImpostos, total } = calcularTotalNota(nota);
   doc.setFontSize(10);
-  doc.text(`Subtotal: ${formatarMoedaConsulta(subtotal)}`, margem + larguraUtil - 160, y);
+  doc.text(`${ehNFe ? "Valor Total dos Produtos" : "Valor do Serviço"}: ${formatarMoedaConsulta(subtotal)}`, margem + larguraUtil - 220, y);
   y += 14;
-  doc.text(`Impostos: ${formatarMoedaConsulta(totalImpostos)}`, margem + larguraUtil - 160, y);
+  if (!ehNFe) {
+    doc.text(`Base de Cálculo: ${formatarMoedaConsulta(baseCalculo)}`, margem + larguraUtil - 220, y);
+    y += 14;
+    doc.text(`Valor ISS: ${formatarMoedaConsulta(valorIss)}`, margem + larguraUtil - 220, y);
+    y += 14;
+  }
+  doc.text(`${ehNFe ? "Impostos/Frete/Desconto" : "Total de Retenções"}: ${formatarMoedaConsulta(totalImpostos)}`, margem + larguraUtil - 220, y);
   y += 16;
   doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-  doc.text(`Total: ${formatarMoedaConsulta(total)}`, margem + larguraUtil - 160, y);
+  doc.text(`${ehNFe ? "Valor Total da Nota" : "Valor Líquido"}: ${formatarMoedaConsulta(total)}`, margem + larguraUtil - 220, y);
+
+  if (nota.observacoes) {
+    y += 30;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text("Informações Complementares:", margem, y);
+    y += 12;
+    doc.setFont("helvetica", "normal");
+    const linhasObs = doc.splitTextToSize(nota.observacoes, larguraUtil);
+    doc.text(linhasObs, margem, y);
+  }
 
   if (nota.status === "cancelada") {
     doc.setTextColor(220, 20, 60);
@@ -126,16 +210,6 @@ async function baixarEArquivarNotaFiscal(nota) {
     console.warn("[consulta-notas] Não foi possível arquivar no Armazenamento:", e);
     mostrarToast("PDF baixado (mas não foi possível arquivar automaticamente no Armazenamento).", "erro");
   }
-}
-
-function formatarMoedaConsulta(valor) {
-  return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function calcularTotalNota(nota) {
-  const subtotal = (nota.itens || []).reduce((s, i) => s + (i.quantidade || 0) * (i.valorUnitario || 0), 0);
-  const totalImpostos = (nota.impostos || []).reduce((s, i) => s + subtotal * ((i.percentual || 0) / 100), 0);
-  return { subtotal, totalImpostos, total: subtotal + totalImpostos };
 }
 
 async function carregarConsulta() {
@@ -192,9 +266,15 @@ function renderizarConsulta() {
         <span>${formatarMoedaConsulta((i.quantidade || 0) * (i.valorUnitario || 0))}</span>
       </div>`
     ).join("");
+    const municipioTomadorHtml = [nota.tomadorMunicipio, nota.tomadorUf].filter(Boolean).join("/");
+    const { baseCalculo, valorIss } = calcularTotalNota(nota);
     painelDetalhes.innerHTML = `
       <div><b>Documento:</b> ${escaparHtml(nota.tomadorDocumento) || "—"}</div>
       <div><b>Endereço:</b> ${escaparHtml(nota.tomadorEndereco) || "—"}</div>
+      ${municipioTomadorHtml ? `<div><b>Município:</b> ${escaparHtml(municipioTomadorHtml)}${nota.tomadorCep ? " — CEP " + escaparHtml(nota.tomadorCep) : ""}</div>` : ""}
+      ${nota.tomadorInscMunicipal ? `<div><b>Insc. Municipal:</b> ${escaparHtml(nota.tomadorInscMunicipal)}</div>` : ""}
+      ${nota.tomadorInscEstadual ? `<div><b>Insc. Estadual:</b> ${escaparHtml(nota.tomadorInscEstadual)}</div>` : ""}
+      ${nota.tipo === "NFS-e" && nota.dadosEstruturados ? `<div style="margin-top:6px;"><b>Base de Cálculo:</b> ${formatarMoedaConsulta(baseCalculo)} · <b>Valor ISS:</b> ${formatarMoedaConsulta(valorIss)}</div>` : ""}
       ${nota.motivoCancelamento ? `<div style="color:var(--vermelho);"><b>Motivo do cancelamento:</b> ${nota.motivoCancelamento}</div>` : ""}
       <div style="margin-top:8px;"><b>Itens:</b></div>
       ${linhasItens || "<div>Nenhum item.</div>"}
@@ -256,4 +336,5 @@ btnFiltroNfse.addEventListener("click", () => aplicarFiltro("NFS-e", btnFiltroNf
 
 document.getElementById("buscaConsulta").addEventListener("input", renderizarConsulta);
 
+carregarDadosEmpresaConsulta();
 carregarConsulta();

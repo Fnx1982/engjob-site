@@ -1,5 +1,5 @@
 // ============================================================
-// logo-empresa.js — logo da EnJob em base64, para uso em PDFs
+// logo-empresa.js — logo da Eng Job em base64, para uso em PDFs
 // (propostas) sem depender de carregar um arquivo externo de forma
 // assíncrona durante a geração do documento.
 //

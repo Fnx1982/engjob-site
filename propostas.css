@@ -439,6 +439,7 @@ body {
     padding: 6px;
     text-align: center;
     border-bottom: 1px solid #ddd;
+    vertical-align: top;
 }
 .itens-tabela td input, .itens-tabela td select {
     width: 100%;
@@ -449,6 +450,42 @@ body {
     text-align: center;
 }
 .itens-tabela td.col-descricao input { text-align: left; }
+
+/* ── Autocomplete customizado (substitui <datalist> nativo — o
+   navegador não deixa estilizar aquela caixa preta) ────────────── */
+.autocomplete-wrapper {
+  position: relative;
+}
+.autocomplete-lista {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.autocomplete-item {
+  padding: 9px 12px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: #333;
+}
+.autocomplete-item:hover,
+.autocomplete-item.ativo {
+  background: rgba(235, 153, 28, 0.12);
+  color: #b96f0f;
+}
+.autocomplete-item:not(:last-child) {
+  border-bottom: 1px solid #f0f0f0;
+}
 
 .btn-remover-item {
     background: none;
@@ -519,24 +556,6 @@ body {
 }
 .checklist-item-material:hover { background: rgba(235, 153, 28, 0.12); }
 .checklist-item-material input { width: auto; cursor: pointer; accent-color: rgb(235, 153, 28); }
-
-.cadastro-rapido-material {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.cadastro-rapido-material input {
-    flex: 1;
-    min-width: 120px;
-    padding: 9px 10px;
-    border-radius: 5px;
-    border: 1px solid #ccc;
-    font-family: inherit;
-    font-size: 13px;
-}
-.cadastro-rapido-material button {
-    flex: 0 0 auto;
-}
 
 .tag-vinculado {
     display: inline-block;

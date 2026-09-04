@@ -14,6 +14,80 @@ const IMPOSTOS_PADRAO = {
   "NFS-e": [{ nome: "ISS", percentual: 5 }, { nome: "INSS", percentual: 11 }, { nome: "PIS", percentual: 0.65 }, { nome: "COFINS", percentual: 3 }, { nome: "CSLL", percentual: 1 }, { nome: "IRRF", percentual: 1.5 }],
 };
 
+// Valores padrão pra "Prestador de Serviços" — extraídos direto de
+// notas reais já emitidas pela Eng Job (não é chute). Fica editável
+// na tela, e uma vez salvo, usa o que a pessoa configurou em vez
+// desses valores.
+const DADOS_EMPRESA_PADRAO = {
+  cnpj: "14.426.042/0001-01",
+  inscMunicipal: "07026256819",
+  inscEstadual: "9091686861",
+  inscEstadualSubstTrib: "",
+  razaoSocial: "ENG JOB ENGENHARIA E MANUTENCAO LTDA",
+  endereco: "Rua La Salle, 300 - Casa 7, Pinheirinho",
+  municipio: "Curitiba",
+  uf: "PR",
+  cep: "81880-400",
+  fone: "(41) 99185-9820",
+  email: "contato@engjob.com.br",
+  cnae: "7112000 - Serviços de engenharia",
+  atividade: "0705 - Reparação, conservação e reforma de edifícios, estradas, pontes, portos e congêneres (exceto o fornecimento de mercadorias produzidas pelo prestador dos serviços, fora do local da prestação dos serviços, que fica sujeito ao ICMS)",
+  regimeTributacao: "8",
+  optanteSimples: "SIM",
+  incentivadorCultural: "NÃO",
+};
+
+// Mapa "id do campo na tela" → "chave no objeto salvo" — usado tanto
+// pra carregar quanto pra salvar, sem repetir a lista duas vezes.
+// Inclui campos das duas telas — cada uma só tem os elementos que
+// existem no seu próprio HTML, o resto é ignorado pelos guardas
+// "if (el)" nas funções de carregar/salvar.
+const MAPA_CAMPOS_EMPRESA = {
+  empCnpj: "cnpj", empInscMunicipal: "inscMunicipal", empInscEstadual: "inscEstadual",
+  empInscEstadualSubstTrib: "inscEstadualSubstTrib",
+  empRazaoSocial: "razaoSocial", empEndereco: "endereco", empMunicipio: "municipio",
+  empUf: "uf", empCep: "cep", empFone: "fone", empEmail: "email",
+  empCnae: "cnae", empAtividade: "atividade", empRegimeTributacao: "regimeTributacao",
+  empOptanteSimples: "optanteSimples", empIncentivadorCultural: "incentivadorCultural",
+};
+
+async function carregarDadosEmpresa() {
+  if (!document.getElementById("empCnpj")) return; // página antiga (NF-e ainda não reconstruída)
+  let dados = DADOS_EMPRESA_PADRAO;
+  try {
+    const resposta = await apiDataGet("empresaFiscal");
+    if (resposta.ok && resposta.valor) dados = resposta.valor;
+  } catch (e) { /* sem conexão — usa os valores padrão mesmo assim */ }
+
+  Object.entries(MAPA_CAMPOS_EMPRESA).forEach(([idCampo, chave]) => {
+    const el = document.getElementById(idCampo);
+    if (el && dados[chave] !== undefined) el.value = dados[chave];
+  });
+}
+
+async function salvarDadosEmpresa() {
+  const botao = document.getElementById("btnSalvarDadosEmpresa");
+  const textoOriginal = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = "Salvando...";
+  try {
+    const dados = {};
+    Object.entries(MAPA_CAMPOS_EMPRESA).forEach(([idCampo, chave]) => {
+      const el = document.getElementById(idCampo);
+      if (el) dados[chave] = el.value.trim();
+    });
+    const resposta = await apiDataSet("empresaFiscal", dados);
+    if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar.", "erro"); return; }
+    mostrarToast("Dados da empresa salvos — valem pras próximas notas também.");
+  } finally {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
+}
+if (document.getElementById("btnSalvarDadosEmpresa")) {
+  document.getElementById("btnSalvarDadosEmpresa").addEventListener("click", salvarDadosEmpresa);
+}
+
 let notaEmEdicaoId = null;
 let notasCache = [];
 let contatosCache = [];
@@ -39,9 +113,96 @@ function tentarAutopreencherTomador() {
   const contato = contatosCache.find((c) => c.nome === nomeDigitado);
   if (!contato) return;
   document.getElementById("campoTomadorDocumento").value = contato.documento || "";
-  const enderecoPartes = [contato.logradouro, contato.numero, contato.bairro, contato.cidade, contato.uf].filter(Boolean);
+
+  const temCamposSeparados = !!document.getElementById("campoTomadorMunicipio");
+  const temCampoBairro = !!document.getElementById("campoTomadorBairro");
+  const enderecoPartes = temCamposSeparados
+    ? [contato.logradouro, contato.numero, temCampoBairro ? null : contato.bairro].filter(Boolean)
+    : [contato.logradouro, contato.numero, contato.bairro, contato.cidade, contato.uf].filter(Boolean);
   document.getElementById("campoTomadorEndereco").value = enderecoPartes.join(", ");
+
+  if (temCamposSeparados) {
+    const preencheSe = (id, valor) => { const el = document.getElementById(id); if (el && valor) el.value = valor; };
+    preencheSe("campoTomadorBairro", contato.bairro);
+    preencheSe("campoTomadorMunicipio", contato.cidade);
+    preencheSe("campoTomadorUf", contato.uf);
+    preencheSe("campoTomadorCep", contato.cep);
+  }
 }
+
+// ── Validação do documento (CPF ou CNPJ, detectado pelo tamanho) ──
+document.getElementById("campoTomadorDocumento").addEventListener("blur", () => {
+  const campo = document.getElementById("campoTomadorDocumento");
+  const valor = campo.value.trim();
+  limparErroCampo(campo);
+  if (!valor) return;
+
+  const digitos = valor.replace(/\D/g, "");
+  if (digitos.length !== 11 && digitos.length !== 14) return; // ainda digitando, não julga incompleto como erro
+
+  const valido = validarDocumento(valor);
+  if (!valido) {
+    marcarCampoComErro(campo, "Documento inválido — confira os números.");
+    return;
+  }
+  campo.value = digitos.length === 14 ? formatarCNPJ(digitos) : formatarCPF(digitos);
+});
+limparErroAoEditar(document.getElementById("campoTomadorDocumento"));
+
+// ── Buscar CNPJ na BrasilAPI (mesmo mecanismo já usado em Contatos) ──
+// Não existe equivalente pra CPF: a Receita Federal não expõe dados
+// de pessoa física publicamente (proteção de dados pessoais) — só
+// valida o dígito verificador, não preenche nome/endereço sozinho.
+document.getElementById("btnBuscarCnpjTomador").addEventListener("click", async () => {
+  const campoDoc = document.getElementById("campoTomadorDocumento");
+  const valor = campoDoc.value.trim();
+  if (!valor) { mostrarToast("Digite o CNPJ primeiro.", "erro"); return; }
+
+  const digitos = valor.replace(/\D/g, "");
+  if (digitos.length === 11) {
+    mostrarToast("Isso parece um CPF, não um CNPJ — a busca automática só funciona para empresas (CNPJ). Preencha os dados da pessoa manualmente.", "erro");
+    return;
+  }
+
+  const botao = document.getElementById("btnBuscarCnpjTomador");
+  const textoOriginal = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = "Buscando...";
+
+  try {
+    const resposta = await buscarCnpjNaBrasilApi(valor);
+    if (!resposta.ok) { mostrarToast(resposta.erro, "erro"); return; }
+
+    const d = resposta.dados;
+    document.getElementById("campoTomadorNome").value = d.nome;
+    campoDoc.value = formatarCNPJ(digitos);
+    limparErroCampo(campoDoc);
+
+    const temCamposSeparados = !!document.getElementById("campoTomadorMunicipio");
+    const temCampoBairro = !!document.getElementById("campoTomadorBairro");
+    const enderecoPartes = temCamposSeparados
+      ? [d.logradouro, d.numero, d.complemento, temCampoBairro ? null : d.bairro].filter(Boolean)
+      : [d.logradouro, d.numero, d.complemento, d.bairro, d.cidade, d.uf].filter(Boolean);
+    document.getElementById("campoTomadorEndereco").value = enderecoPartes.join(", ");
+
+    if (temCamposSeparados) {
+      const preencheSe = (id, valor) => { const el = document.getElementById(id); if (el && valor) el.value = valor; };
+      preencheSe("campoTomadorBairro", d.bairro);
+      preencheSe("campoTomadorMunicipio", d.cidade);
+      preencheSe("campoTomadorUf", d.uf);
+      preencheSe("campoTomadorCep", d.cep);
+    }
+
+    mostrarToast(
+      d.situacaoCadastral && d.situacaoCadastral !== "ATIVA"
+        ? `Dados preenchidos. Atenção: situação cadastral é "${d.situacaoCadastral}".`
+        : "Dados preenchidos a partir da Receita Federal."
+    );
+  } finally {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
+});
 
 async function carregarAutocompleteMateriais() {
   try {
@@ -85,13 +246,30 @@ function adicionarLinhaItem(item) {
   item = item || { descricao: "", quantidade: 1, valorUnitario: 0 };
   const tbody = document.querySelector("#tabelaItens tbody");
   const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td><input type="text" class="item-descricao" placeholder="Descrição" value="${escaparHtml(item.descricao || "")}" list="listaMateriaisDatalist" /></td>
-    <td style="width:90px;"><input type="number" class="item-quantidade" min="0" step="0.01" value="${item.quantidade ?? 1}" /></td>
-    <td style="width:130px;"><input type="number" class="item-valor-unitario" min="0" step="0.01" value="${item.valorUnitario ?? 0}" /></td>
-    <td class="col-valor item-valor-total">${formatarMoeda((item.quantidade ?? 1) * (item.valorUnitario ?? 0))}</td>
-    <td class="col-remover"><button type="button" class="btn-remover-linha" title="Remover">✕</button></td>
-  `;
+
+  if (TIPO_NOTA_PAGINA === "NF-e") {
+    tr.innerHTML = `
+      <td><input type="text" class="item-codigo" placeholder="Código" value="${escaparHtml(item.codigo || "")}" /></td>
+      <td><input type="text" class="item-descricao" placeholder="Descrição" value="${escaparHtml(item.descricao || "")}" list="listaMateriaisDatalist" /></td>
+      <td><input type="text" class="item-ncm" placeholder="NCM" value="${escaparHtml(item.ncm || "")}" /></td>
+      <td><input type="text" class="item-csosn" placeholder="CSOSN" value="${escaparHtml(item.csosn || "0101")}" /></td>
+      <td><input type="text" class="item-cfop" placeholder="CFOP" value="${escaparHtml(item.cfop || "5102")}" /></td>
+      <td><input type="text" class="item-unidade" placeholder="UN" value="${escaparHtml(item.unidade || "UN")}" /></td>
+      <td style="width:60px;"><input type="number" class="item-quantidade" min="0" step="0.01" value="${item.quantidade ?? 1}" /></td>
+      <td style="width:115px;"><input type="number" class="item-valor-unitario" min="0" step="0.01" value="${item.valorUnitario ?? 0}" /></td>
+      <td class="col-valor item-valor-total">${formatarMoeda((item.quantidade ?? 1) * (item.valorUnitario ?? 0))}</td>
+      <td class="col-remover"><button type="button" class="btn-remover-linha" title="Remover">✕</button></td>
+    `;
+  } else {
+    tr.innerHTML = `
+      <td><input type="text" class="item-descricao" placeholder="Descrição" value="${escaparHtml(item.descricao || "")}" list="${TIPO_NOTA_PAGINA === "NF-e" ? "listaMateriaisDatalist" : "listaServicosDatalist"}" /></td>
+      <td style="width:90px;"><input type="number" class="item-quantidade" min="0" step="0.01" value="${item.quantidade ?? 1}" /></td>
+      <td style="width:130px;"><input type="number" class="item-valor-unitario" min="0" step="0.01" value="${item.valorUnitario ?? 0}" /></td>
+      <td class="col-valor item-valor-total">${formatarMoeda((item.quantidade ?? 1) * (item.valorUnitario ?? 0))}</td>
+      <td class="col-remover"><button type="button" class="btn-remover-linha" title="Remover">✕</button></td>
+    `;
+  }
+
   tr.querySelectorAll(".item-quantidade, .item-valor-unitario").forEach((input) => {
     input.addEventListener("input", recalcularTotais);
   });
@@ -118,11 +296,24 @@ function adicionarLinhaImposto(imposto) {
 
 // ── Cálculo de totais ────────────────────────────────────────────
 function lerItensDoFormulario() {
-  return [...document.querySelectorAll("#tabelaItens tbody tr")].map((tr) => ({
-    descricao: tr.querySelector(".item-descricao").value.trim(),
-    quantidade: Number(tr.querySelector(".item-quantidade").value) || 0,
-    valorUnitario: Number(tr.querySelector(".item-valor-unitario").value) || 0,
-  }));
+  return [...document.querySelectorAll("#tabelaItens tbody tr")].map((tr) => {
+    const item = {
+      descricao: tr.querySelector(".item-descricao").value.trim(),
+      quantidade: Number(tr.querySelector(".item-quantidade").value) || 0,
+      valorUnitario: Number(tr.querySelector(".item-valor-unitario").value) || 0,
+    };
+    const campoCodigo = tr.querySelector(".item-codigo");
+    if (campoCodigo) item.codigo = campoCodigo.value.trim();
+    const campoNcm = tr.querySelector(".item-ncm");
+    if (campoNcm) item.ncm = campoNcm.value.trim();
+    const campoCfop = tr.querySelector(".item-cfop");
+    if (campoCfop) item.cfop = campoCfop.value.trim();
+    const campoCsosn = tr.querySelector(".item-csosn");
+    if (campoCsosn) item.csosn = campoCsosn.value.trim();
+    const campoUnidade = tr.querySelector(".item-unidade");
+    if (campoUnidade) item.unidade = campoUnidade.value.trim();
+    return item;
+  });
 }
 
 function lerImpostosDoFormulario() {
@@ -133,7 +324,13 @@ function lerImpostosDoFormulario() {
 }
 
 function recalcularTotais() {
-  // Atualiza o valor de cada linha de item
+  if (TIPO_NOTA_PAGINA === "NFS-e") { recalcularTotaisNFSe(); return; }
+  if (TIPO_NOTA_PAGINA === "NF-e" && document.getElementById("campoValorIpi")) { recalcularTotaisNFe(); return; }
+
+  // Fallback antigo (tabela genérica de % sobre subtotal) — não deve
+  // mais rodar, já que as duas telas foram reconstruídas, mas fica
+  // como rede de segurança caso alguma das duas volte a um estado
+  // intermediário.
   document.querySelectorAll("#tabelaItens tbody tr").forEach((tr) => {
     const qtd = Number(tr.querySelector(".item-quantidade").value) || 0;
     const valorUnit = Number(tr.querySelector(".item-valor-unitario").value) || 0;
@@ -142,7 +339,6 @@ function recalcularTotais() {
 
   const subtotal = lerItensDoFormulario().reduce((soma, i) => soma + i.quantidade * i.valorUnitario, 0);
 
-  // Atualiza o valor calculado de cada imposto (% sobre o subtotal dos itens)
   let totalImpostos = 0;
   document.querySelectorAll("#tabelaImpostos tbody tr").forEach((tr) => {
     const pct = Number(tr.querySelector(".imposto-percentual").value) || 0;
@@ -156,6 +352,76 @@ function recalcularTotais() {
   document.getElementById("resumoTotal").textContent = formatarMoeda(subtotal + totalImpostos);
 }
 
+// Cálculo próprio da NF-e, seguindo a estrutura da DANFE: Valor Total
+// dos Produtos (soma dos itens) + IPI + Frete + Seguro + Outras
+// Despesas − Desconto = Valor Total da Nota. (ICMS normalmente já
+// vem embutido no preço do produto — é informativo, não soma por
+// cima, igual na nota real que você mandou.)
+function recalcularTotaisNFe() {
+  document.querySelectorAll("#tabelaItens tbody tr").forEach((tr) => {
+    const qtd = Number(tr.querySelector(".item-quantidade").value) || 0;
+    const valorUnit = Number(tr.querySelector(".item-valor-unitario").value) || 0;
+    tr.querySelector(".item-valor-total").textContent = formatarMoeda(qtd * valorUnit);
+  });
+
+  const valorProdutos = lerItensDoFormulario().reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+
+  const ler = (id) => Number(document.getElementById(id)?.value) || 0;
+  const ipi = ler("campoValorIpi");
+  const frete = ler("campoValorFrete");
+  const seguro = ler("campoValorSeguro");
+  const outrasDespesas = ler("campoOutrasDespesas");
+  const desconto = ler("campoDesconto");
+
+  const extras = ipi + frete + seguro + outrasDespesas - desconto;
+  const totalNota = valorProdutos + extras;
+
+  document.getElementById("resumoSubtotal").textContent = formatarMoeda(valorProdutos);
+  document.getElementById("resumoImpostos").textContent = formatarMoeda(extras);
+  document.getElementById("resumoTotal").textContent = formatarMoeda(totalNota);
+}
+
+// Cálculo próprio da NFS-e, seguindo a estrutura da nota real:
+// Valor Serviço → (- descontos - deduções) → Base de Cálculo →
+// (× alíquota) → Valor ISS. Valor Líquido = Valor Serviço menos tudo
+// que foi retido (INSS, IRRF, PIS/COFINS/CSLL, ISS se retido, outras).
+function recalcularTotaisNFSe() {
+  document.querySelectorAll("#tabelaItens tbody tr").forEach((tr) => {
+    const qtd = Number(tr.querySelector(".item-quantidade").value) || 0;
+    const valorUnit = Number(tr.querySelector(".item-valor-unitario").value) || 0;
+    tr.querySelector(".item-valor-total").textContent = formatarMoeda(qtd * valorUnit);
+  });
+
+  const valorServico = lerItensDoFormulario().reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+
+  const ler = (id) => Number(document.getElementById(id)?.value) || 0;
+  const descCond = ler("campoDescCondicional");
+  const descIncond = ler("campoDescIncondicional");
+  const deducoes = ler("campoDeducoes");
+  const baseCalculo = Math.max(0, valorServico - descCond - descIncond - deducoes);
+
+  const aliqIss = ler("campoAliqIss");
+  const valorIss = baseCalculo * (aliqIss / 100);
+  const issRetido = document.getElementById("campoIssRetido")?.value === "SIM";
+
+  const inss = ler("campoInssRetido");
+  const irrf = ler("campoIrrfRetido");
+  const pisCofinsCsll = ler("campoPisCofinsCsllRetidos");
+  const outras = ler("campoOutrasRetencoes");
+  const totalRetencoes = inss + irrf + pisCofinsCsll + outras + (issRetido ? valorIss : 0);
+
+  const valorLiquido = valorServico - totalRetencoes;
+
+  document.getElementById("resumoSubtotal").textContent = formatarMoeda(valorServico);
+  const elBase = document.getElementById("resumoBaseCalculo");
+  if (elBase) elBase.textContent = formatarMoeda(baseCalculo);
+  const elIss = document.getElementById("resumoValorIss");
+  if (elIss) elIss.textContent = formatarMoeda(valorIss);
+  document.getElementById("resumoImpostos").textContent = formatarMoeda(totalRetencoes);
+  document.getElementById("resumoTotal").textContent = formatarMoeda(valorLiquido);
+}
+
+
 // ── Preencher / limpar formulário ───────────────────────────────
 function limparFormulario() {
   notaEmEdicaoId = null;
@@ -163,12 +429,78 @@ function limparFormulario() {
   document.getElementById("campoTomadorDocumento").value = "";
   document.getElementById("campoTomadorEndereco").value = "";
   document.getElementById("campoObservacoes").value = "";
+  ["campoTomadorInscMunicipal", "campoTomadorInscEstadual", "campoTomadorMunicipio", "campoTomadorUf",
+   "campoTomadorCep", "campoTomadorFone", "campoTomadorEmail"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  const campoPais = document.getElementById("campoTomadorPais");
+  if (campoPais) campoPais.value = "Brasil";
+
   document.querySelector("#tabelaItens tbody").innerHTML = "";
-  document.querySelector("#tabelaImpostos tbody").innerHTML = "";
   adicionarLinhaItem();
-  (IMPOSTOS_PADRAO[TIPO_NOTA_PAGINA] || []).forEach((i) => adicionarLinhaImposto(i));
+
+  const tabelaImpostosEl = document.querySelector("#tabelaImpostos tbody");
+  if (tabelaImpostosEl) {
+    tabelaImpostosEl.innerHTML = "";
+    (IMPOSTOS_PADRAO[TIPO_NOTA_PAGINA] || []).forEach((i) => adicionarLinhaImposto(i));
+  }
+
+  if (TIPO_NOTA_PAGINA === "NFS-e") limparCamposEstruturadosNFSe();
+  if (TIPO_NOTA_PAGINA === "NF-e") limparCamposEstruturadosNFe();
+
   recalcularTotais();
   document.getElementById("tituloFormulario").textContent = `Nova ${TIPO_NOTA_PAGINA}`;
+}
+
+// Todos os campos estruturados novos (ISSQN, IBS/CBS, Impostos
+// Federais, Descontos) — zera pra um formulário em branco.
+const IDS_CAMPOS_ESTRUTURADOS_NFSE = [
+  "campoTomadorInscMunicipal", "campoTomadorInscEstadual",
+  "campoCompetencia", "campoLocalPrestacao", "campoMunicipioIncidencia", "campoAliqIss",
+  "campoTipoOperacao", "campoIndicadorOperacao", "campoNbs", "campoClassificacaoTributaria", "campoCst", "campoCreditoPresumido",
+  "campoValorBcIbs", "campoVlrTotIbs", "campoVlrIbsUf", "campoAliqIbsUf", "campoAliqEfIbsUf",
+  "campoVlrIbsMun", "campoAliqIbsMun", "campoAliqEfIbsMun", "campoValorCbs", "campoAliqCbs", "campoAliqEfCbs",
+  "campoInssRetido", "campoIrrfRetido", "campoPisCofinsCsllRetidos", "campoCofinsDevido", "campoPisDevido",
+  "campoRetFederais", "campoRetEstaduais", "campoRetMunicipais", "campoOutrasRetencoes",
+  "campoDescCondicional", "campoDescIncondicional", "campoDeducoes",
+];
+function limparCamposEstruturadosNFSe() {
+  IDS_CAMPOS_ESTRUTURADOS_NFSE.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = el.type === "number" ? "0" : "";
+  });
+  const selects = ["campoNaturezaOperacao", "campoIssRetido", "campoFinalidade", "campoEnteGovernamental", "campoDestinatario", "campoUsoConsumoPessoal"];
+  selects.forEach((id) => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+
+  // Local de Prestação e Município de Incidência: quase sempre
+  // Curitiba, na prática da Eng Job — evita começar em branco toda
+  // vez numa nota nova.
+  const campoLocal = document.getElementById("campoLocalPrestacao");
+  const campoIncidencia = document.getElementById("campoMunicipioIncidencia");
+  if (campoLocal) campoLocal.value = "Curitiba/PR";
+  if (campoIncidencia) campoIncidencia.value = "Curitiba/PR";
+}
+
+// Mesma ideia, pro lado da NF-e — Destinatário completo, Cálculo do
+// Imposto, Transportador, Retenções.
+const IDS_CAMPOS_ESTRUTURADOS_NFE = [
+  "campoTomadorInscEstadual", "campoTomadorBairro", "campoTomadorMunicipio", "campoTomadorUf",
+  "campoTomadorCep", "campoTomadorFone", "campoDataEmissao", "campoDataSaidaEntrada", "campoHoraSaida", "campoFaturaDuplicatas",
+  "campoBcIcms", "campoValorIcms", "campoBcIcmsSt", "campoValorIcmsSt", "campoValorIpi",
+  "campoValorFrete", "campoValorSeguro", "campoDesconto", "campoOutrasDespesas", "campoValorPis", "campoValorCofins",
+  "campoTransportadorRazaoSocial", "campoTransportadorCnpj", "campoTransportadorCodigoAntt", "campoTransportadorPlaca", "campoTransportadorUf",
+  "campoTransportadorEndereco", "campoTransportadorMunicipio", "campoTransportadorEnderecoUf", "campoTransportadorInscEstadual",
+  "campoQuantidadeVolumes", "campoEspecieVolumes", "campoMarcaVolumes", "campoNumeracaoVolumes", "campoPesoBruto", "campoPesoLiquido",
+  "campoRetPis", "campoRetCofins", "campoRetCsll", "campoRetIrrf", "campoRetInss", "campoRetIss",
+];
+function limparCamposEstruturadosNFe() {
+  IDS_CAMPOS_ESTRUTURADOS_NFE.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = el.type === "number" ? "0" : "";
+  });
+  const selects = ["campoNaturezaOperacao", "campoFretePorContaDe"];
+  selects.forEach((id) => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
 }
 
 function preencherFormulario(nota) {
@@ -177,10 +509,35 @@ function preencherFormulario(nota) {
   document.getElementById("campoTomadorDocumento").value = nota.tomadorDocumento || "";
   document.getElementById("campoTomadorEndereco").value = nota.tomadorEndereco || "";
   document.getElementById("campoObservacoes").value = nota.observacoes || "";
+  [["campoTomadorInscMunicipal", "tomadorInscMunicipal"], ["campoTomadorInscEstadual", "tomadorInscEstadual"],
+   ["campoTomadorBairro", "tomadorBairro"], ["campoTomadorMunicipio", "tomadorMunicipio"], ["campoTomadorUf", "tomadorUf"], ["campoTomadorCep", "tomadorCep"],
+   ["campoTomadorPais", "tomadorPais"], ["campoTomadorFone", "tomadorFone"], ["campoTomadorEmail", "tomadorEmail"]]
+    .forEach(([idCampo, chave]) => { const el = document.getElementById(idCampo); if (el) el.value = nota[chave] || (idCampo === "campoTomadorPais" ? "Brasil" : ""); });
+
+  if (TIPO_NOTA_PAGINA === "NFS-e") {
+    limparCamposEstruturadosNFSe();
+    Object.entries(nota.dadosEstruturados || {}).forEach(([id, valor]) => {
+      const el = document.getElementById(id);
+      if (el) el.value = valor;
+    });
+  }
+  if (TIPO_NOTA_PAGINA === "NF-e") {
+    limparCamposEstruturadosNFe();
+    Object.entries(nota.dadosEstruturados || {}).forEach(([id, valor]) => {
+      const el = document.getElementById(id);
+      if (el) el.value = valor;
+    });
+  }
+
   document.querySelector("#tabelaItens tbody").innerHTML = "";
-  document.querySelector("#tabelaImpostos tbody").innerHTML = "";
   (nota.itens && nota.itens.length ? nota.itens : [{}]).forEach((i) => adicionarLinhaItem(i));
-  (nota.impostos && nota.impostos.length ? nota.impostos : (IMPOSTOS_PADRAO[TIPO_NOTA_PAGINA] || [])).forEach((i) => adicionarLinhaImposto(i));
+
+  const tabelaImpostosEl = document.querySelector("#tabelaImpostos tbody");
+  if (tabelaImpostosEl) {
+    tabelaImpostosEl.innerHTML = "";
+    (nota.impostos && nota.impostos.length ? nota.impostos : (IMPOSTOS_PADRAO[TIPO_NOTA_PAGINA] || [])).forEach((i) => adicionarLinhaImposto(i));
+  }
+
   recalcularTotais();
   document.getElementById("tituloFormulario").textContent = `Editando ${TIPO_NOTA_PAGINA} — ${nota.tomadorNome}`;
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -232,11 +589,34 @@ async function salvarRascunho() {
       tomadorNome,
       tomadorDocumento: document.getElementById("campoTomadorDocumento").value.trim(),
       tomadorEndereco: document.getElementById("campoTomadorEndereco").value.trim(),
+      tomadorInscMunicipal: document.getElementById("campoTomadorInscMunicipal")?.value.trim() || "",
+      tomadorInscEstadual: document.getElementById("campoTomadorInscEstadual")?.value.trim() || "",
+      tomadorBairro: document.getElementById("campoTomadorBairro")?.value.trim() || "",
+      tomadorMunicipio: document.getElementById("campoTomadorMunicipio")?.value.trim() || "",
+      tomadorUf: document.getElementById("campoTomadorUf")?.value.trim() || "",
+      tomadorCep: document.getElementById("campoTomadorCep")?.value.trim() || "",
+      tomadorPais: document.getElementById("campoTomadorPais")?.value.trim() || "",
+      tomadorFone: document.getElementById("campoTomadorFone")?.value.trim() || "",
+      tomadorEmail: document.getElementById("campoTomadorEmail")?.value.trim() || "",
       itens,
-      impostos: lerImpostosDoFormulario().filter((i) => i.nome),
+      impostos: document.querySelector("#tabelaImpostos") ? lerImpostosDoFormulario().filter((i) => i.nome) : [],
       observacoes: document.getElementById("campoObservacoes").value.trim(),
       status: "rascunho",
     };
+    if (TIPO_NOTA_PAGINA === "NFS-e") {
+      dados.dadosEstruturados = {};
+      IDS_CAMPOS_ESTRUTURADOS_NFSE.concat(["campoNaturezaOperacao", "campoIssRetido", "campoFinalidade", "campoEnteGovernamental", "campoDestinatario", "campoUsoConsumoPessoal"]).forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) dados.dadosEstruturados[id] = el.value;
+      });
+    }
+    if (TIPO_NOTA_PAGINA === "NF-e") {
+      dados.dadosEstruturados = {};
+      IDS_CAMPOS_ESTRUTURADOS_NFE.concat(["campoNaturezaOperacao", "campoFretePorContaDe"]).forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) dados.dadosEstruturados[id] = el.value;
+      });
+    }
     const resposta = await apiSalvarNotaFiscal(dados);
     if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar.", "erro"); return; }
     mostrarToast("Rascunho salvo.");
@@ -370,11 +750,39 @@ function renderizarListaNotas() {
 
 // ── Inicialização ────────────────────────────────────────────────
 document.getElementById("btnAddItem").addEventListener("click", () => adicionarLinhaItem());
-document.getElementById("btnAddImposto").addEventListener("click", () => adicionarLinhaImposto());
+if (document.getElementById("btnAddImposto")) {
+  document.getElementById("btnAddImposto").addEventListener("click", () => adicionarLinhaImposto());
+}
 document.getElementById("btnSalvarRascunho").addEventListener("click", salvarRascunho);
 document.getElementById("btnEmitir").addEventListener("click", tentarEmitir);
 document.getElementById("btnNovaNota").addEventListener("click", limparFormulario);
 document.getElementById("campoTomadorNome").addEventListener("change", tentarAutopreencherTomador);
+
+// Todo campo estruturado novo da NFS-e recalcula o resumo de valores
+// ao mudar — os mesmos IDs usados pra limpar/preencher o formulário.
+if (TIPO_NOTA_PAGINA === "NFS-e") {
+  IDS_CAMPOS_ESTRUTURADOS_NFSE.concat(["campoIssRetido"]).forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", recalcularTotais);
+  });
+  carregarDadosEmpresa();
+
+  // Município de Incidência copia o Local de Prestação automaticamente
+  // — na prática da Eng Job, só muda quando o serviço é fora de
+  // Curitiba, então copiar poupa digitar duas vezes o mesmo lugar.
+  const campoLocal = document.getElementById("campoLocalPrestacao");
+  const campoIncidencia = document.getElementById("campoMunicipioIncidencia");
+  if (campoLocal && campoIncidencia) {
+    campoLocal.addEventListener("input", () => { campoIncidencia.value = campoLocal.value; });
+  }
+}
+if (TIPO_NOTA_PAGINA === "NF-e") {
+  IDS_CAMPOS_ESTRUTURADOS_NFE.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", recalcularTotais);
+  });
+  carregarDadosEmpresa();
+}
 
 limparFormulario();
 tentarPreencherAPartirDaUrl();

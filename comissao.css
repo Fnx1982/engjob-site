@@ -297,3 +297,234 @@ body {
   flex-direction: column;
   justify-content: flex-end;
 }
+/* ══════════════════════════════════════════════════════
+   COMISSÃO
+   ══════════════════════════════════════════════════════ */
+.texto-ajuda {
+  font-size: 12px;
+  color: #777;
+  margin-bottom: 10px;
+}
+.subtitulo-config {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  margin: 18px 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.subtitulo-config:first-of-type { margin-top: 4px; }
+
+.linha-percentual {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.linha-percentual label {
+  flex: 0 0 auto;
+}
+.linha-percentual input, .linha-percentual select {
+  width: 120px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-family: inherit;
+  font-size: 15px;
+  background: #fff;
+}
+.linha-percentual select { width: auto; min-width: 160px; }
+
+.linha-percentual-empilhada {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+.linha-percentual-empilhada label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 320px;
+}
+.linha-percentual-empilhada input,
+.linha-percentual-empilhada select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-family: inherit;
+  font-size: 15px;
+  background: #fff;
+}
+
+.abas-periodo {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.aba-periodo {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: #555;
+}
+.aba-periodo.active {
+  background: rgb(235, 153, 28);
+  border-color: rgb(235, 153, 28);
+  color: #fff;
+  font-weight: 600;
+}
+
+.seletor-periodo {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.seletor-periodo select, .seletor-periodo input {
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.resumo-comissao-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.resumo-item {
+  background: #f7f7f7;
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.resumo-item.destaque {
+  background: rgba(235, 153, 28, 0.12);
+}
+.resumo-label {
+  display: block;
+  font-size: 11.5px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+.resumo-valor {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  color: #222;
+}
+.resumo-item.destaque .resumo-valor { color: rgb(200, 130, 20); }
+
+.lista-obras-comissao {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.card-obra-comissao {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.card-obra-comissao-info strong {
+  display: block;
+  font-size: 14.5px;
+  color: #222;
+}
+.card-obra-comissao-info span {
+  font-size: 12px;
+  color: #888;
+}
+.card-obra-comissao-impostos {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.card-obra-comissao-impostos label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: #888;
+}
+.card-obra-comissao-impostos input {
+  width: 55px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  font-family: inherit;
+  font-size: 12px;
+}
+.card-obra-comissao-impostos .valor-negativo {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.card-obra-comissao-valores {
+  display: flex;
+  gap: 24px;
+  text-align: right;
+}
+.card-obra-comissao-valores div span:first-child {
+  display: block;
+  font-size: 10.5px;
+  color: #999;
+  text-transform: uppercase;
+}
+.card-obra-comissao-valores div span:last-child {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+.valor-positivo { color: #1c8a4b; }
+.valor-negativo { color: #dc143c; }
+
+.card-obra-comissao-backfill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-obra-comissao-backfill input[type="date"] {
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+
+/* ── Botão padrão do site (mesma definição de propostas.css) ── */
+.btn-laranja, .btn-secundario {
+    border: none;
+    border-radius: 40px;
+    padding: 10px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
+    font-family: inherit;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+.btn-laranja {
+    background-color: rgb(235, 153, 28);
+    color: white;
+}
+.btn-laranja:hover { background-color: #d87f00; }

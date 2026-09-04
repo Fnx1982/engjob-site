@@ -5,11 +5,11 @@
 <script src="auth-guard.js"></script>
 <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Extrato — Credcrea</title>
+  <title>Extrato — Sicredi</title>
   <link rel="stylesheet" href="extrato.css" />
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js" integrity="sha384-vxxMdt1K6XlME6zkLsgFrrHIeC7XIdAo1GW/uhhObjJXnymxiIi/eoMXsKJA13ZJ" crossorigin="anonymous"></script>
   <script src="extrato-export.js"></script>
   <script src="confirm-modal.js"></script>
   <script src="validacao.js"></script>
@@ -19,14 +19,14 @@
     <div class="topo-pagina">
       <div>
         <h1>Extrato Bancário</h1>
-        <span class="banco-tag">Credcrea</span>
+        <span class="banco-tag">Sicredi</span>
       </div>
       <a href="home.html" class="btn-voltar">Voltar</a>
     </div>
     <div class="atalhos-fluxo">
-      <a href="extrato-sicredi.html" class="atalho-fluxo">🏦 Sicredi</a>
+      <a href="extrato-sicredi.html" class="atalho-fluxo atalho-atual">🏦 Sicredi</a>
       <a href="extrato-inter.html" class="atalho-fluxo">🏦 Inter</a>
-      <a href="extrato-credcrea.html" class="atalho-fluxo atalho-atual">🏦 Credcrea</a>
+      <a href="extrato-credcrea.html" class="atalho-fluxo">🏦 Credcrea</a>
     </div>
 
 
@@ -212,11 +212,11 @@
 
   <script>
     window.EXTRATO_CONFIG = {
-      chaveLancamentos: "extrato_credcrea_lancamentos",
-      chaveClassificacoes: "extrato_credcrea_classificacoes",
-      nomeBanco: "Credcrea",
-      chaveDadosConta: "extrato_credcrea_dadosconta",
-      codigoBancoPadrao: "085",
+      chaveLancamentos: "extrato_sicredi_lancamentos",
+      chaveClassificacoes: "extrato_sicredi_classificacoes",
+      nomeBanco: "Sicredi",
+      chaveDadosConta: "extrato_sicredi_dadosconta",
+      codigoBancoPadrao: "748",
     };
   </script>
   <script src="extrato.js"></script>

@@ -5,6 +5,7 @@
 let tipoPessoaAtual = "PJ";
 let contatoEmEdicaoId = null;
 let contatosCache = [];
+let rascunhoAtualId = null;
 
 const CAMPOS_APENAS_PJ = ["blocoNomeFantasia", "blocoIE", "blocoIM"];
 
@@ -86,6 +87,7 @@ document.getElementById("btnBuscarCnpj").addEventListener("click", async () => {
 // ── Formulário: limpar / preencher ──────────────────────────────
 function limparFormulario() {
   contatoEmEdicaoId = null;
+  rascunhoAtualId = null;
   document.getElementById("campoId").value = "";
   ["campoDocumento", "campoNome", "campoNomeFantasia", "campoInscricaoEstadual", "campoInscricaoMunicipal",
    "campoTelefone", "campoEmail", "campoCep", "campoLogradouro", "campoNumero", "campoComplemento",
@@ -99,6 +101,7 @@ function limparFormulario() {
 
 function preencherFormulario(contato) {
   contatoEmEdicaoId = contato.id;
+  rascunhoAtualId = null;
   document.getElementById("campoId").value = contato.id;
   aplicarTipoPessoa(contato.tipoPessoa || "PJ");
   document.getElementById("campoDocumento").value = contato.documento || "";
@@ -122,6 +125,122 @@ function preencherFormulario(contato) {
 }
 
 document.getElementById("btnCancelarEdicao").addEventListener("click", limparFormulario);
+
+// ====================================================
+// RASCUNHO AUTOMÁTICO (auto-save)
+// ====================================================
+function coletarDadosRascunhoContato() {
+  return {
+    id: contatoEmEdicaoId,
+    tipoPessoa: tipoPessoaAtual,
+    documento: document.getElementById("campoDocumento").value.trim(),
+    nome: document.getElementById("campoNome").value.trim(),
+    nomeFantasia: document.getElementById("campoNomeFantasia").value.trim(),
+    inscricaoEstadual: document.getElementById("campoInscricaoEstadual").value.trim(),
+    inscricaoMunicipal: document.getElementById("campoInscricaoMunicipal").value.trim(),
+    telefone: document.getElementById("campoTelefone").value.trim(),
+    email: document.getElementById("campoEmail").value.trim(),
+    cep: document.getElementById("campoCep").value.trim(),
+    logradouro: document.getElementById("campoLogradouro").value.trim(),
+    numero: document.getElementById("campoNumero").value.trim(),
+    complemento: document.getElementById("campoComplemento").value.trim(),
+    bairro: document.getElementById("campoBairro").value.trim(),
+    cidade: document.getElementById("campoCidade").value.trim(),
+    uf: document.getElementById("campoUf").value.trim().toUpperCase(),
+    observacoes: document.getElementById("campoObservacoes").value.trim(),
+  };
+}
+
+function formularioContatoTemConteudo(d) {
+  return !!(d.documento || d.nome || d.nomeFantasia || d.telefone || d.email || d.cep || d.logradouro || d.observacoes);
+}
+
+async function salvarRascunhoAtual() {
+  const dados = coletarDadosRascunhoContato();
+  if (!formularioContatoTemConteudo(dados)) return;
+  const resposta = await apiSalvarRascunho("contato", rascunhoAtualId, dados);
+  if (resposta.ok) { rascunhoAtualId = resposta.id; renderPendentes(); }
+}
+
+function salvarRascunhoAtualImediato() {
+  const dados = coletarDadosRascunhoContato();
+  if (!formularioContatoTemConteudo(dados)) return;
+  if (!rascunhoAtualId) rascunhoAtualId = `rascunho_contato_${Date.now()}`;
+  apiSalvarRascunhoImediato("contato", rascunhoAtualId, dados);
+}
+
+[
+  "campoDocumento", "campoNome", "campoNomeFantasia", "campoInscricaoEstadual", "campoInscricaoMunicipal",
+  "campoTelefone", "campoEmail", "campoCep", "campoLogradouro", "campoNumero", "campoComplemento",
+  "campoBairro", "campoCidade", "campoUf", "campoObservacoes",
+].forEach((idCampo) => {
+  document.getElementById(idCampo).addEventListener("blur", salvarRascunhoAtual);
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") salvarRascunhoAtualImediato(); });
+window.addEventListener("beforeunload", salvarRascunhoAtualImediato);
+
+function preencherFormularioComRascunho(dados, idRascunho) {
+  rascunhoAtualId = idRascunho;
+  contatoEmEdicaoId = dados.id || null;
+  document.getElementById("campoId").value = dados.id || "";
+  aplicarTipoPessoa(dados.tipoPessoa || "PJ");
+  document.getElementById("campoDocumento").value = dados.documento || "";
+  document.getElementById("campoNome").value = dados.nome || "";
+  document.getElementById("campoNomeFantasia").value = dados.nomeFantasia || "";
+  document.getElementById("campoInscricaoEstadual").value = dados.inscricaoEstadual || "";
+  document.getElementById("campoInscricaoMunicipal").value = dados.inscricaoMunicipal || "";
+  document.getElementById("campoTelefone").value = dados.telefone || "";
+  document.getElementById("campoEmail").value = dados.email || "";
+  document.getElementById("campoCep").value = dados.cep || "";
+  document.getElementById("campoLogradouro").value = dados.logradouro || "";
+  document.getElementById("campoNumero").value = dados.numero || "";
+  document.getElementById("campoComplemento").value = dados.complemento || "";
+  document.getElementById("campoBairro").value = dados.bairro || "";
+  document.getElementById("campoCidade").value = dados.cidade || "";
+  document.getElementById("campoUf").value = dados.uf || "";
+  document.getElementById("campoObservacoes").value = dados.observacoes || "";
+  document.getElementById("tituloFormulario").textContent = dados.nome ? `Continuando rascunho — ${dados.nome}` : "Continuando rascunho";
+  document.getElementById("btnCancelarEdicao").style.display = "inline-block";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function renderPendentes() {
+  const resposta = await apiListarRascunhos("contato");
+  const bloco = document.getElementById("blocoPendentes");
+  const listaEl = document.getElementById("listaPendentes");
+  if (!bloco || !listaEl) return;
+  if (!resposta.ok || !resposta.rascunhos || resposta.rascunhos.length === 0) {
+    bloco.style.display = "none";
+    listaEl.innerHTML = "";
+    return;
+  }
+  bloco.style.display = "block";
+  listaEl.innerHTML = "";
+  resposta.rascunhos.forEach((r) => {
+    const d = r.dados || {};
+    const dataFormatada = new Date(r.atualizadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    const el = document.createElement("div");
+    el.className = "item-contato";
+    el.innerHTML = `
+      <div>
+        <div class="nome">${escaparHtml(d.nome) || "(sem nome)"} <span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">Pendente</span></div>
+        <div class="meta">Salvo automaticamente em ${dataFormatada}</div>
+      </div>
+      <div class="acoes">
+        <button class="btn-continuar-rascunho">Continuar editando</button>
+        <button class="btn-excluir-rascunho">Excluir</button>
+      </div>
+    `;
+    el.querySelector(".btn-continuar-rascunho").addEventListener("click", () => preencherFormularioComRascunho(d, r.id));
+    el.querySelector(".btn-excluir-rascunho").addEventListener("click", async () => {
+      const ok = await confirmarAcao("Excluir rascunho pendente?", "Essa ação não pode ser desfeita.");
+      if (!ok) return;
+      await apiExcluirRascunho("contato", r.id);
+      renderPendentes();
+    });
+    listaEl.appendChild(el);
+  });
+}
 
 // ── Salvar ────────────────────────────────────────────────────
 document.getElementById("btnSalvarContato").addEventListener("click", async () => {
@@ -164,8 +283,10 @@ document.getElementById("btnSalvarContato").addEventListener("click", async () =
     const resposta = await apiSalvarContato(dados);
     if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar.", "erro"); return; }
     mostrarToast("Contato salvo.");
+    if (rascunhoAtualId) { await apiExcluirRascunho("contato", rascunhoAtualId); rascunhoAtualId = null; }
     limparFormulario();
     carregarContatos();
+    renderPendentes();
   } finally {
     botao.disabled = false;
     botao.textContent = textoOriginal;
@@ -228,3 +349,4 @@ document.getElementById("buscaContatos").addEventListener("input", renderizarLis
 
 aplicarTipoPessoa("PJ");
 carregarContatos();
+renderPendentes();

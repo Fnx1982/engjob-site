@@ -7,6 +7,64 @@
 let propostaEmEdicao = null;
 let onSalvarPropostaCallback = null;
 
+// ── Rascunho automático (auto-save) ───────────────────────────
+// id do rascunho salvo no servidor pra esta proposta em edição.
+// null enquanto o formulário estiver totalmente vazio (não cria
+// rascunho de um formulário em branco); ganha um valor assim que o
+// primeiro campo com conteúdo perde o foco.
+let rascunhoAtualId = null;
+// Trava simples: enquanto o "Salvar Orçamento" de verdade estiver
+// rodando, o rascunho automático não pode disparar em paralelo —
+// clicar em Salvar tira o foco do último campo editado, o que
+// dispara o rascunho ao mesmo tempo que o salvamento de verdade
+// (uma corrida de eventos real, não hipotética).
+let salvandoPropostaDeVerdade = false;
+let onListaPendentesAtualizarCallback = null;
+
+// ── Autocomplete de cliente (Contatos) ────────────────────────────
+let contatosCacheOrcamento = [];
+
+async function carregarAutocompleteContatosOrcamento() {
+  try {
+    const resposta = await apiListarContatos();
+    if (!resposta.ok) return;
+    contatosCacheOrcamento = resposta.contatos;
+    const datalist = document.getElementById("listaClientesOrcamentoDatalist");
+    if (datalist) datalist.innerHTML = contatosCacheOrcamento.map((c) => `<option value="${escaparHtml(c.nome)}"></option>`).join("");
+  } catch (e) { /* autocomplete é um extra — se falhar, o formulário continua funcionando normalmente */ }
+}
+
+// Se o nome digitado bate com um contato já cadastrado, preenche
+// telefone e endereço automaticamente (não sobrescreve se a pessoa
+// já tiver digitado algo diferente nesses campos).
+function tentarAutopreencherClienteOrcamento() {
+  const nomeDigitado = document.getElementById("campoCliente").value.trim();
+  const contato = contatosCacheOrcamento.find((c) => c.nome === nomeDigitado);
+  if (!contato) return;
+  const campoTel = document.getElementById("campoTelefone");
+  const campoLoc = document.getElementById("campoLocal");
+  if (contato.telefone && !campoTel.value.trim()) campoTel.value = contato.telefone;
+  if (!campoLoc.value.trim()) {
+    const enderecoPartes = [contato.logradouro, contato.numero, contato.bairro, contato.cidade, contato.uf].filter(Boolean);
+    if (enderecoPartes.length) campoLoc.value = enderecoPartes.join(", ");
+  }
+}
+
+// Se o cliente que acabou de ser salvo na proposta ainda não existe
+// em Contatos, cria um registro básico lá (nome, telefone e o
+// documento, se a pessoa preencheu — não é obrigatório no
+// Orçamento, então pode vir vazio e ser completado depois, na tela
+// de Contatos, quando/se precisar emitir nota fiscal pra ele).
+async function garantirClienteEmContatos(nome, telefone, documento) {
+  if (!nome) return;
+  const jaExiste = contatosCacheOrcamento.some((c) => c.nome.trim().toLowerCase() === nome.trim().toLowerCase());
+  if (jaExiste) return;
+  const documentoLimpo = (documento || "").replace(/\D/g, "");
+  const tipoPessoa = documentoLimpo.length === 14 ? "PJ" : "PF";
+  const resposta = await apiSalvarContato({ nome, telefone: telefone || "", tipoPessoa, documento: documento || "" });
+  if (resposta.ok) contatosCacheOrcamento.push({ id: resposta.id, nome, telefone: telefone || "", documento: documento || "" });
+}
+
 const UNIDADES_PADRAO = ["UND", "CM", "CM²", "M", "M²", "ML"];
 
 // Gera as <option> do select de unidade, com o valor atual já
@@ -34,6 +92,7 @@ function montarModalFormularioProposta() {
         <h2 id="tituloModalProposta">Novo Orçamento</h2>
         <button type="button" class="modal-fechar" id="fecharModalProposta">&times;</button>
       </div>
+      <p id="statusRascunhoProposta" style="font-size:12px; color:#888; margin:-6px 0 10px;"></p>
 
       <div class="form-secao">
         <h3>Dados do Cliente / Obra</h3>
@@ -42,7 +101,11 @@ function montarModalFormularioProposta() {
             <input type="text" id="campoNumeroOrcamento" placeholder="Ex: 2026-001" />
           </label>
           <label>Cliente
-            <input type="text" id="campoCliente" placeholder="Nome do cliente" />
+            <input type="text" id="campoCliente" placeholder="Nome do cliente" list="listaClientesOrcamentoDatalist" />
+            <datalist id="listaClientesOrcamentoDatalist"></datalist>
+          </label>
+          <label>CPF / CNPJ <span style="font-weight:normal; color:#888;">(opcional)</span>
+            <input type="text" id="campoDocumentoCliente" placeholder="000.000.000-00" />
           </label>
           <label>Telefone
             <input type="text" id="campoTelefone" placeholder="(99) 9 9999-9999" maxlength="17" />
@@ -95,15 +158,8 @@ function montarModalFormularioProposta() {
 
       <div class="form-secao">
         <h3>Materiais do estoque</h3>
-        <p class="texto-ajuda">Marque os materiais que entram neste orçamento. A quantidade pode ser ajustada depois, na tabela abaixo.</p>
+        <p class="texto-ajuda">Marque os materiais que entram neste orçamento. A quantidade pode ser ajustada depois, na tabela abaixo. Pra um material novo, é só digitar o nome direto na tabela de itens, aqui embaixo — a busca já sugere os que existem, e cria um novo se não achar nada.</p>
         <div class="checklist-materiais" id="checklistMateriaisEstoque"></div>
-
-        <div class="cadastro-rapido-material">
-          <input type="text" id="rapidoNomeMaterial" placeholder="Nome do novo material" />
-          <input type="number" id="rapidoValorMaterial" placeholder="Valor unit." step="0.01" min="0" />
-          <input type="text" id="rapidoSetorMaterial" placeholder="Setor" />
-          <button type="button" class="btn-laranja" id="btnCadastroRapidoMaterial">+ Cadastrar e usar</button>
-        </div>
       </div>
 
       <div class="form-secao">
@@ -176,11 +232,101 @@ function montarModalFormularioProposta() {
   document.getElementById("btnAddMaoDeObra").addEventListener("click", adicionarLinhaMaoDeObra);
   document.getElementById("btnAddMaterial").addEventListener("click", adicionarLinhaMaterial);
   document.getElementById("btnSalvarProposta").addEventListener("click", salvarFormularioProposta);
-  document.getElementById("btnCadastroRapidoMaterial").addEventListener("click", cadastrarMaterialRapido);
   document.getElementById("campoTelefone").addEventListener("input", aplicarMascaraTelefoneProposta);
+  document.getElementById("campoDocumentoCliente").addEventListener("blur", formatarDocumentoClienteOrcamento);
   document.getElementById("ajusteMaoDeObra").addEventListener("input", atualizarTotaisFormulario);
   document.getElementById("ajusteMateriais").addEventListener("input", atualizarTotaisFormulario);
+  document.getElementById("campoCliente").addEventListener("change", tentarAutopreencherClienteOrcamento);
   limparErroAoEditar(document.getElementById("campoCliente"));
+
+  // Auto-save: qualquer um destes campos, ao perder o foco, salva o
+  // formulário inteiro como rascunho no servidor — sem precisar clicar
+  // em nada. Itens de mão de obra/materiais já disparam o próprio save
+  // no "blur" deles (ver renderTabelaMaoDeObra/renderTabelaMateriais).
+  const camposComAutoSave = [
+    "campoNumeroOrcamento", "campoCliente", "campoTelefone", "campoLocal",
+    "campoServico", "campoObservacao", "campoFormaPagamento", "campoPlanejamento", "campoValidade",
+  ];
+  camposComAutoSave.forEach((idCampo) => {
+    const el = document.getElementById(idCampo);
+    if (el) el.addEventListener("blur", () => salvarRascunhoAtual());
+  });
+
+  // Itens de mão de obra e materiais: "focusout" borbulha (diferente de
+  // "blur"), então um único listener na tabela cobre qualquer input
+  // dentro dela, mesmo linhas adicionadas depois desse momento.
+  const tabelaMO = document.getElementById("tabelaMaoDeObra");
+  const tabelaMat = document.getElementById("tabelaMateriais");
+  if (tabelaMO) tabelaMO.addEventListener("focusout", () => salvarRascunhoAtual());
+  if (tabelaMat) tabelaMat.addEventListener("focusout", () => salvarRascunhoAtual());
+}
+
+// ── Autocomplete customizado (substitui <datalist> nativo — o
+// navegador não deixa estilizar aquela caixa preta que o datalist
+// mostra). "obterOpcoes" é uma função (não uma lista pronta), porque
+// o catálogo pode mudar entre um render e outro. "aoSelecionar" roda
+// depois que a pessoa escolhe uma sugestão, pra ligar o item ao
+// catálogo (mesma lógica que já existia pro datalist nativo).
+function criarAutocompleteCustomizado(inputEl, obterOpcoes, aoSelecionar) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "autocomplete-wrapper";
+  inputEl.parentNode.insertBefore(wrapper, inputEl);
+  wrapper.appendChild(inputEl);
+
+  const lista = document.createElement("div");
+  lista.className = "autocomplete-lista";
+  wrapper.appendChild(lista);
+
+  let opcoesAtuais = [];
+  let indiceAtivo = -1;
+
+  function fecharLista() {
+    lista.style.display = "none";
+    indiceAtivo = -1;
+  }
+
+  function escolher(nome) {
+    inputEl.value = nome;
+    fecharLista();
+    inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+    if (aoSelecionar) aoSelecionar(nome);
+  }
+
+  function renderSugestoes() {
+    const termo = inputEl.value.trim().toLowerCase();
+    if (!termo) { fecharLista(); return; }
+    opcoesAtuais = obterOpcoes().filter((nome) => nome.toLowerCase().includes(termo)).slice(0, 8);
+    if (opcoesAtuais.length === 0) { fecharLista(); return; }
+
+    lista.innerHTML = opcoesAtuais.map((nome) => `<div class="autocomplete-item">${escaparHtml(nome)}</div>`).join("");
+    lista.style.display = "block";
+    indiceAtivo = -1;
+
+    lista.querySelectorAll(".autocomplete-item").forEach((el, i) => {
+      // mousedown (não click) evita que o blur do input feche a
+      // lista ANTES do clique registrar.
+      el.addEventListener("mousedown", (e) => { e.preventDefault(); escolher(opcoesAtuais[i]); });
+    });
+  }
+
+  function marcarAtivo() {
+    lista.querySelectorAll(".autocomplete-item").forEach((el, i) => {
+      el.classList.toggle("ativo", i === indiceAtivo);
+      if (i === indiceAtivo) el.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  inputEl.addEventListener("input", renderSugestoes);
+  inputEl.addEventListener("focus", renderSugestoes);
+  inputEl.addEventListener("blur", () => setTimeout(fecharLista, 150));
+  inputEl.addEventListener("keydown", (e) => {
+    if (lista.style.display !== "block") return;
+    if (e.key === "ArrowDown") { e.preventDefault(); indiceAtivo = Math.min(indiceAtivo + 1, opcoesAtuais.length - 1); marcarAtivo(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); indiceAtivo = Math.max(indiceAtivo - 1, 0); marcarAtivo(); }
+    else if (e.key === "Enter" && indiceAtivo >= 0) { e.preventDefault(); escolher(opcoesAtuais[indiceAtivo]); }
+    else if (e.key === "Escape") { fecharLista(); }
+  });
 }
 
 function aplicarMascaraTelefoneProposta(event) {
@@ -194,15 +340,36 @@ function aplicarMascaraTelefoneProposta(event) {
   input.value = valor.trim();
 }
 
-async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos) {
+// Formata CPF/CNPJ ao sair do campo — não bloqueia nada (o campo é
+// opcional no Orçamento), só arruma a aparência quando dá pra
+// reconhecer o padrão certo (11 ou 14 dígitos).
+function formatarDocumentoClienteOrcamento() {
+  const campo = document.getElementById("campoDocumentoCliente");
+  const digitos = campo.value.replace(/\D/g, "");
+  if (digitos.length === 11) campo.value = formatarCPF(digitos);
+  else if (digitos.length === 14) campo.value = formatarCNPJ(digitos);
+}
+
+// "rascunhoId" só é passado quando o formulário está sendo reaberto a
+// partir da lista de "Pendentes" — nesse caso o auto-save continua
+// atualizando o MESMO rascunho (em vez de criar um novo), e "dadosPreenchidos"
+// carrega o conteúdo salvo do rascunho.
+async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoId) {
   montarModalFormularioProposta();
   onSalvarPropostaCallback = onSalvar || null;
+  rascunhoAtualId = rascunhoId || null;
   propostaEmEdicao = id ? JSON.parse(JSON.stringify(buscarProposta(id))) : criarPropostaVazia();
   if (!id && dadosPreenchidos) Object.assign(propostaEmEdicao, dadosPreenchidos);
+
+  carregarAutocompleteContatosOrcamento();
+
+  const statusEl = document.getElementById("statusRascunhoProposta");
+  if (statusEl) statusEl.textContent = rascunhoAtualId ? "Continuando um rascunho pendente." : "";
 
   document.getElementById("tituloModalProposta").textContent = id ? "Editar Orçamento" : "Novo Orçamento";
   document.getElementById("campoNumeroOrcamento").value = propostaEmEdicao.numeroOrcamento || "";
   document.getElementById("campoCliente").value = propostaEmEdicao.cliente;
+  document.getElementById("campoDocumentoCliente").value = propostaEmEdicao.documentoCliente || "";
   document.getElementById("campoTelefone").value = propostaEmEdicao.telefone;
   document.getElementById("campoLocal").value = propostaEmEdicao.local;
   document.getElementById("campoServico").value = propostaEmEdicao.servico;
@@ -230,17 +397,94 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos) {
   if (ajusteMatEl) ajusteMatEl.value = propostaEmEdicao.ajusteMateriais || "";
 
   atualizarTotaisFormulario();
-
-  document.getElementById("rapidoNomeMaterial").value = "";
-  document.getElementById("rapidoValorMaterial").value = "";
-  document.getElementById("rapidoSetorMaterial").value = "";
 }
 
 function fecharFormularioProposta() {
   const modal = document.getElementById("modalProposta");
   if (modal) modal.classList.remove("active");
+  // NÃO apaga o rascunho aqui — fechar o modal sem salvar é exatamente
+  // o caso que o rascunho existe pra cobrir. Ele continua no servidor,
+  // marcado como "Pendente", até o usuário voltar e finalizar de verdade.
   propostaEmEdicao = null;
+  rascunhoAtualId = null;
+  if (onListaPendentesAtualizarCallback) onListaPendentesAtualizarCallback();
 }
+
+// ====================================================
+// RASCUNHO AUTOMÁTICO (auto-save)
+// ====================================================
+
+// Reaproveita a mesma leitura de campos que salvarFormularioProposta
+// usa, mas sem validação — um rascunho pode ficar incompleto, só uma
+// proposta finalizada precisa ter cliente preenchido.
+function coletarCamposBasicosDoFormulario() {
+  if (!propostaEmEdicao) return;
+  const campo = (id) => document.getElementById(id);
+  propostaEmEdicao.numeroOrcamento = (campo("campoNumeroOrcamento")?.value || "").trim();
+  propostaEmEdicao.cliente = (campo("campoCliente")?.value || "").trim();
+  propostaEmEdicao.documentoCliente = (campo("campoDocumentoCliente")?.value || "").trim();
+  propostaEmEdicao.telefone = (campo("campoTelefone")?.value || "").trim();
+  propostaEmEdicao.local = (campo("campoLocal")?.value || "").trim();
+  propostaEmEdicao.servico = (campo("campoServico")?.value || "").trim();
+  propostaEmEdicao.observacao = (campo("campoObservacao")?.value || "").trim();
+  propostaEmEdicao.formaPagamento = (campo("campoFormaPagamento")?.value || "").trim();
+  propostaEmEdicao.planejamentoDias = campo("campoPlanejamento")?.value || "";
+  propostaEmEdicao.validadeDias = campo("campoValidade")?.value || "";
+}
+
+// Só vale a pena salvar (e criar) um rascunho se o usuário já digitou
+// alguma coisa — evita gerar um rascunho vazio só porque alguém abriu
+// e fechou o modal sem preencher nada.
+function formularioTemConteudoParaRascunho() {
+  if (!propostaEmEdicao) return false;
+  const p = propostaEmEdicao;
+  const camposTexto = [p.numeroOrcamento, p.cliente, p.telefone, p.local, p.servico, p.observacao, p.formaPagamento];
+  if (camposTexto.some((v) => (v || "").trim() !== "")) return true;
+  if ((p.itensMaoDeObra || []).some((i) => (i.descricao || "").trim() !== "")) return true;
+  if ((p.itensMateriais || []).some((i) => (i.nome || "").trim() !== "")) return true;
+  return false;
+}
+
+async function salvarRascunhoAtual() {
+  if (!propostaEmEdicao || salvandoPropostaDeVerdade) return;
+  coletarCamposBasicosDoFormulario();
+  if (!formularioTemConteudoParaRascunho()) return;
+
+  const resposta = await apiSalvarRascunhoProposta(rascunhoAtualId, propostaEmEdicao);
+  const statusEl = document.getElementById("statusRascunhoProposta");
+  if (resposta.ok) {
+    rascunhoAtualId = resposta.id;
+    if (statusEl) {
+      const agora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      statusEl.textContent = `Pendente — rascunho salvo automaticamente às ${agora}.`;
+    }
+    if (onListaPendentesAtualizarCallback) onListaPendentesAtualizarCallback();
+  } else if (statusEl) {
+    statusEl.textContent = "Não foi possível salvar o rascunho agora. Suas alterações continuam só nesta tela.";
+  }
+}
+
+// Versão sem esperar resposta do servidor — usada quando a aba está
+// sendo fechada/trocada, momento em que não dá mais pra esperar um
+// await terminar antes do navegador seguir em frente.
+function salvarRascunhoAtualImediato() {
+  if (!propostaEmEdicao || salvandoPropostaDeVerdade) return;
+  coletarCamposBasicosDoFormulario();
+  if (!formularioTemConteudoParaRascunho()) return;
+  if (!rascunhoAtualId) rascunhoAtualId = `rascunho_${Date.now()}`;
+  apiSalvarRascunhoPropostaImediato(rascunhoAtualId, propostaEmEdicao);
+}
+
+// Dispara ao trocar de aba (a aba atual fica oculta) e ao fechar a
+// aba/navegador. Cobre os dois casos pedidos: "trocando de aba" e
+// "fechando a aba". Um desligamento abrupto do PC não emite nenhum
+// evento — por isso o auto-save por campo (blur) é a proteção real
+// pra esse caso: quando ele acontece, o rascunho já foi salvo há
+// segundos, não depende de detectar o desligamento.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") salvarRascunhoAtualImediato();
+});
+window.addEventListener("beforeunload", salvarRascunhoAtualImediato);
 
 // ============================================================
 // Calcula o valor final de um item:
@@ -277,7 +521,7 @@ function renderTabelaMaoDeObra() {
       <td class="col-descricao">
         ${rotuloVinculo}
         <input type="text" value="${escaparHtml(item.descricao || "")}" placeholder="Descrição do serviço"
-          data-mo-campo="descricao" data-mo-index="${index}" list="listaServicosPropostaDatalist" />
+          data-mo-campo="descricao" data-mo-index="${index}" />
       </td>
       <td>
         <input type="number" min="0" step="0.01" value="${item.qtd || ""}"
@@ -335,6 +579,7 @@ function renderTabelaMaoDeObra() {
     // Descrição que bate com um serviço já cadastrado: liga o item a
     // ele e preenche o valor (só se ainda estiver vazio).
     if (input.dataset.moCampo === "descricao") {
+      criarAutocompleteCustomizado(input, () => servicosCatalogoCache.map((s) => s.nome));
       input.addEventListener("change", () => {
         const idx = parseInt(input.dataset.moIndex, 10);
         const item = propostaEmEdicao.itensMaoDeObra[idx];
@@ -427,56 +672,6 @@ function renderChecklistMateriaisEstoque() {
   });
 }
 
-async function cadastrarMaterialRapido() {
-  const campoNome = document.getElementById("rapidoNomeMaterial");
-  const campoValor = document.getElementById("rapidoValorMaterial");
-  const campoSetor = document.getElementById("rapidoSetorMaterial");
-
-  limparErroCampo(campoNome); limparErroCampo(campoValor); limparErroCampo(campoSetor);
-
-  const nome = campoNome.value.trim();
-  const valor = parseFloat(campoValor.value);
-  const setor = campoSetor.value.trim();
-
-  let temErro = false;
-  if (!nome) { marcarCampoComErro(campoNome, "Informe o nome."); temErro = true; }
-  if (isNaN(valor) || valor < 0) { marcarCampoComErro(campoValor, "Informe um valor válido."); temErro = true; }
-  if (!setor) { marcarCampoComErro(campoSetor, "Informe o setor."); temErro = true; }
-  if (temErro) return;
-
-  const botao = document.getElementById("btnCadastroRapidoMaterial");
-  const textoOriginal = botao.textContent;
-  botao.disabled = true;
-  botao.textContent = "Salvando...";
-
-  try {
-    // Garante que o setor existe na Gestão de Materiais (mesma lista
-    // usada por lá), antes de salvar o material propriamente dito.
-    const respSetores = await apiDataGet("materiaisSetores");
-    const setoresAtuais = (respSetores.ok && respSetores.valor) ? respSetores.valor : [];
-    if (!setoresAtuais.includes(setor)) {
-      setoresAtuais.push(setor);
-      await apiDataSet("materiaisSetores", setoresAtuais);
-    }
-
-    const resposta = await apiSalvarMaterial({ nome, setor, codigo: "", valor, quantidade: 0, observacao: "" });
-    if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao cadastrar material.", "erro"); return; }
-
-    const novoMaterial = { id: resposta.id, nome, setor, codigo: "", valor, quantidade: 0, observacao: "" };
-    materiaisEstoqueCache.push(novoMaterial);
-
-    propostaEmEdicao.itensMateriais.push({ qtd: 1, unid: "UND", nome, valorUnit: valor, valorFinal: null, materialId: resposta.id });
-
-    campoNome.value = ""; campoValor.value = ""; campoSetor.value = "";
-    renderChecklistMateriaisEstoque();
-    renderTabelaMateriais();
-    atualizarTotaisFormulario();
-  } finally {
-    botao.disabled = false;
-    botao.textContent = textoOriginal;
-  }
-}
-
 // ====================================================
 // TABELA: MATERIAIS
 // ====================================================
@@ -548,6 +743,27 @@ function renderTabelaMateriais() {
       atualizarTotaisFormulario();
     });
 
+    // Nome que bate com um material já cadastrado: liga o item a ele
+    // e preenche o valor (só se ainda estiver vazio) — mesma lógica
+    // que a Mão de Obra já tinha com Serviços, mas Material nunca
+    // tinha isso.
+    if (input.dataset.matCampo === "nome") {
+      criarAutocompleteCustomizado(input, () => materiaisEstoqueCache.map((m) => m.nome));
+      input.addEventListener("change", () => {
+        const idx = parseInt(input.dataset.matIndex, 10);
+        const item = propostaEmEdicao.itensMateriais[idx];
+        const material = materiaisEstoqueCache.find((m) => m.nome.trim().toLowerCase() === input.value.trim().toLowerCase());
+        if (material) {
+          item.materialId = material.id;
+          if (!item.valorUnit) {
+            item.valorUnit = material.valor;
+            renderTabelaMateriais();
+            atualizarTotaisFormulario();
+          }
+        }
+      });
+    }
+
     if (input.dataset.matCampo === "valorFinal") {
       input.addEventListener("blur", async () => {
         const idx = parseInt(input.dataset.matIndex, 10);
@@ -616,11 +832,13 @@ function atualizarTotaisFormulario() {
 // SALVAR
 // ====================================================
 async function salvarFormularioProposta() {
+  salvandoPropostaDeVerdade = true;
   const campoCliente = document.getElementById("campoCliente");
   limparErrosDoFormulario(document.getElementById("modalProposta"));
 
   propostaEmEdicao.numeroOrcamento = document.getElementById("campoNumeroOrcamento").value.trim();
   propostaEmEdicao.cliente = campoCliente.value.trim();
+  propostaEmEdicao.documentoCliente = document.getElementById("campoDocumentoCliente").value.trim();
   propostaEmEdicao.telefone = document.getElementById("campoTelefone").value.trim();
   propostaEmEdicao.local = document.getElementById("campoLocal").value.trim();
   propostaEmEdicao.servico = document.getElementById("campoServico").value.trim();
@@ -632,6 +850,7 @@ async function salvarFormularioProposta() {
   if (!propostaEmEdicao.cliente) {
     marcarCampoComErro(campoCliente, "Informe o nome do cliente.");
     focarPrimeiroErro(document.getElementById("modalProposta"));
+    salvandoPropostaDeVerdade = false;
     return;
   }
 
@@ -644,22 +863,47 @@ async function salvarFormularioProposta() {
     // Qualquer item de material/mão de obra digitado manualmente (sem
     // ter sido escolhido do catálogo) vira uma entrada nova no
     // catálogo agora — assim fica disponível depois em Gestão de
-    // Material / na NFS-e, sem precisar cadastrar de novo.
+    // Material / na NFS-e, sem precisar cadastrar de novo. Cada item
+    // tem seu próprio try/catch: se UM falhar ao cadastrar no
+    // catálogo, os outros continuam normalmente, e o item em si
+    // nunca é removido da proposta por causa disso.
     for (const item of propostaEmEdicao.itensMateriais) {
       if (!item.materialId && item.nome && item.nome.trim()) {
-        item.materialId = await garantirMaterialNoCatalogo(item.nome, item.valorUnit);
+        try {
+          item.materialId = await garantirMaterialNoCatalogo(item.nome, item.valorUnit);
+        } catch (e) {
+          console.warn("[propostas-form] Falha ao cadastrar material no catálogo:", item.nome, e);
+        }
       }
     }
     for (const item of propostaEmEdicao.itensMaoDeObra) {
       if (!item.servicoId && item.descricao && item.descricao.trim()) {
-        item.servicoId = await garantirServicoNoCatalogo(item.descricao, item.valorUnit);
+        try {
+          item.servicoId = await garantirServicoNoCatalogo(item.descricao, item.valorUnit);
+        } catch (e) {
+          console.warn("[propostas-form] Falha ao cadastrar serviço no catálogo:", item.descricao, e);
+        }
       }
     }
 
+    // Mesma lógica: se o cliente digitado ainda não existe em
+    // Contatos, cria um registro básico lá agora — já com o
+    // documento, se a pessoa preencheu (não é obrigatório aqui).
+    await garantirClienteEmContatos(propostaEmEdicao.cliente, propostaEmEdicao.telefone, propostaEmEdicao.documentoCliente);
+
     salvarProposta(propostaEmEdicao);
+
+    // Proposta finalizada de verdade — o rascunho que vinha sendo
+    // salvo automaticamente não faz mais sentido, apaga ele.
+    if (rascunhoAtualId) {
+      await apiExcluirRascunhoProposta(rascunhoAtualId);
+      rascunhoAtualId = null;
+    }
+
     fecharFormularioProposta();
     if (onSalvarPropostaCallback) onSalvarPropostaCallback();
   } finally {
+    salvandoPropostaDeVerdade = false;
     botaoSalvar.disabled = false;
     botaoSalvar.textContent = textoOriginalBotao;
   }

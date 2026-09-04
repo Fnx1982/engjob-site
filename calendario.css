@@ -120,8 +120,10 @@ body {
   background: white;
   padding: 20px;
   border-radius: 10px;
-  width: 350px;
+  width: 420px;
   max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
 .modal-content h3 {
@@ -132,36 +134,45 @@ body {
   margin-top: 10px;
   font-weight: 600;
 }
-.modal-content input {
+.modal-content input, .modal-content textarea {
   width: 100%;
   padding: 6px;
   margin-top: 4px;
   border: 1px solid #ccc;
   border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.modal-content textarea {
+  resize: vertical;
 }
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   margin-top: 15px;
+  gap: 10px;
 }
 .modal-actions button {
-  margin-left: 10px;
-  padding: 6px 12px;
+  padding: 8px 16px;
   border: none;
   border-radius: 6px;
   cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s;
 }
-#saveEvent {
+#btnSalvar, #btnEditar {
   background: #eb991c;
   color: white;
 }
-#saveEvent:hover {
+#btnSalvar:hover, #btnEditar:hover {
   background: #d4840d;
 }
-#closeModal {
-  background: #aaa;
+#btnExcluir {
+  background: #dc143c;
   color: white;
 }
-#closeModal:hover {
-  background: #777;
+#btnExcluir:hover {
+  background: #b30f30;
 }

@@ -1,15 +1,39 @@
 // ============================================================
 // boletos.js
-// Controle de boletos (despesas e entradas), com status
-// calculado automaticamente pela data de vencimento:
+// Controle de boletos (despesas e entradas), agora no banco
+// central (não mais localStorage) — com upload de arquivo de
+// verdade (R2), banco vinculado, e modo "vários boletos" numa
+// leva só, cada um com seu próprio nome/valor/vencimento.
+//
+// Status calculado automaticamente pela data de vencimento:
 //   - "pago": foi marcado manualmente ou tem comprovante anexado
 //   - "atrasado": não pago e data de vencimento já passou
 //   - "pendente": não pago e ainda dentro do prazo (ou sem data)
 // ============================================================
 
-const CHAVE_BOLETOS = "boletos_lista";
-
+const WORKER_URL_BOLETOS = "https://engjob-storage.engjobmanut.workers.dev";
 const NOMES_MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+// ====================================================
+// UPLOAD / VISUALIZAÇÃO DE ARQUIVO NO R2
+// ====================================================
+function uploadArquivoBoleto(chave, arquivo) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", `${WORKER_URL_BOLETOS}?action=put&key=${encodeURIComponent(chave)}`);
+    xhr.setRequestHeader("Content-Type", arquivo.type || "application/octet-stream");
+    const token = localStorage.getItem("sessionToken") || "";
+    if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+    xhr.onload = () => { if (xhr.status < 300) resolve(); else reject(new Error("Falha ao enviar o arquivo (" + xhr.status + ")")); };
+    xhr.onerror = () => reject(new Error("Falha de conexão ao enviar o arquivo"));
+    xhr.send(arquivo);
+  });
+}
+
+async function urlDeVisualizacao(chave) {
+  const token = await garantirTokenDownload();
+  return `${WORKER_URL_BOLETOS}?action=get&key=${encodeURIComponent(chave)}&token=${encodeURIComponent(token)}`;
+}
 
 // ====================================================
 // ELEMENTOS
@@ -25,11 +49,23 @@ const btnTipoEntrada = document.getElementById("btnTipoEntrada");
 const inputTipoBoleto = document.getElementById("tipoBoleto");
 const campoArquivoComprovante = document.getElementById("campoArquivoComprovante");
 const avisoMarcaPago = document.getElementById("avisoMarcaPago");
+const campoBancoBoleto = document.getElementById("campoBancoBoleto");
+
+const btnUmBoleto = document.getElementById("btnUmBoleto");
+const btnVariosBoletos = document.getElementById("btnVariosBoletos");
+const blocoUmBoleto = document.getElementById("blocoUmBoleto");
+const blocoVariosBoletos = document.getElementById("blocoVariosBoletos");
+const corpoTabelaLote = document.getElementById("corpoTabelaLote");
+const btnAddLinhaLote = document.getElementById("btnAddLinhaLote");
+const labelArquivoBoleto = document.getElementById("labelArquivoBoleto");
+const labelArquivoComprovante = document.getElementById("labelArquivoComprovante");
+const avisoArquivosVarios = document.getElementById("avisoArquivosVarios");
 
 const listaBoletosEl = document.getElementById("listaBoletos");
 const semResultadosEl = document.getElementById("semResultados");
 const buscaInput = document.getElementById("buscaTexto");
 const filtroTipo = document.getElementById("filtroTipo");
+const filtroBanco = document.getElementById("filtroBanco");
 const filtroMes = document.getElementById("filtroMes");
 const filtroAno = document.getElementById("filtroAno");
 const btnLimparFiltros = document.getElementById("btnLimparFiltros");
@@ -44,13 +80,25 @@ const btnFecharPopupArquivo = document.getElementById("btn-fechar-popup-arquivo"
 // ====================================================
 // ESTADO
 // ====================================================
-let boletos = JSON.parse(localStorage.getItem(CHAVE_BOLETOS)) || [];
-let indiceEditando = null;
+let boletos = [];
+let idEditando = null;
 let tipoSelecionadoModal = "despesa";
+let modoQuantidade = "um"; // "um" | "varios"
 let abaAtiva = "pendente";
+let contadorLinhasLote = 0;
 
-function salvarBoletos() {
-  localStorage.setItem(CHAVE_BOLETOS, JSON.stringify(boletos));
+async function carregarBoletos() {
+  const resp = await apiListarBoletos();
+  boletos = resp.ok ? resp.boletos : [];
+}
+async function salvarUmBoleto(dados) {
+  const resp = await apiSalvarBoleto(dados);
+  if (resp.ok) {
+    const idx = boletos.findIndex((b) => b.id === resp.id);
+    if (idx !== -1) boletos[idx] = resp.boleto;
+    else boletos.push(resp.boleto);
+  }
+  return resp;
 }
 
 // ====================================================
@@ -104,12 +152,15 @@ function fecharModalEl() {
 }
 
 btnNovoBoleto.addEventListener("click", () => {
-  if (indiceEditando === null) {
+  if (idEditando === null) {
     form.reset();
     definirTipoModal("despesa");
+    definirModoQuantidade("um");
     tituloModalBoleto.textContent = "Novo Boleto";
     btnSubmitBoleto.textContent = "Adicionar";
     avisoMarcaPago.style.display = "none";
+    corpoTabelaLote.innerHTML = "";
+    adicionarLinhaLote();
   }
   abrirModal();
 });
@@ -130,6 +181,38 @@ function definirTipoModal(tipo) {
 btnTipoDespesa.addEventListener("click", () => definirTipoModal("despesa"));
 btnTipoEntrada.addEventListener("click", () => definirTipoModal("entrada"));
 
+// ── Um boleto vs. Vários boletos numa leva só ────────────────
+function definirModoQuantidade(modo) {
+  modoQuantidade = modo;
+  btnUmBoleto.classList.toggle("active", modo === "um");
+  btnVariosBoletos.classList.toggle("active", modo === "varios");
+  blocoUmBoleto.style.display = modo === "um" ? "grid" : "none";
+  blocoVariosBoletos.style.display = modo === "varios" ? "block" : "none";
+  // Upload de arquivo só faz sentido pra um boleto de cada vez —
+  // pra leva, anexa depois, editando cada um individualmente.
+  labelArquivoBoleto.style.display = modo === "um" ? "block" : "none";
+  labelArquivoComprovante.style.display = modo === "um" ? "block" : "none";
+  avisoArquivosVarios.style.display = modo === "varios" ? "block" : "none";
+}
+btnUmBoleto.addEventListener("click", () => definirModoQuantidade("um"));
+btnVariosBoletos.addEventListener("click", () => definirModoQuantidade("varios"));
+
+function adicionarLinhaLote(dados) {
+  dados = dados || { codigo: "", valor: "", dataVencimento: "" };
+  const linhaId = "lote_" + (contadorLinhasLote++);
+  const tr = document.createElement("tr");
+  tr.dataset.linhaId = linhaId;
+  tr.innerHTML = `
+    <td><input type="text" class="lote-codigo" placeholder="Código" value="${escaparHtml(dados.codigo)}" /></td>
+    <td><input type="number" class="lote-valor" placeholder="0,00" step="0.01" min="0" value="${dados.valor}" /></td>
+    <td><input type="date" class="lote-vencimento" value="${dados.dataVencimento}" /></td>
+    <td><button type="button" class="btn-remover-linha" data-remover-linha="${linhaId}">✕</button></td>
+  `;
+  corpoTabelaLote.appendChild(tr);
+  tr.querySelector("[data-remover-linha]").addEventListener("click", () => tr.remove());
+}
+btnAddLinhaLote.addEventListener("click", () => adicionarLinhaLote());
+
 // Mostra um aviso quando o usuário escolhe um arquivo de comprovante,
 // avisando que isso vai marcar o boleto como pago automaticamente.
 campoArquivoComprovante.addEventListener("change", () => {
@@ -139,83 +222,145 @@ campoArquivoComprovante.addEventListener("change", () => {
 // ====================================================
 // CADASTRO / EDIÇÃO
 // ====================================================
-form.addEventListener("submit", (e) => {
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  btnSubmitBoleto.disabled = true;
+  const textoOriginalBotao = btnSubmitBoleto.textContent;
+  btnSubmitBoleto.textContent = "Salvando...";
 
-  const nome = document.getElementById("campoNomeBoleto").value.trim();
-  const codigo = document.getElementById("campoCodigoBoleto").value.trim();
-  const valorStr = document.getElementById("campoValorBoleto").value;
-  const valor = valorStr === "" ? null : parseFloat(valorStr);
-  const dataCadastro = document.getElementById("campoDataCadastroBoleto").value;
-  const dataVencimento = document.getElementById("campoDataVencimentoBoleto").value;
-  const observacao = document.getElementById("campoObservacaoBoleto").value.trim();
-  const arquivoBoleto = document.getElementById("campoArquivoBoleto").files[0];
-  const arquivoComprovante = campoArquivoComprovante.files[0];
+  try {
+    const nomeComum = document.getElementById("campoNomeBoleto").value.trim();
+    const dataCadastro = document.getElementById("campoDataCadastroBoleto").value;
+    const observacao = document.getElementById("campoObservacaoBoleto").value.trim();
+    const banco = campoBancoBoleto.value;
 
-  let registro;
-  if (indiceEditando !== null) {
-    registro = { ...boletos[indiceEditando] };
-  } else {
-    registro = {
-      nome: "", codigo: "", valor: null, dataCadastro: "", dataVencimento: "",
-      observacao: "", tipo: "despesa", arquivoBoleto: null, arquivoComprovante: null, pago: false,
-    };
+    if (idEditando !== null) {
+      // Edição: sempre um boleto só (não dá pra editar uma leva
+      // inteira de uma vez — cada um se edita individual).
+      const arquivoBoleto = document.getElementById("campoArquivoBoleto").files[0];
+      const arquivoComprovante = campoArquivoComprovante.files[0];
+
+      const registro = { ...boletos.find((b) => b.id === idEditando) };
+      registro.nome = nomeComum;
+      registro.codigo = document.getElementById("campoCodigoBoleto").value.trim();
+      const valorStr = document.getElementById("campoValorBoleto").value;
+      registro.valor = valorStr === "" ? null : parseFloat(valorStr);
+      registro.dataCadastro = dataCadastro;
+      registro.dataVencimento = document.getElementById("campoDataVencimentoBoleto").value;
+      registro.observacao = observacao;
+      registro.tipo = tipoSelecionadoModal;
+      registro.banco = banco;
+
+      if (arquivoBoleto) {
+        const chave = `Boletos/${registro.id}_boleto_${arquivoBoleto.name}`;
+        await uploadArquivoBoleto(chave, arquivoBoleto);
+        registro.arquivoBoletoChave = chave;
+      }
+      if (arquivoComprovante) {
+        const chave = `Boletos/${registro.id}_comprovante_${arquivoComprovante.name}`;
+        await uploadArquivoBoleto(chave, arquivoComprovante);
+        registro.arquivoComprovanteChave = chave;
+        registro.pago = true; // anexar comprovante marca como pago automaticamente
+      }
+
+      const resp = await salvarUmBoleto(registro);
+      if (!resp.ok) { mostrarToast(resp.erro || "Erro ao salvar.", "erro"); return; }
+
+      idEditando = null;
+      btnSubmitBoleto.textContent = "Adicionar";
+      tituloModalBoleto.textContent = "Novo Boleto";
+    } else if (modoQuantidade === "um") {
+      const arquivoBoleto = document.getElementById("campoArquivoBoleto").files[0];
+      const arquivoComprovante = campoArquivoComprovante.files[0];
+
+      const registro = {
+        tipo: tipoSelecionadoModal, banco, nome: nomeComum,
+        codigo: document.getElementById("campoCodigoBoleto").value.trim(),
+        valor: document.getElementById("campoValorBoleto").value === "" ? null : parseFloat(document.getElementById("campoValorBoleto").value),
+        dataCadastro, dataVencimento: document.getElementById("campoDataVencimentoBoleto").value,
+        observacao, pago: false,
+      };
+
+      const respCriar = await salvarUmBoleto(registro);
+      if (!respCriar.ok) { mostrarToast(respCriar.erro || "Erro ao salvar.", "erro"); return; }
+
+      // Upload depois de já ter um id (a chave do arquivo usa o id)
+      if (arquivoBoleto || arquivoComprovante) {
+        const atualizado = { ...respCriar.boleto };
+        if (arquivoBoleto) {
+          const chave = `Boletos/${atualizado.id}_boleto_${arquivoBoleto.name}`;
+          await uploadArquivoBoleto(chave, arquivoBoleto);
+          atualizado.arquivoBoletoChave = chave;
+        }
+        if (arquivoComprovante) {
+          const chave = `Boletos/${atualizado.id}_comprovante_${arquivoComprovante.name}`;
+          await uploadArquivoBoleto(chave, arquivoComprovante);
+          atualizado.arquivoComprovanteChave = chave;
+          atualizado.pago = true;
+        }
+        await salvarUmBoleto(atualizado);
+      }
+    } else {
+      // Vários boletos numa leva — cada linha vira seu próprio
+      // registro, todos com o mesmo loteId pra ficar visualmente
+      // agrupados na lista.
+      const linhas = [...corpoTabelaLote.querySelectorAll("tr")];
+      if (linhas.length === 0) { mostrarToast("Adicione pelo menos um boleto na leva.", "erro"); return; }
+
+      const loteId = "lote_" + Date.now();
+      for (const tr of linhas) {
+        const codigo = tr.querySelector(".lote-codigo").value.trim();
+        const valorStr = tr.querySelector(".lote-valor").value;
+        const dataVencimento = tr.querySelector(".lote-vencimento").value;
+        await salvarUmBoleto({
+          tipo: tipoSelecionadoModal, banco, nome: nomeComum, codigo,
+          valor: valorStr === "" ? null : parseFloat(valorStr),
+          dataCadastro, dataVencimento, observacao, pago: false, loteId,
+        });
+      }
+    }
+
+    form.reset();
+    avisoMarcaPago.style.display = "none";
+    fecharModalEl();
+    renderTudo();
+    mostrarToast("Salvo com sucesso.");
+  } catch (erro) {
+    mostrarToast("Erro: " + erro.message, "erro");
+  } finally {
+    btnSubmitBoleto.disabled = false;
+    btnSubmitBoleto.textContent = textoOriginalBotao === "Salvando..." ? "Adicionar" : textoOriginalBotao;
   }
-
-  registro.nome = nome;
-  registro.codigo = codigo;
-  registro.valor = valor;
-  registro.dataCadastro = dataCadastro;
-  registro.dataVencimento = dataVencimento;
-  registro.observacao = observacao;
-  registro.tipo = tipoSelecionadoModal;
-
-  if (arquivoBoleto) registro.arquivoBoleto = URL.createObjectURL(arquivoBoleto);
-  if (arquivoComprovante) {
-    registro.arquivoComprovante = URL.createObjectURL(arquivoComprovante);
-    registro.pago = true; // anexar comprovante marca como pago automaticamente
-  }
-
-  if (indiceEditando !== null) {
-    boletos[indiceEditando] = registro;
-    indiceEditando = null;
-    btnSubmitBoleto.textContent = "Adicionar";
-    tituloModalBoleto.textContent = "Novo Boleto";
-  } else {
-    boletos.push(registro);
-  }
-
-  salvarBoletos();
-  form.reset();
-  avisoMarcaPago.style.display = "none";
-  fecharModalEl();
-  renderTudo();
 });
 
-function editar(index) {
-  const b = boletos[index];
+function editar(id) {
+  const b = boletos.find((x) => x.id === id);
+  if (!b) return;
+  definirModoQuantidade("um"); // editar sempre mexe em um boleto por vez
   document.getElementById("campoNomeBoleto").value = b.nome || "";
   document.getElementById("campoCodigoBoleto").value = b.codigo || "";
   document.getElementById("campoValorBoleto").value = b.valor !== null && b.valor !== undefined ? b.valor : "";
   document.getElementById("campoDataCadastroBoleto").value = b.dataCadastro || "";
   document.getElementById("campoDataVencimentoBoleto").value = b.dataVencimento || "";
   document.getElementById("campoObservacaoBoleto").value = b.observacao || "";
+  campoBancoBoleto.value = b.banco || "";
   definirTipoModal(b.tipo || "despesa");
   avisoMarcaPago.style.display = "none";
 
-  indiceEditando = index;
+  idEditando = id;
   tituloModalBoleto.textContent = "Editar Boleto";
   btnSubmitBoleto.textContent = "Salvar Alterações";
   abrirModal();
 }
 
-async function excluir(index) {
+async function excluir(id) {
   const confirmado = await confirmarAcao("Excluir boleto?", "Essa ação não pode ser desfeita.");
   if (!confirmado) return;
-  boletos.splice(index, 1);
-  salvarBoletos();
-  if (indiceEditando === index) {
-    indiceEditando = null;
+  const resp = await apiExcluirBoleto(id);
+  if (!resp.ok) { mostrarToast(resp.erro || "Erro ao excluir.", "erro"); return; }
+  boletos = boletos.filter((b) => b.id !== id);
+  if (idEditando === id) {
+    idEditando = null;
     form.reset();
     btnSubmitBoleto.textContent = "Adicionar";
     tituloModalBoleto.textContent = "Novo Boleto";
@@ -223,36 +368,40 @@ async function excluir(index) {
   renderTudo();
 }
 
-async function marcarComoPago(index) {
+async function marcarComoPago(id) {
   const confirmado = await confirmarAcao("Marcar como pago?", "O boleto vai para a aba 'Pago'.");
   if (!confirmado) return;
-  boletos[index].pago = true;
-  salvarBoletos();
+  const boleto = boletos.find((b) => b.id === id);
+  boleto.pago = true;
+  await salvarUmBoleto(boleto);
   renderTudo();
 }
 
-async function reabrirBoleto(index) {
+async function reabrirBoleto(id) {
   const confirmado = await confirmarAcao("Reabrir este boleto?", "Ele deixará de estar marcado como pago.");
   if (!confirmado) return;
-  boletos[index].pago = false;
-  salvarBoletos();
+  const boleto = boletos.find((b) => b.id === id);
+  boleto.pago = false;
+  await salvarUmBoleto(boleto);
   renderTudo();
 }
 
 // ====================================================
 // VISUALIZAÇÃO DE ARQUIVO (boleto / comprovante)
 // ====================================================
-function abrirArquivo(url, titulo) {
-  if (!url) return;
-  popupArquivoBody.innerHTML = "";
-  if (url.toLowerCase().includes(".pdf") || true) {
-    // URLs de blob não têm extensão visível; tentamos exibir como
-    // PDF/iframe, que também funciona para a maioria dos tipos.
+async function abrirArquivo(chave, titulo) {
+  if (!chave) return;
+  popupArquivoBody.innerHTML = "Carregando...";
+  popupArquivo.style.display = "flex";
+  try {
+    const url = await urlDeVisualizacao(chave);
+    popupArquivoBody.innerHTML = "";
     const iframe = document.createElement("iframe");
     iframe.src = url;
     popupArquivoBody.appendChild(iframe);
+  } catch (e) {
+    popupArquivoBody.innerHTML = "Não foi possível carregar o arquivo.";
   }
-  popupArquivo.style.display = "flex";
 }
 function fecharPopupArquivoFn() {
   popupArquivo.style.display = "none";
@@ -295,35 +444,35 @@ function popularFiltrosMesAno() {
 function aplicarFiltros() {
   const termo = buscaInput.value.trim().toLowerCase();
   const tipoSel = filtroTipo.value;
+  const bancoSel = filtroBanco.value;
   const mesSel = filtroMes.value;
   const anoSel = filtroAno.value;
 
-  return boletos
-    .map((b, indexOriginal) => ({ ...b, indexOriginal }))
-    .filter((b) => {
-      const status = calcularStatus(b);
-      const abaOK = abaAtiva === "todos" || status === abaAtiva;
+  return boletos.filter((b) => {
+    const status = calcularStatus(b);
+    const abaOK = abaAtiva === "todos" || status === abaAtiva;
 
-      const buscaOK =
-        termo === "" ||
-        (b.nome || "").toLowerCase().includes(termo) ||
-        (b.codigo || "").toLowerCase().includes(termo) ||
-        (b.observacao || "").toLowerCase().includes(termo);
+    const buscaOK =
+      termo === "" ||
+      (b.nome || "").toLowerCase().includes(termo) ||
+      (b.codigo || "").toLowerCase().includes(termo) ||
+      (b.observacao || "").toLowerCase().includes(termo);
 
-      const tipoOK = tipoSel === "todos" || b.tipo === tipoSel;
+    const tipoOK = tipoSel === "todos" || b.tipo === tipoSel;
+    const bancoOK = bancoSel === "todos" || b.banco === bancoSel;
 
-      let mesAnoOK = true;
-      if ((mesSel !== "todos" || anoSel !== "todos") && b.dataVencimento) {
-        const data = new Date(b.dataVencimento + "T00:00:00");
-        const mesOK = mesSel === "todos" || data.getMonth() === parseInt(mesSel, 10);
-        const anoOK = anoSel === "todos" || data.getFullYear() === parseInt(anoSel, 10);
-        mesAnoOK = mesOK && anoOK;
-      } else if ((mesSel !== "todos" || anoSel !== "todos") && !b.dataVencimento) {
-        mesAnoOK = false;
-      }
+    let mesAnoOK = true;
+    if ((mesSel !== "todos" || anoSel !== "todos") && b.dataVencimento) {
+      const data = new Date(b.dataVencimento + "T00:00:00");
+      const mesOK = mesSel === "todos" || data.getMonth() === parseInt(mesSel, 10);
+      const anoOK = anoSel === "todos" || data.getFullYear() === parseInt(anoSel, 10);
+      mesAnoOK = mesOK && anoOK;
+    } else if ((mesSel !== "todos" || anoSel !== "todos") && !b.dataVencimento) {
+      mesAnoOK = false;
+    }
 
-      return abaOK && buscaOK && tipoOK && mesAnoOK;
-    });
+    return abaOK && buscaOK && tipoOK && bancoOK && mesAnoOK;
+  });
 }
 
 // ====================================================
@@ -354,7 +503,6 @@ function renderLista() {
   atualizarContadorAtrasados();
 
   const itens = aplicarFiltros().sort((a, b) => {
-    // Ordena por data de vencimento (sem data vai pro final)
     if (!a.dataVencimento) return 1;
     if (!b.dataVencimento) return -1;
     return new Date(a.dataVencimento) - new Date(b.dataVencimento);
@@ -374,23 +522,25 @@ function renderLista() {
     card.className = `boleto-card cor-${status}`;
 
     const botoesArquivo = [];
-    if (b.arquivoBoleto) {
-      botoesArquivo.push(`<button class="btn-pdf" data-ver-boleto="${b.indexOriginal}">Ver Boleto</button>`);
+    if (b.arquivoBoletoChave) {
+      botoesArquivo.push(`<button class="btn-pdf" data-ver-boleto="${b.id}">Ver Boleto</button>`);
     }
-    if (b.arquivoComprovante) {
-      botoesArquivo.push(`<button class="btn-pdf" data-ver-comprovante="${b.indexOriginal}">Ver Comprovante</button>`);
+    if (b.arquivoComprovanteChave) {
+      botoesArquivo.push(`<button class="btn-pdf" data-ver-comprovante="${b.id}">Ver Comprovante</button>`);
     }
 
     const botaoStatus =
       status === "pago"
-        ? `<button class="btn-reabrir" data-reabrir="${b.indexOriginal}">Reabrir</button>`
-        : `<button class="btn-pagar" data-pagar="${b.indexOriginal}">Marcar como Pago</button>`;
+        ? `<button class="btn-reabrir" data-reabrir="${b.id}">Reabrir</button>`
+        : `<button class="btn-pagar" data-pagar="${b.id}">Marcar como Pago</button>`;
 
     card.innerHTML = `
       <div class="boleto-topo">
         <div>
           <span class="boleto-nome">${escaparHtml(b.nome) || "(sem nome)"}</span>
           <span class="boleto-tag-tipo ${b.tipo}">${b.tipo === "despesa" ? "Despesa" : "Entrada"}</span>
+          ${b.banco ? `<span class="boleto-tag-banco">${escaparHtml(b.banco)}</span>` : ""}
+          ${b.loteId ? `<span class="boleto-tag-lote" title="Faz parte de uma leva de vários boletos">Leva</span>` : ""}
         </div>
         <span class="selo-status ${status}">${status === "pendente" ? "Pendente" : status === "atrasado" ? "Atrasado" : "Pago"}</span>
       </div>
@@ -404,31 +554,31 @@ function renderLista() {
       ${b.observacao ? `<div class="boleto-observacao">${escaparHtml(b.observacao)}</div>` : ""}
       <div class="boleto-acoes">
         ${botoesArquivo.join("")}
-        <button class="btn-editar" data-edit="${b.indexOriginal}">Editar</button>
+        <button class="btn-editar" data-edit="${b.id}">Editar</button>
         ${botaoStatus}
-        <button class="btn-excluir-item" data-delete="${b.indexOriginal}">Excluir</button>
+        <button class="btn-excluir-item" data-delete="${b.id}">Excluir</button>
       </div>
     `;
     listaBoletosEl.appendChild(card);
   });
 
   listaBoletosEl.querySelectorAll("[data-ver-boleto]").forEach((btn) => {
-    btn.addEventListener("click", () => abrirArquivo(boletos[btn.dataset.verBoleto].arquivoBoleto, "Boleto"));
+    btn.addEventListener("click", () => abrirArquivo(boletos.find((b) => b.id === btn.dataset.verBoleto).arquivoBoletoChave, "Boleto"));
   });
   listaBoletosEl.querySelectorAll("[data-ver-comprovante]").forEach((btn) => {
-    btn.addEventListener("click", () => abrirArquivo(boletos[btn.dataset.verComprovante].arquivoComprovante, "Comprovante"));
+    btn.addEventListener("click", () => abrirArquivo(boletos.find((b) => b.id === btn.dataset.verComprovante).arquivoComprovanteChave, "Comprovante"));
   });
   listaBoletosEl.querySelectorAll("[data-edit]").forEach((btn) => {
-    btn.addEventListener("click", () => editar(parseInt(btn.dataset.edit, 10)));
+    btn.addEventListener("click", () => editar(btn.dataset.edit));
   });
   listaBoletosEl.querySelectorAll("[data-delete]").forEach((btn) => {
-    btn.addEventListener("click", () => excluir(parseInt(btn.dataset.delete, 10)));
+    btn.addEventListener("click", () => excluir(btn.dataset.delete));
   });
   listaBoletosEl.querySelectorAll("[data-pagar]").forEach((btn) => {
-    btn.addEventListener("click", () => marcarComoPago(parseInt(btn.dataset.pagar, 10)));
+    btn.addEventListener("click", () => marcarComoPago(btn.dataset.pagar));
   });
   listaBoletosEl.querySelectorAll("[data-reabrir]").forEach((btn) => {
-    btn.addEventListener("click", () => reabrirBoleto(parseInt(btn.dataset.reabrir, 10)));
+    btn.addEventListener("click", () => reabrirBoleto(btn.dataset.reabrir));
   });
 }
 
@@ -453,11 +603,13 @@ abasStatus.forEach((aba) => {
 // ====================================================
 buscaInput.addEventListener("input", renderLista);
 filtroTipo.addEventListener("change", renderLista);
+filtroBanco.addEventListener("change", renderLista);
 filtroMes.addEventListener("change", renderLista);
 filtroAno.addEventListener("change", renderLista);
 btnLimparFiltros.addEventListener("click", () => {
   buscaInput.value = "";
   filtroTipo.value = "todos";
+  filtroBanco.value = "todos";
   filtroMes.value = "todos";
   filtroAno.value = "todos";
   renderLista();
@@ -466,5 +618,10 @@ btnLimparFiltros.addEventListener("click", () => {
 // ====================================================
 // INICIALIZAÇÃO
 // ====================================================
-definirTipoModal("despesa");
-renderTudo();
+(async function inicializarBoletos() {
+  definirTipoModal("despesa");
+  definirModoQuantidade("um");
+  adicionarLinhaLote();
+  await carregarBoletos();
+  renderTudo();
+})();

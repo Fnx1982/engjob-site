@@ -1461,7 +1461,7 @@ async function gerarApresentacaoFinanceiroPptx(mesesArr, ano, selecionados) {
     s.background = {color:F.bg};
     s.addShape(pres.ShapeType.ellipse,{x:-0.5,y:3.5,w:4,h:4,fill:{color:F.laranja},line:{color:F.laranja,width:0},transparency:88});
     s.addText("Obrigado",{x:1,y:1.6,w:8,h:1.2,fontSize:54,bold:true,color:F.texto,fontFace:"Montserrat",align:"center",margin:0});
-    s.addText("EnJob Engenharia e Manutenção",{x:1,y:2.9,w:8,h:0.5,fontSize:16,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
+    s.addText("Eng Job Engenharia e Manutenção",{x:1,y:2.9,w:8,h:0.5,fontSize:16,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
     s.addText(new Date().toLocaleDateString("pt-BR"),{x:1,y:3.5,w:8,h:0.4,fontSize:12,color:F.texto2,fontFace:"Montserrat",align:"center",margin:0});
   }
 

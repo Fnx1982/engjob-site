@@ -70,6 +70,13 @@
                 <option value="" disabled selected>Selecione o setor</option>
             </select>
         </label>
+        <label>
+            Nível de acesso a Obras
+            <select id="nivelAcessoObra">
+                <option value="total">Total — vê e edita tudo, inclusive financeiro</option>
+                <option value="obra-sem-financeiro">Restrito — só demanda, nome do cliente e endereço</option>
+            </select>
+        </label>
 
         <button type="submit">Adicionar Usuário</button>
     </form>
@@ -602,6 +609,7 @@
         const endereco = document.getElementById("endereco").value.trim();
         const senha = campoSenha.value;
         const setor = campoSetor.value;
+        const nivelAcessoObra = document.getElementById("nivelAcessoObra").value;
 
         // Campos obrigatórios: Nome, Registro, Sexo, Senha e Setor.
         // Email, Telefone, CPF e Endereço agora são opcionais.
@@ -634,7 +642,7 @@
             // O servidor (Worker) valida duplicidade de registro e faz o
             // hash da senha — nada de senha em texto puro chega a ficar
             // salvo em lugar nenhum, nem local nem remoto.
-            const resposta = await apiSalvarUsuario({ nome, registro, email, telefone, sexo, cpf, rg, endereco, senha, setor });
+            const resposta = await apiSalvarUsuario({ nome, registro, email, telefone, sexo, cpf, rg, endereco, senha, setor, nivelAcessoObra });
 
             if (!resposta.ok) {
                 if ((resposta.erro || "").toLowerCase().includes("registro")) {

@@ -1,657 +1,458 @@
 // ============================================================
-// propostas-core.js
-// Núcleo de dados compartilhado pelas 3 páginas do módulo de
-// Propostas: orcamento.html, propostas.html e andamento.html.
-// Todas leem/escrevem na MESMA lista (CHAVE_PROPOSTAS) — o que
-// muda entre as páginas é só o filtro de status exibido.
+// pontos-core.js
+// Núcleo de dados compartilhado por pontos-confirmacao.js (tela
+// do funcionário) e pontos-consulta.js (tela do gestor).
 //
-// Ciclo de vida de uma proposta (campo "status"):
-//   orcamento -> analise -> aprovada -> andamento -> finalizada
-//                        -> negada
+// MOTIVO DESTE ARQUIVO EXISTIR DO ZERO: o pontos-core.js anterior
+// tinha o conteúdo ERRADO (uma cópia velha de propostas-core.js,
+// sem nenhuma função de ponto) — por isso a Consulta não
+// funcionava. Este arquivo foi reconstruído lendo com cuidado
+// tudo que pontos-consulta.js e pontos-confirmacao.js esperam
+// receber daqui.
+//
+// Batidas, lançamentos, jornadas e feriados agora vivem no
+// SERVIDOR (Cloudflare KV), não mais em localStorage — sem isso,
+// o gestor nunca conseguiria ver o ponto batido no celular de um
+// funcionário. Uso o mesmo padrão de CACHE em memória já usado
+// pra Obras: funções de LEITURA continuam síncronas (lêem do
+// cache já carregado), funções de ESCRITA são assíncronas e
+// conversam com o servidor.
+//
+// Toda página que usa isso precisa chamar, com await, no início:
+//   await carregarDadosPontosCache();
+// antes de usar qualquer função de leitura.
+//
+// ⚠️ ATENÇÃO — BANCO DE HORAS: a fórmula de saldo abaixo
+// (calcularBancoHorasCompleto) é uma interpretação razoável do
+// que o código anterior sugeria, mas cálculo de banco de horas
+// tem nuances trabalhistas reais. CONFIRA os números com casos de
+// teste reais antes de usar isso pra decisão de pagamento.
 // ============================================================
 
-const CHAVE_PROPOSTAS = "propostas_lista";
-const CHAVE_OBRAS = "obras_lista";
+const NOMES_MESES_PONTO = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
-// ====================================================
-// LEITURA / ESCRITA
-// ====================================================
-function lerPropostas() {
-  return JSON.parse(localStorage.getItem(CHAVE_PROPOSTAS)) || [];
-}
-function salvarPropostas(lista) {
-  localStorage.setItem(CHAVE_PROPOSTAS, JSON.stringify(lista));
-}
-
-function buscarProposta(id) {
-  return lerPropostas().find((p) => p.id === id);
-}
-
-function criarPropostaVazia() {
-  return {
-    id: `prop_${Date.now()}`,
-    numeroOrcamento: "",          // número manual do orçamento
-    cliente: "",
-    telefone: "",
-    local: "",
-    servico: "",
-    observacao: "",
-    itensMaoDeObra: [],
-    itensMateriais: [],
-    formaPagamento: "",
-    planejamentoDias: "",
-    validadeDias: "",
-    status: "orcamento",
-    statusObra: "andamento",      // "andamento" | "finalizada" — visível nas obras
-    statusExecucao: "",
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
-  };
-}
-
-function salvarProposta(proposta) {
-  const lista = lerPropostas();
-  proposta.atualizadoEm = new Date().toISOString();
-  const idx = lista.findIndex((p) => p.id === proposta.id);
-  if (idx !== -1) {
-    lista[idx] = proposta;
-  } else {
-    lista.push(proposta);
-  }
-  salvarPropostas(lista);
-}
-
-function excluirProposta(id) {
-  const lista = lerPropostas().filter((p) => p.id !== id);
-  salvarPropostas(lista);
-}
-
-// ====================================================
-// TRANSIÇÕES DE STATUS
-// ====================================================
-function mudarStatusProposta(id, novoStatus) {
-  const lista = lerPropostas();
-  const proposta = lista.find((p) => p.id === id);
-  if (!proposta) return;
-
-  proposta.status = novoStatus;
-
-  // Ao aprovar, a proposta sai de "Propostas" e entra automaticamente
-  // em "Em Andamento" (com sub-status inicial "andamento"), e cria
-  // uma Obra vinculada na tela de Obras.
-  if (novoStatus === "aprovada") {
-    proposta.status = "andamento";
-    proposta.statusExecucao = "andamento";
-    criarObraAPartirDaProposta(proposta);
-  }
-
-  proposta.atualizadoEm = new Date().toISOString();
-  salvarPropostas(lista);
-}
-
-function mudarStatusExecucao(id, novoStatusExecucao) {
-  const lista = lerPropostas();
-  const proposta = lista.find((p) => p.id === id);
-  if (!proposta) return;
-
-  proposta.statusExecucao = novoStatusExecucao;
-  if (novoStatusExecucao === "finalizada") {
-    proposta.status = "finalizada";
-  } else {
-    proposta.status = "andamento";
-  }
-  proposta.atualizadoEm = new Date().toISOString();
-  salvarPropostas(lista);
-}
-
-// Desfaz a aprovação: volta a proposta de "Em Andamento" para
-// "Propostas" (status "analise"), permitindo reavaliar.
-function reverterParaAnalise(id) {
-  const lista = lerPropostas();
-  const proposta = lista.find((p) => p.id === id);
-  if (!proposta) return;
-
-  proposta.status = "analise";
-  proposta.statusExecucao = "";
-  proposta.atualizadoEm = new Date().toISOString();
-  salvarPropostas(lista);
-}
-
-// ====================================================
-// SINCRONIZAÇÃO COM GESTÃO DE MATERIAIS
-// ====================================================
-function lerMateriaisEstoque() {
-  return JSON.parse(localStorage.getItem("materiais_lista")) || [];
-}
-function salvarMateriaisEstoque(lista) {
-  localStorage.setItem("materiais_lista", JSON.stringify(lista));
-}
-
-// Encontra o índice do material no estoque a partir do índice
-// guardado no item da proposta (materialIndex). Retorna -1 se
-// não encontrar (ex: material foi excluído do estoque depois).
-function encontrarMaterialNoEstoque(materialIndex) {
-  const estoque = lerMateriaisEstoque();
-  if (materialIndex === null || materialIndex === undefined) return null;
-  if (materialIndex < 0 || materialIndex >= estoque.length) return null;
-  return estoque[materialIndex];
-}
-
-// Pergunta ao usuário se a edição de um item de material vinculado
-// deve ser propagada de volta para o estoque (Gestão de Materiais).
-// Retorna uma Promise<boolean>.
-async function perguntarSincronizarMaterial(nomeMaterial) {
-  return confirmarAcao(
-    `Atualizar "${nomeMaterial}" na Gestão de Materiais também?`,
-    "Isso vai sobrescrever o nome, valor e quantidade desse material no estoque com os novos valores."
-  );
-}
-
-// Atualiza o material no estoque (Gestão de Materiais) com os
-// novos dados, mantendo o setor original do material.
-function atualizarMaterialNoEstoque(materialIndex, novosDados) {
-  const estoque = lerMateriaisEstoque();
-  if (materialIndex === null || materialIndex < 0 || materialIndex >= estoque.length) return;
-  estoque[materialIndex] = {
-    ...estoque[materialIndex],
-    nome: novosDados.nome,
-    valor: novosDados.valorUnit,
-    quantidade: novosDados.qtd,
-  };
-  salvarMateriaisEstoque(estoque);
-}
-
-// ====================================================
-// CÁLCULOS
-// ====================================================
-function totalMaoDeObra(proposta) {
-  return proposta.itensMaoDeObra.reduce((s, item) => s + item.qtd * item.valorUnit, 0);
-}
-function totalMateriais(proposta) {
-  return proposta.itensMateriais.reduce((s, item) => s + item.qtd * item.valorUnit, 0);
-}
-function totalGeral(proposta) {
-  return totalMaoDeObra(proposta) + totalMateriais(proposta);
-}
-
-function formatarMoeda(valor) {
-  return (valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// ====================================================
-// RÓTULOS E CORES DE STATUS
-// ====================================================
-function rotuloStatus(proposta) {
-  const mapa = {
-    orcamento: "Orçamento",
-    analise: "Em Análise",
-    negada: "Negada",
-    andamento: proposta.statusExecucao === "finalizada" ? "Finalizada" : "Em Andamento",
-    finalizada: "Finalizada",
-  };
-  return mapa[proposta.status] || proposta.status;
-}
-
-function corStatus(proposta) {
-  if (proposta.status === "analise") return "amarelo";
-  if (proposta.status === "negada") return "vermelho";
-  if (proposta.status === "andamento" || proposta.status === "finalizada") return "verde";
-  return "cinza"; // orcamento (ainda não enviado para análise)
-}
-
-// ====================================================
-// OBRAS (criadas automaticamente ao aprovar uma proposta)
-// ====================================================
-function lerObras() {
-  return JSON.parse(localStorage.getItem(CHAVE_OBRAS)) || [];
-}
-function salvarObras(lista) {
-  localStorage.setItem(CHAVE_OBRAS, JSON.stringify(lista));
-}
-function buscarObra(id) {
-  return lerObras().find((o) => o.id === id);
-}
-
-// Cria a obra a partir da proposta aprovada. Se a proposta já tiver
-// uma obra vinculada (ex: aprovação repetida), não duplica.
-function criarObraAPartirDaProposta(proposta) {
-  const obras = lerObras();
-  const jaExiste = obras.some((o) => o.propostaId === proposta.id);
-  if (jaExiste) return;
-
-  const obra = {
-    id: `obra_${Date.now()}`,
-    propostaId: proposta.id,
-    cliente: proposta.cliente,
-    local: proposta.local,
-    servico: proposta.servico,
-    valorMaoDeObraOrcamento: totalMaoDeObra(proposta),
-    valorMateriaisOrcamento: totalMateriais(proposta),
-    observacao: "",
-    funcionarios: [], // { id, nome, valorCobrado, valorPago, pagamentoMes }
-    materiais: [], // { id, nome, codigo, valor, data }
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
-  };
-
-  obras.push(obra);
-  salvarObras(obras);
-}
-
-function salvarObra(obra) {
-  const obras = lerObras();
-  obra.atualizadoEm = new Date().toISOString();
-  const idx = obras.findIndex((o) => o.id === obra.id);
-  if (idx !== -1) obras[idx] = obra;
-  else obras.push(obra);
-  salvarObras(obras);
-}
-
-function excluirObra(id) {
-  // Move para lixeira em vez de excluir definitivo
-  const obras = lerObras();
-  const idx = obras.findIndex((o) => o.id === id);
-  if (idx !== -1) {
-    obras[idx].lixeira = true;
-    obras[idx].lixeiraEm = new Date().toISOString();
-    salvarObras(obras);
-  }
-}
-
-function excluirObraDefinitivo(id) {
-  salvarObras(lerObras().filter((o) => o.id !== id));
-}
-
-function restaurarObra(id) {
-  const obras = lerObras();
-  const idx = obras.findIndex((o) => o.id === id);
-  if (idx !== -1) {
-    delete obras[idx].lixeira;
-    delete obras[idx].lixeiraEm;
-    salvarObras(obras);
-  }
-}
-
-function lerObrasAtivas()   { return lerObras().filter((o) => !o.lixeira && (!o.statusObra || o.statusObra !== "finalizada")); }
-function lerObrasFinaliz()  { return lerObras().filter((o) => !o.lixeira && o.statusObra === "finalizada"); }
-function lerObrasLixeira()  { return lerObras().filter((o) => !!o.lixeira); }
-
-function alternarStatusObra(id) {
-  const obras = lerObras();
-  const idx = obras.findIndex((o) => o.id === id);
-  if (idx === -1) return;
-  obras[idx].statusObra = obras[idx].statusObra === "finalizada" ? "andamento" : "finalizada";
-  obras[idx].atualizadoEm = new Date().toISOString();
-  salvarObras(obras);
-  // Sincroniza com proposta vinculada se existir
-  const propostaId = obras[idx].propostaId;
-  if (propostaId) {
-    const p = buscarProposta(propostaId);
-    if (p) {
-      p.statusObra = obras[idx].statusObra;
-      p.status = obras[idx].statusObra;
-      salvarProposta(p);
-    }
-  }
-}
-
-// ----- Funcionários da obra (vinculados ao Financeiro) -----
-function lerFuncionariosFinanceiro() {
-  return JSON.parse(localStorage.getItem("financeiro")) || [];
-}
-function salvarFuncionariosFinanceiro(lista) {
-  localStorage.setItem("financeiro", JSON.stringify(lista));
-}
-
-const NOMES_MESES_OBRA = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-
-// Adiciona um funcionário na obra E cria automaticamente o
-// pagamento correspondente no Financeiro de Funcionários, usando
-// o nome da obra (cliente + serviço) como referência de "obra".
-function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-
-  const nomeObraNoFinanceiro = nomeObraParaFinanceiro(obra);
-  const mesAtual = NOMES_MESES_OBRA[new Date().getMonth()];
-  const vinculoId = `vinculo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-  // Garante que essa "obra" existe na lista fixa de obras do
-  // Financeiro de Funcionários (obrasFinanceiro), senão ela não
-  // aparece nos seletores por lá.
-  const obrasFinanceiro = JSON.parse(localStorage.getItem("obrasFinanceiro")) || [];
-  if (!obrasFinanceiro.includes(nomeObraNoFinanceiro)) {
-    obrasFinanceiro.push(nomeObraNoFinanceiro);
-    localStorage.setItem("obrasFinanceiro", JSON.stringify(obrasFinanceiro));
-  }
-
-  // Cria o pagamento no Financeiro de Funcionários, marcado com um
-  // ID de vínculo estável (em vez de depender da posição no array,
-  // que mudaria se outro pagamento fosse excluído antes dele).
-  const financeiro = lerFuncionariosFinanceiro();
-  financeiro.push({
-    nome: dadosFuncionario.nome,
-    obra: nomeObraNoFinanceiro,
-    mes: mesAtual,
-    valor: dadosFuncionario.valorPago,
-    comprovante: null,
-    vinculoObraId: vinculoId,
-  });
-  salvarFuncionariosFinanceiro(financeiro);
-
-  obra.funcionarios.push({
-    id: `func_${Date.now()}`,
-    nome: dadosFuncionario.nome,
-    valorCobrado: dadosFuncionario.valorCobrado,
-    valorPago: dadosFuncionario.valorPago,
-    vinculoObraId: vinculoId,
-  });
-
-  salvarObra(obra);
-}
-
-function nomeObraParaFinanceiro(obra) {
-  const partes = [obra.cliente, obra.servico].filter(Boolean);
-  return partes.join(" — ") || "Obra sem nome";
-}
-
-// Atualiza um funcionário já existente na obra, e sincroniza o
-// valor pago de volta no Financeiro de Funcionários.
-function editarFuncionarioNaObra(obraId, funcionarioId, dadosNovos) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-
-  const func = obra.funcionarios.find((f) => f.id === funcionarioId);
-  if (!func) return;
-
-  func.nome = dadosNovos.nome;
-  func.valorCobrado = dadosNovos.valorCobrado;
-  func.valorPago = dadosNovos.valorPago;
-
-  // Sincroniza com o Financeiro de Funcionários, procurando pelo
-  // ID de vínculo estável (funciona mesmo que outros pagamentos
-  // tenham sido excluídos/reordenados desde a criação).
-  if (func.vinculoObraId) {
-    const financeiro = lerFuncionariosFinanceiro();
-    const pagamento = financeiro.find((p) => p.vinculoObraId === func.vinculoObraId);
-    if (pagamento) {
-      pagamento.nome = dadosNovos.nome;
-      pagamento.valor = dadosNovos.valorPago;
-      salvarFuncionariosFinanceiro(financeiro);
-    }
-  }
-
-  salvarObra(obra);
-}
-
-function excluirFuncionarioDaObra(obraId, funcionarioId) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-
-  const func = obra.funcionarios.find((f) => f.id === funcionarioId);
-  obra.funcionarios = obra.funcionarios.filter((f) => f.id !== funcionarioId);
-  salvarObra(obra);
-
-  // Remove também o pagamento vinculado no Financeiro, se existir
-  // (procurado pelo ID de vínculo, não por posição no array).
-  if (func && func.vinculoObraId) {
-    const financeiro = lerFuncionariosFinanceiro();
-    const novoFinanceiro = financeiro.filter((p) => p.vinculoObraId !== func.vinculoObraId);
-    salvarFuncionariosFinanceiro(novoFinanceiro);
-  }
-}
-
-// ----- Materiais da obra (anotação livre, sem vínculo de estoque) -----
-function adicionarMaterialNaObra(obraId, dadosMaterial) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-  obra.materiais.push({
-    id: `mat_${Date.now()}`,
-    nome: dadosMaterial.nome || "",
-    codigo: dadosMaterial.codigo || "",
-    valor: dadosMaterial.valor || 0,
-    data: dadosMaterial.data || "",
-  });
-  salvarObra(obra);
-}
-
-function editarMaterialNaObra(obraId, materialId, dadosNovos) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-  const mat = obra.materiais.find((m) => m.id === materialId);
-  if (!mat) return;
-  mat.nome = dadosNovos.nome || "";
-  mat.codigo = dadosNovos.codigo || "";
-  mat.valor = dadosNovos.valor || 0;
-  mat.data = dadosNovos.data || "";
-  salvarObra(obra);
-}
-
-function excluirMaterialDaObra(obraId, materialId) {
-  const obra = buscarObra(obraId);
-  if (!obra) return;
-  obra.materiais = obra.materiais.filter((m) => m.id !== materialId);
-  salvarObra(obra);
-}
-
-// ----- Cálculos de lucro -----
-function totalPagoFuncionariosObra(obra) {
-  return obra.funcionarios.reduce((s, f) => s + (f.valorPago || 0), 0);
-}
-function totalCobradoFuncionariosObra(obra) {
-  return obra.funcionarios.reduce((s, f) => s + (f.valorCobrado || 0), 0);
-}
-function totalGastoMateriaisObra(obra) {
-  return obra.materiais.reduce((s, m) => s + (m.valor || 0), 0);
-}
-function lucroMaoDeObraObra(obra) {
-  return (obra.valorMaoDeObraOrcamento || 0) - totalPagoFuncionariosObra(obra);
-}
-function lucroMaterialObra(obra) {
-  return (obra.valorMateriaisOrcamento || 0) - totalGastoMateriaisObra(obra);
-}
-function lucroTotalObra(obra) {
-  return lucroMaoDeObraObra(obra) + lucroMaterialObra(obra);
-}
-
-// ====================================================
-// GERAÇÃO DE PDF
-// ============================================================
-// Layout inspirado na planilha de proposta da empresa: cabeçalho
-// com dados fixos da empresa, dados do cliente/obra, tabela de
-// Mão de Obra, tabela de Materiais, totais, condições de
-// pagamento e situação atual.
-// ============================================================
-const EMPRESA_INFO = {
-  nome: "ENGJOB ENGENHARIA E MANUTENÇÃO",
-  cnpj: "14.426.042/0001-01",
-  endereco: "Rua La Salle, 300 - Casa 7",
-  bairro: "Pinheirinho",
-  cidade: "Curitiba",
-  cep: "81880-400",
-  estado: "Paraná",
-  fone: "(41) 3 3330-8478",
-  email: "contato@engjob.com.br",
+// Tipos de lançamento e o efeito de cada um no banco de horas:
+//   credito → soma horas ao saldo (ex: hora extra aprovada)
+//   debito  → subtrai horas do saldo (ex: falta não justificada)
+//   abono   → NÃO mexe direto no saldo — em vez disso, reduz a
+//             quantidade de horas ESPERADAS naquele período (o dia
+//             fica "perdoado", não conta contra a pessoa nem a favor)
+const TIPOS_LANCAMENTO = {
+  hora_extra:     { rotulo: "Hora Extra",       efeito: "credito" },
+  // "falta" não soma débito adicional aqui: um dia sem bater ponto
+  // já vira déficit sozinho (não some do "horasEsperadas"). Esse
+  // lançamento serve pra DOCUMENTAR a falta com um motivo, não pra
+  // descontar de novo em cima do que já foi descontado.
+  falta:          { rotulo: "Falta",            efeito: "neutro"  },
+  abono:          { rotulo: "Abono",            efeito: "abono"   },
+  atestado:       { rotulo: "Atestado",         efeito: "abono"   },
+  declaracao:     { rotulo: "Declaração",       efeito: "abono"   },
+  feriado_manual: { rotulo: "Feriado (manual)", efeito: "abono"   },
+  ferias:         { rotulo: "Férias",           efeito: "abono"   },
+  ajuste:         { rotulo: "Ajuste Manual",    efeito: "ajuste"  }, // sinal vem do próprio valor de "horas"
 };
 
-function gerarPdfProposta(proposta) {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const margem = 40;
-  const larguraUtil = doc.internal.pageSize.getWidth() - margem * 2;
-  let y = 40;
+// ====================================================
+// CACHE EM MEMÓRIA
+// ====================================================
+let _batidasCache = [];
+let _lancamentosCache = [];
+let _jornadasCache = {};           // { registro: {horaEntrada, horaSaida, inicioAlmoco, fimAlmoco} }
+let _feriadosNacionaisCache = [];  // ["MM-DD", ...]
+let _feriadosFuncionarioCache = {}; // { registro: ["YYYY-MM-DD", ...] }
 
-  // ----- Cabeçalho da empresa -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text(EMPRESA_INFO.nome, margem, y);
-  y += 16;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`CNPJ: ${EMPRESA_INFO.cnpj}`, margem, y);
-  doc.text(`Endereço: ${EMPRESA_INFO.endereco}`, margem + 220, y);
-  y += 13;
-  doc.text(`Bairro: ${EMPRESA_INFO.bairro}`, margem, y);
-  doc.text(`CEP: ${EMPRESA_INFO.cep}`, margem + 220, y);
-  y += 13;
-  doc.text(`Cidade: ${EMPRESA_INFO.cidade}`, margem, y);
-  doc.text(`Estado: ${EMPRESA_INFO.estado}`, margem + 220, y);
-  y += 13;
-  doc.text(`Fone: ${EMPRESA_INFO.fone}`, margem, y);
-  doc.text(`E-mail: ${EMPRESA_INFO.email}`, margem + 220, y);
-  y += 20;
-
-  doc.setDrawColor(235, 153, 28);
-  doc.setLineWidth(1.2);
-  doc.line(margem, y, margem + larguraUtil, y);
-  y += 18;
-
-  // ----- Dados do cliente / obra -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("Cliente:", margem, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.cliente || "-", margem + 50, y);
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Fone:", margem + 300, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.telefone || "-", margem + 335, y);
-  y += 16;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Local:", margem, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.local || "-", margem + 50, y);
-  y += 16;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Serviço:", margem, y);
-  doc.setFont("helvetica", "normal");
-  const servicoLinhas = doc.splitTextToSize(proposta.servico || "-", larguraUtil - 55);
-  doc.text(servicoLinhas, margem + 55, y);
-  y += 16 * servicoLinhas.length + 8;
-
-  // ----- Tabela: Mão de Obra -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("MÃO DE OBRA", margem, y);
-  y += 8;
-
-  const linhasMao = (proposta.itensMaoDeObra || []).map((item, i) => [
-    String(i + 1),
-    String(item.qtd),
-    item.unid || "",
-    item.descricao,
-    `R$ ${formatarMoeda(item.valorUnit)}`,
-    `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`,
+async function carregarDadosPontosCache() {
+  const [rBatidas, rLanc, rJorn, rFerNac, rFerFunc] = await Promise.all([
+    apiPontosListarBatidas(),
+    apiPontosListarLancamentos(),
+    apiPontosListarJornadas(),
+    apiDataGet("pontosFeriadosNacionais"),
+    apiPontosListarFeriadosFuncionario(),
   ]);
-
-  doc.autoTable({
-    startY: y,
-    head: [["Item", "Qtd", "Unid", "Descrição", "Valor Unit.", "Total"]],
-    body: linhasMao.length ? linhasMao : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [235, 153, 28] },
-    foot: [["", "", "", "", "Total Mão de Obra", `R$ ${formatarMoeda(totalMaoDeObra(proposta))}`]],
-    footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
-  });
-  y = doc.lastAutoTable.finalY + 24;
-
-  // ----- Tabela: Materiais -----
-  y = garantirEspacoPdf(doc, y, 80);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("MATERIAIS", margem, y);
-  y += 8;
-
-  const linhasMat = (proposta.itensMateriais || []).map((item, i) => [
-    String(i + 1),
-    String(item.qtd),
-    item.unid || "",
-    item.nome,
-    `R$ ${formatarMoeda(item.valorUnit)}`,
-    `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`,
-  ]);
-
-  doc.autoTable({
-    startY: y,
-    head: [["Item", "Qtd", "Unid", "Descrição", "Valor Unit.", "Total"]],
-    body: linhasMat.length ? linhasMat : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [235, 153, 28] },
-    foot: [["", "", "", "", "Total Materiais", `R$ ${formatarMoeda(totalMateriais(proposta))}`]],
-    footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
-  });
-  y = doc.lastAutoTable.finalY + 16;
-
-  // ----- Total geral -----
-  y = garantirEspacoPdf(doc, y, 60);
-  doc.setFillColor(235, 153, 28);
-  doc.rect(margem, y, larguraUtil, 26, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("MATERIAL E MÃO DE OBRA — TOTAL:", margem + 10, y + 17);
-  doc.text(`R$ ${formatarMoeda(totalGeral(proposta))}`, margem + larguraUtil - 10, y + 17, { align: "right" });
-  doc.setTextColor(0, 0, 0);
-  y += 44;
-
-  // ----- Condições / avisos -----
-  y = garantirEspacoPdf(doc, y, 90);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(200, 0, 0);
-  doc.text("Não nos responsabilizamos por compra particular de material.", margem, y);
-  doc.setTextColor(0, 0, 0);
-  y += 18;
-
-  doc.setFont("helvetica", "normal");
-  doc.text(`Forma de pagamento: ${proposta.formaPagamento || "-"}`, margem, y);
-  y += 16;
-  doc.text(`Planejamento: ${proposta.planejamentoDias ? proposta.planejamentoDias + " dias úteis" : "-"}`, margem, y);
-  y += 16;
-  doc.text(`Proposta válida por: ${proposta.validadeDias ? proposta.validadeDias + " dias" : "-"}`, margem, y);
-  y += 16;
-  doc.text(`Início da proposta após aprovação.`, margem, y);
-  y += 20;
-
-  if (proposta.observacao) {
-    const larguraUtilObs = doc.internal.pageSize.getWidth() - margem * 2;
-    doc.setFont("helvetica", "bold");
-    doc.text("Observação:", margem, y);
-    y += 14;
-    doc.setFont("helvetica", "normal");
-    const linhasObs = doc.splitTextToSize(proposta.observacao, larguraUtilObs);
-    doc.text(linhasObs, margem, y);
-    y += 14 * linhasObs.length + 6;
-  }
-
-  doc.setFont("helvetica", "bold");
-  doc.text(`Situação: ${rotuloStatus(proposta)}`, margem, y);
-  y += 24;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(120);
-  doc.text(
-    `${EMPRESA_INFO.cidade}, ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`,
-    margem,
-    y
-  );
-
-  const nomeArquivo = `proposta_${(proposta.cliente || "sem_nome").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.pdf`;
-  doc.save(nomeArquivo);
+  if (rBatidas.ok) _batidasCache = rBatidas.batidas;
+  if (rLanc.ok) _lancamentosCache = rLanc.lancamentos;
+  if (rJorn.ok) _jornadasCache = rJorn.jornadas;
+  if (rFerNac.ok && rFerNac.valor) _feriadosNacionaisCache = rFerNac.valor;
+  if (rFerFunc.ok) _feriadosFuncionarioCache = rFerFunc.feriados;
 }
 
-function garantirEspacoPdf(doc, y, minimo) {
-  const alturaPagina = doc.internal.pageSize.getHeight();
-  if (y + minimo > alturaPagina - 40) {
-    doc.addPage();
-    return 50;
+// ====================================================
+// LEITURA (síncrona, lê do cache)
+// ====================================================
+function lerRegistros() {
+  return _batidasCache;
+}
+function getBatidasFuncionarioData(registro, dataISO) {
+  return _batidasCache
+    .filter((b) => b.registroFuncionario === registro && dataLocalBR(b.dataHora) === dataISO)
+    .sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
+}
+
+function lerLancamentos() {
+  return _lancamentosCache;
+}
+function getLancamentosFuncionario(registro) {
+  return _lancamentosCache
+    .filter((l) => l.registroFuncionario === registro)
+    .sort((a, b) => new Date(b.data) - new Date(a.data));
+}
+
+function lerFeriadosNacionais() {
+  return _feriadosNacionaisCache;
+}
+function lerFeriadosFuncionario(registro) {
+  return _feriadosFuncionarioCache[registro] || [];
+}
+
+function calcularHorasDiaJornada(j) {
+  if (!j || !j.horaEntrada || !j.horaSaida) return 0;
+  const [he, me] = j.horaEntrada.split(":").map(Number);
+  const [hs, ms] = j.horaSaida.split(":").map(Number);
+  let totalMin = (hs * 60 + ms) - (he * 60 + me);
+  if (j.inicioAlmoco && j.fimAlmoco) {
+    const [ha1, ma1] = j.inicioAlmoco.split(":").map(Number);
+    const [ha2, ma2] = j.fimAlmoco.split(":").map(Number);
+    const almoco = (ha2 * 60 + ma2) - (ha1 * 60 + ma1);
+    if (almoco > 0) totalMin -= almoco;
   }
-  return y;
+  return totalMin > 0 ? totalMin / 60 : 0;
+}
+
+// Retorna o objeto completo da jornada (entrada, saída, almoço, horasDia).
+// Se o funcionário ainda não tem jornada configurada, devolve um
+// objeto vazio com horasDia: 0 — não inventa um padrão de 8h sozinho,
+// porque isso mascararia "ninguém configurou a jornada dessa pessoa
+// ainda" como se fosse um dado real.
+function getJornadaCompleta(registro) {
+  const j = _jornadasCache[registro];
+  if (!j) return { horaEntrada: "", horaSaida: "", inicioAlmoco: "", fimAlmoco: "", horasDia: 0 };
+  return { ...j, horasDia: calcularHorasDiaJornada(j) };
+}
+// Versão curta, só o número de horas/dia (usada nos cálculos de saldo).
+function getJornadaFuncionario(registro) {
+  return getJornadaCompleta(registro).horasDia;
+}
+
+// ====================================================
+// DIAS ÚTEIS / FERIADOS
+// ====================================================
+
+// O servidor (Cloudflare Worker) roda em UTC, não no horário do
+// Brasil — então "agora" calculado ingenuamente (toISOString().slice(0,10))
+// fica ERRADO sempre que já passou das 21h no Brasil (porque em UTC
+// já virou o dia seguinte). Esta função converte um instante
+// qualquer pra "que dia é isso, no relógio do Brasil". Brasil não
+// tem mais horário de verão desde 2019, então UTC-3 fixo é seguro.
+function dataLocalBR(dataHoraOuISO) {
+  const instante = dataHoraOuISO ? new Date(dataHoraOuISO) : new Date();
+  const deslocado = new Date(instante.getTime() - 3 * 60 * 60 * 1000);
+  return deslocado.toISOString().slice(0, 10);
+}
+
+function ehFimDeSemana(dataISO) {
+  const dia = new Date(dataISO + "T12:00:00").getDay();
+  return dia === 0 || dia === 6;
+}
+function ehFeriado(dataISO, registro) {
+  const mmdd = dataISO.slice(5, 10);
+  if (_feriadosNacionaisCache.includes(mmdd)) return true;
+  if (registro && lerFeriadosFuncionario(registro).includes(dataISO)) return true;
+  return false;
+}
+function ehDiaUtil(dataISO, registro) {
+  return !ehFimDeSemana(dataISO) && !ehFeriado(dataISO, registro);
+}
+
+// Devolve a LISTA de datas do mês (não a contagem) — cada uma no
+// formato "YYYY-MM-DD", pronta pra ser usada em ehDiaUtil/ehFeriado.
+function diasDoMes(mes, ano) {
+  const totalDias = new Date(ano, mes + 1, 0).getDate();
+  const dias = [];
+  for (let d = 1; d <= totalDias; d++) {
+    dias.push(`${ano}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+  return dias;
+}
+function dataHoje() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ====================================================
+// FORMATAÇÃO
+// ====================================================
+function formatarHoras(horas) {
+  const h = Math.floor(Math.abs(horas));
+  const m = Math.round((Math.abs(horas) - h) * 60);
+  return `${horas < 0 ? "-" : ""}${h}h${String(m).padStart(2, "0")}min`;
+}
+function formatarDataBR(dataISO) {
+  return new Date(dataISO + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+}
+function formatarHoraBR(dataHoraISO) {
+  return new Date(dataHoraISO).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ====================================================
+// CÁLCULO DE HORAS TRABALHADAS
+// ====================================================
+// Soma os intervalos entrada→saída de um dia. Uma "entrada" sem
+// "saída" correspondente (esqueceu de bater, ou é hoje e ainda
+// está trabalhando) não conta horas — fica pendente até a saída
+// ser batida.
+function calcularHorasTrabalhadasNoDia(batidasDia) {
+  let totalMs = 0;
+  let entradaAberta = null;
+  batidasDia.forEach((b) => {
+    if (b.tipo === "entrada") {
+      entradaAberta = new Date(b.dataHora);
+    } else if (b.tipo === "saida" && entradaAberta) {
+      totalMs += new Date(b.dataHora) - entradaAberta;
+      entradaAberta = null;
+    }
+  });
+  return totalMs / 3600000;
+}
+
+// ====================================================
+// BANCO DE HORAS (saldo acumulado) — ver aviso no topo do arquivo
+// ====================================================
+function calcularBancoHorasCompleto(registro) {
+  const jornada = getJornadaFuncionario(registro);
+  const registros = _batidasCache.filter((b) => b.registroFuncionario === registro);
+  const diasComBatida = [...new Set(registros.map((r) => dataLocalBR(r.dataHora)))];
+
+  let horasTrabalhadas = 0;
+  diasComBatida.forEach((dia) => {
+    const batidasDia = registros.filter((r) => dataLocalBR(r.dataHora) === dia).sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
+    horasTrabalhadas += calcularHorasTrabalhadasNoDia(batidasDia);
+  });
+
+  // Horas esperadas: jornada × dias úteis, contados desde o
+  // primeiro registro de ponto dessa pessoa até hoje (não temos uma
+  // "data de admissão" separada — o primeiro ponto batido é o
+  // proxy mais confiável disponível).
+  let horasEsperadas = 0;
+  if (diasComBatida.length > 0) {
+    const primeiraData = [...diasComBatida].sort()[0];
+    const cur = new Date(primeiraData + "T12:00:00");
+    const hoje = new Date();
+    hoje.setHours(12, 0, 0, 0);
+    while (cur <= hoje) {
+      const iso = cur.toISOString().slice(0, 10);
+      if (ehDiaUtil(iso, registro)) horasEsperadas += jornada;
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
+  // Lançamentos ajustam o saldo de formas diferentes conforme o tipo:
+  let creditoLancamentos = 0;  // soma direto no saldo (hora extra, ajuste positivo)
+  let debitoLancamentos = 0;   // subtrai direto do saldo (falta, ajuste negativo)
+  let horasAbonadas = 0;       // reduz o quanto era ESPERADO (abono/atestado/férias/feriado manual)
+
+  getLancamentosFuncionario(registro).forEach((l) => {
+    const info = TIPOS_LANCAMENTO[l.tipo] || { efeito: "abono" };
+    const horasAbs = Math.abs(l.horas || 0);
+    if (info.efeito === "credito") creditoLancamentos += horasAbs;
+    else if (info.efeito === "debito") debitoLancamentos += horasAbs;
+    else if (info.efeito === "abono") horasAbonadas += horasAbs;
+    else if (info.efeito === "ajuste") { // "ajuste" usa o sinal real de l.horas
+      if ((l.horas || 0) >= 0) creditoLancamentos += horasAbs;
+      else debitoLancamentos += horasAbs;
+    }
+  });
+
+  const horasEsperadasAjustadas = Math.max(0, horasEsperadas - horasAbonadas);
+  const saldo = (horasTrabalhadas + creditoLancamentos) - debitoLancamentos - horasEsperadasAjustadas;
+
+  return { jornada, horasTrabalhadas, horasEsperadas: horasEsperadasAjustadas, saldo, diasTrabalhados: diasComBatida.length };
+}
+
+// ====================================================
+// APURAÇÃO POR PERÍODO — pra gerar os relatórios "Extrato" (uma
+// linha resumo) e "Apuração" (dia a dia), no mesmo formato usado
+// pelo Control iD. Diferente de calcularBancoHorasCompleto (que
+// olha TODO o histórico da pessoa), esta função é ESCOPADA a um
+// período específico (ex: um mês) — é o que dá o número de
+// "Banco Total" (saldo só daquele período, bem menor que o
+// "Banco Saldo" acumulado desde sempre).
+//
+// ⚠️ LIMITAÇÃO CONHECIDA: "Falta e Atraso" aqui reflete só os
+// lançamentos manuais do tipo "falta" — não existe (ainda) detecção
+// automática de atraso comparando o horário real da batida de
+// entrada com o horário esperado da jornada. "Dia Falta" é a soma
+// em horas dos dias úteis sem batida e sem lançamento de abono
+// cobrindo. Confira esses dois números contra o Control iD antes de
+// usar num período com faltas/atrasos de verdade.
+// ====================================================
+function calcularApuracaoPeriodo(registro, dataInicioISO, dataFimISO) {
+  const jornada = getJornadaFuncionario(registro);
+  const dias = [];
+  let cur = new Date(dataInicioISO + "T12:00:00");
+  const fim = new Date(dataFimISO + "T12:00:00");
+  while (cur <= fim) {
+    dias.push(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const lancamentosPeriodo = getLancamentosFuncionario(registro).filter((l) => l.data >= dataInicioISO && l.data <= dataFimISO);
+  const lancamentosPorDia = {};
+  lancamentosPeriodo.forEach((l) => { (lancamentosPorDia[l.data] = lancamentosPorDia[l.data] || []).push(l); });
+
+  let totalNormais = 0, extraDiurna = 0, diaFaltaHoras = 0, faltaEAtrasoHoras = 0, abonoHoras = 0;
+  const linhasDia = [];
+
+  dias.forEach((dia) => {
+    const diaUtil = ehDiaUtil(dia, registro);
+    const batidasDia = getBatidasFuncionarioData(registro, dia);
+    const horasDia = calcularHorasTrabalhadasNoDia(batidasDia);
+    const lancamentosDoDia = lancamentosPorDia[dia] || [];
+    const temAbono = lancamentosDoDia.some((l) => (TIPOS_LANCAMENTO[l.tipo] || {}).efeito === "abono");
+
+    lancamentosDoDia.forEach((l) => {
+      const info = TIPOS_LANCAMENTO[l.tipo] || {};
+      const h = Math.abs(l.horas || 0);
+      if (info.efeito === "abono") abonoHoras += h;
+      if (l.tipo === "falta") faltaEAtrasoHoras += h; // ver limitação no comentário acima
+    });
+
+    if (!diaUtil) {
+      // Fim de semana/feriado: qualquer hora trabalhada é extra.
+      extraDiurna += horasDia;
+    } else if (batidasDia.length > 0) {
+      totalNormais += Math.min(horasDia, jornada);
+      extraDiurna += Math.max(0, horasDia - jornada);
+    } else if (!temAbono) {
+      // Dia útil, sem batida, sem abono cobrindo → falta.
+      diaFaltaHoras += jornada;
+    }
+
+    linhasDia.push({ data: dia, diaUtil, batidas: batidasDia, horasDia, lancamentos: lancamentosDoDia });
+  });
+
+  const bancoTotalPeriodo = totalNormais + extraDiurna + abonoHoras
+    - (dias.filter((d) => ehDiaUtil(d, registro)).length * jornada);
+
+  return {
+    totalNormais, totalNoturno: 0, diaFalta: diaFaltaHoras, faltaEAtraso: faltaEAtrasoHoras,
+    abono: abonoHoras, extraDiurna, extraNoturna: 0,
+    bancoTotal: bancoTotalPeriodo,
+    linhasDia,
+  };
+}
+
+// ====================================================
+// PERMISSÕES — reaproveita o sistema de permissão por setor que
+// já existe (permissoes-setor.js), itens "pontos-alterar-outros" e
+// "pontos-editar-feriados" já configuráveis no cadastro de setor.
+// ====================================================
+// CEO e qualquer pessoa do setor "Diretoria" sempre têm essas duas
+// permissões, sem precisar estar marcado na lista do setor — mesmo
+// critério usado no servidor (função "ehAdministrador" no Worker).
+function _ehAdministradorLocal() {
+  const tipo = (localStorage.getItem("userType") || "").toLowerCase();
+  const setor = localStorage.getItem("userSetor") || "";
+  return tipo === "ceo" || setor === "Diretoria";
+}
+function podeAlterarPontosDeOutros() {
+  if (_ehAdministradorLocal()) return true;
+  const meuSetor = localStorage.getItem("userSetor") || "";
+  return getPermissoesDoSetor(meuSetor).includes("pontos-alterar-outros");
+}
+function podeEditarFeriados() {
+  if (_ehAdministradorLocal()) return true;
+  const meuSetor = localStorage.getItem("userSetor") || "";
+  return getPermissoesDoSetor(meuSetor).includes("pontos-editar-feriados");
+}
+
+// ====================================================
+// ESCRITA (assíncrona — conversa com o servidor e atualiza o cache)
+// ====================================================
+
+// Bater ponto de verdade: captura geolocalização do navegador (se a
+// pessoa permitir — sem isso, ainda bate o ponto, só sem endereço),
+// manda pro servidor, que decide sozinho se é entrada ou saída.
+async function baterPonto(registro, nome) {
+  let lat = null, lng = null;
+  try {
+    const posicao = await new Promise((resolve, reject) => {
+      if (!navigator.geolocation) { reject(new Error("Geolocalização não suportada")); return; }
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: 0 });
+    });
+    lat = posicao.coords.latitude;
+    lng = posicao.coords.longitude;
+  } catch (e) {
+    // Sem permissão de localização, ou demorou demais — o ponto
+    // ainda é batido, só sem endereço.
+  }
+
+  const resposta = await apiPontosRegistrar(lat, lng);
+  if (resposta.ok) _batidasCache.push(resposta.batida);
+  return resposta; // { ok, batida } ou { ok:false, erro } — mesmo padrão do resto do site
+}
+
+async function criarBatidaManual(dados) {
+  const resposta = await apiPontosSalvarBatida(dados);
+  if (resposta.ok) _batidasCache.push(resposta.batida);
+  return resposta;
+}
+
+async function editarBatida(id, dadosNovos) {
+  const existente = _batidasCache.find((b) => b.id === id) || {};
+  const resposta = await apiPontosSalvarBatida({ ...existente, ...dadosNovos, id });
+  if (resposta.ok) {
+    const idx = _batidasCache.findIndex((b) => b.id === id);
+    if (idx !== -1) _batidasCache[idx] = resposta.batida;
+    else _batidasCache.push(resposta.batida);
+  }
+  return resposta;
+}
+
+async function excluirBatida(id) {
+  const resposta = await apiPontosExcluirBatida(id);
+  if (resposta.ok) _batidasCache = _batidasCache.filter((b) => b.id !== id);
+  return resposta;
+}
+
+async function adicionarLancamento(dados) {
+  const resposta = await apiPontosSalvarLancamento(dados);
+  if (resposta.ok) _lancamentosCache.push(resposta.lancamento);
+  return resposta;
+}
+
+async function editarLancamento(id, dadosNovos) {
+  const existente = _lancamentosCache.find((l) => l.id === id) || {};
+  const resposta = await apiPontosSalvarLancamento({ ...existente, ...dadosNovos, id });
+  if (resposta.ok) {
+    const idx = _lancamentosCache.findIndex((l) => l.id === id);
+    if (idx !== -1) _lancamentosCache[idx] = resposta.lancamento;
+    else _lancamentosCache.push(resposta.lancamento);
+  }
+  return resposta;
+}
+
+async function excluirLancamento(id) {
+  const resposta = await apiPontosExcluirLancamento(id);
+  if (resposta.ok) _lancamentosCache = _lancamentosCache.filter((l) => l.id !== id);
+  return resposta;
+}
+
+// Retorna as horas/dia calculadas, já salvas — o chamador (tela de
+// Jornadas) usa isso pra atualizar o número mostrado na hora.
+async function setJornadaFuncionario(registro, entrada, saida, almocoInicio, almocoFim) {
+  const resposta = await apiPontosSalvarJornada({ registro, horaEntrada: entrada, horaSaida: saida, inicioAlmoco: almocoInicio, fimAlmoco: almocoFim });
+  if (resposta.ok) {
+    _jornadasCache[registro] = resposta.jornada;
+    resposta.horasDia = calcularHorasDiaJornada(resposta.jornada);
+  }
+  return resposta; // { ok, jornada, horasDia } ou { ok:false, erro }
+}
+
+async function salvarFeriadosNacionais(lista) {
+  _feriadosNacionaisCache = lista;
+  return apiDataSet("pontosFeriadosNacionais", lista);
+}
+async function salvarFeriadosFuncionario(registro, lista) {
+  _feriadosFuncionarioCache[registro] = lista;
+  return apiPontosSalvarFeriadosFuncionario(registro, lista);
 }

@@ -129,7 +129,7 @@ function renderLista() {
       const fin = btn.dataset.status === "finalizada";
       const ok = await confirmarAcao(fin?"Reabrir esta obra?":"Finalizar esta obra?", fin?"Volta para Em Andamento.":"Vai para a aba Finalizadas.");
       if (!ok) return;
-      alternarStatusObra(btn.dataset.id);
+      await alternarStatusObra(btn.dataset.id);
       renderLista(); atualizarContadoresAbas();
     }));
 
@@ -138,7 +138,7 @@ function renderLista() {
       e.stopPropagation();
       const ok = await confirmarAcao("Mover para lixeira?", "A obra pode ser restaurada depois.");
       if (!ok) return;
-      excluirObra(btn.dataset.id);
+      await excluirObra(btn.dataset.id);
       renderLista(); atualizarContadoresAbas();
       mostrarToast("Obra movida para a lixeira.");
     }));
@@ -146,7 +146,7 @@ function renderLista() {
   gruposMesesEl.querySelectorAll(".btn-restaurar-obra").forEach((btn) =>
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      restaurarObra(btn.dataset.id);
+      await restaurarObra(btn.dataset.id);
       renderLista(); atualizarContadoresAbas();
       mostrarToast("Obra restaurada.");
     }));
@@ -156,7 +156,7 @@ function renderLista() {
       e.stopPropagation();
       const ok = await confirmarAcao("Excluir definitivamente?", "Essa ação não pode ser desfeita.");
       if (!ok) return;
-      excluirObraDefinitivo(btn.dataset.id);
+      await excluirObraDefinitivo(btn.dataset.id);
       renderLista(); atualizarContadoresAbas();
       mostrarToast("Obra excluída permanentemente.");
     }));
@@ -191,5 +191,8 @@ if (paramsUrlObras.get("erro") === "obra_nao_encontrada") {
   window.history.replaceState({}, "", "obras.html");
 }
 
-atualizarContadoresAbas();
-renderLista();
+(async function inicializarObras() {
+  await carregarObrasCache();
+  atualizarContadoresAbas();
+  renderLista();
+})();

@@ -251,6 +251,179 @@ async function garantirServicoNoCatalogo(nome, valor) {
   return criado.ok ? criado.id : null;
 }
 
+// ── Rascunhos de Proposta (auto-save de Orçamento) ───────────────
+async function apiListarRascunhosProposta() {
+  return chamarWorker("propostas-rascunho-list");
+}
+async function apiSalvarRascunhoProposta(id, dados) {
+  return chamarWorker("propostas-rascunho-salvar", { method: "POST", body: { id, dados } });
+}
+async function apiExcluirRascunhoProposta(id) {
+  return chamarWorker("propostas-rascunho-excluir", { method: "POST", body: { id } });
+}
+
+// Versão usada especificamente ao sair da tela/aba (troca de aba ou
+// fechamento). Usa fetch com keepalive: true, que instrui o navegador
+// a terminar de enviar a requisição mesmo depois da página começar a
+// ser descarregada — sem isso, um fetch normal pode ser cancelado no
+// meio do caminho justamente no momento em que mais precisamos que
+// ele complete.
+function apiSalvarRascunhoPropostaImediato(id, dados) {
+  const token = pegarToken();
+  try {
+    fetch(`${AUTH_WORKER_URL}?action=propostas-rascunho-salvar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ id, dados }),
+      keepalive: true,
+    });
+  } catch (e) {
+    // Sem tratamento de resposta aqui de propósito — a página já está
+    // saindo, não há mais UI pra mostrar erro.
+  }
+}
+
+// ── Rascunhos genéricos (auto-save de Visita Técnica, Materiais,
+// Serviços e Contatos) — mesmo mecanismo do rascunho de proposta
+// acima, parametrizado por "tipo": "visita" | "material" | "servico" | "contato".
+async function apiListarRascunhos(tipo) {
+  return chamarWorker(`rascunho-list&tipo=${encodeURIComponent(tipo)}`);
+}
+async function apiSalvarRascunho(tipo, id, dados) {
+  return chamarWorker("rascunho-salvar", { method: "POST", body: { tipo, id, dados } });
+}
+async function apiExcluirRascunho(tipo, id) {
+  return chamarWorker("rascunho-excluir", { method: "POST", body: { tipo, id } });
+}
+function apiSalvarRascunhoImediato(tipo, id, dados) {
+  const token = pegarToken();
+  try {
+    fetch(`${AUTH_WORKER_URL}?action=rascunho-salvar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ tipo, id, dados }),
+      keepalive: true,
+    });
+  } catch (e) {
+    // Idem: página saindo, sem UI pra mostrar erro.
+  }
+}
+
+// ── Obras ──────────────────────────────────────────────────────
+async function apiListarObras() {
+  return chamarWorker("obras-list");
+}
+async function apiSalvarObra(obra) {
+  return chamarWorker("obras-salvar", { method: "POST", body: obra });
+}
+async function apiExcluirObra(id) {
+  return chamarWorker("obras-excluir", { method: "POST", body: { id } });
+}
+async function apiRestaurarObra(id) {
+  return chamarWorker("obras-restaurar", { method: "POST", body: { id } });
+}
+async function apiExcluirObraDefinitivo(id) {
+  return chamarWorker("obras-excluir-definitivo", { method: "POST", body: { id } });
+}
+
+// ── Pontos (batidas, lançamentos, jornada, feriados) ─────────────
+async function apiPontosRegistrar(lat, lng) {
+  return chamarWorker("pontos-registrar", { method: "POST", body: { lat, lng } });
+}
+async function apiPontosListarBatidas() {
+  return chamarWorker("pontos-batidas-list");
+}
+async function apiPontosSalvarBatida(dados) {
+  return chamarWorker("pontos-batida-salvar", { method: "POST", body: dados });
+}
+async function apiPontosExcluirBatida(id) {
+  return chamarWorker("pontos-batida-excluir", { method: "POST", body: { id } });
+}
+async function apiPontosListarLancamentos() {
+  return chamarWorker("pontos-lancamentos-list");
+}
+async function apiPontosSalvarLancamento(dados) {
+  return chamarWorker("pontos-lancamento-salvar", { method: "POST", body: dados });
+}
+async function apiPontosExcluirLancamento(id) {
+  return chamarWorker("pontos-lancamento-excluir", { method: "POST", body: { id } });
+}
+async function apiPontosListarJornadas() {
+  return chamarWorker("pontos-jornadas-list");
+}
+async function apiPontosSalvarJornada(dados) {
+  return chamarWorker("pontos-jornada-salvar", { method: "POST", body: dados });
+}
+async function apiPontosListarFeriadosFuncionario() {
+  return chamarWorker("pontos-feriados-func-list");
+}
+async function apiPontosSalvarFeriadosFuncionario(registro, lista) {
+  return chamarWorker("pontos-feriados-func-salvar", { method: "POST", body: { registro, lista } });
+}
+
+// ── Apresentações (PDF de proposta comercial gerado pelo site) ──
+async function apiListarApresentacoes() {
+  return chamarWorker("apresentacoes-list");
+}
+async function apiSalvarApresentacao(dados) {
+  return chamarWorker("apresentacoes-salvar", { method: "POST", body: dados });
+}
+async function apiExcluirApresentacao(id) {
+  return chamarWorker("apresentacoes-excluir", { method: "POST", body: { id } });
+}
+
+// ── CRM de Clientes (quadro Kanban) ──
+async function apiListarColunasCrm() {
+  return chamarWorker("crm-colunas-list");
+}
+async function apiSalvarColunasCrm(colunas) {
+  return chamarWorker("crm-colunas-salvar", { method: "POST", body: { colunas } });
+}
+async function apiListarClientesCrm() {
+  return chamarWorker("crm-clientes-list");
+}
+async function apiSalvarClienteCrm(dados) {
+  return chamarWorker("crm-clientes-salvar", { method: "POST", body: dados });
+}
+async function apiExcluirClienteCrm(id) {
+  return chamarWorker("crm-clientes-excluir", { method: "POST", body: { id } });
+}
+
+// ── Boletos ──
+async function apiListarBoletos() {
+  return chamarWorker("boletos-list");
+}
+async function apiSalvarBoleto(dados) {
+  return chamarWorker("boletos-salvar", { method: "POST", body: dados });
+}
+async function apiExcluirBoleto(id) {
+  return chamarWorker("boletos-excluir", { method: "POST", body: { id } });
+}
+
+// ── Token de download curto (10min) — usado em URLs de <img>/<a>
+// pra nunca expor o token de sessão de 12h ali. Gerado uma vez por
+// carregamento de página e reaproveitado (evita gerar um novo pra
+// cada foto/arquivo mostrado); se expirar no meio de uma sessão
+// longa, basta recarregar a página.
+let _tokenDownloadCache = null; // { token, exp }
+
+async function garantirTokenDownload() {
+  if (_tokenDownloadCache && _tokenDownloadCache.exp > Date.now() + 5000) {
+    return _tokenDownloadCache.token;
+  }
+  const resposta = await chamarWorker("gerar-token-download", { method: "POST" });
+  if (!resposta.ok) return "";
+  _tokenDownloadCache = { token: resposta.token, exp: Date.now() + 10 * 60 * 1000 };
+  return _tokenDownloadCache.token;
+}
+
+// Versão síncrona, pra usar dentro de urlFoto()/urlArquivo() — exige
+// que garantirTokenDownload() já tenha sido chamado (com await) antes,
+// no carregamento da página.
+function pegarTokenDownloadCache() {
+  return _tokenDownloadCache ? _tokenDownloadCache.token : "";
+}
+
 // ============================================================
 // SEGURANÇA: escapar texto antes de inserir em innerHTML
 // ============================================================

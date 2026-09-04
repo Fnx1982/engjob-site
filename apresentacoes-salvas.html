@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <script src="auth-worker.js"></script>
+  <script src="auth-guard.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apresentações Salvas — Eng Job</title>
+  <link rel="stylesheet" href="propostas.css" />
+  <link rel="stylesheet" href="gerar-apresentacao.css" />
+  <script src="confirm-modal.js?v=3"></script>
+</head>
+<body>
+  <main class="container">
+    <div class="topo-pagina">
+      <div>
+        <h1>Apresentações Salvas</h1>
+        <p>Todas as propostas comerciais em PDF já geradas pelo site.</p>
+      </div>
+      <a href="gerar-apresentacao.html" class="btn-laranja" style="text-decoration:none; display:inline-flex; align-items:center;">+ Nova Apresentação</a>
+    </div>
+
+    <div id="listaApresentacoesSalvas"></div>
+    <div class="sem-resultados" id="semApresentacoes" style="display:none;">
+      Nenhuma apresentação foi gerada ainda.
+    </div>
+  </main>
+
+  <script src="apresentacoes-salvas.js"></script>
+</body>
+</html>

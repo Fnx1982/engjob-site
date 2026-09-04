@@ -7,7 +7,7 @@
   <script src="validacao-fiscal.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Clientes e Fornecedores — EnJob</title>
+  <title>Clientes e Fornecedores — Eng Job</title>
   <link rel="stylesheet" href="contatos.css" />
 </head>
 <body>
@@ -116,6 +116,11 @@
 
     <div class="barra-busca">
       <input type="text" id="buscaContatos" placeholder="Buscar por nome, CNPJ/CPF ou cidade..." />
+    </div>
+
+    <div class="card-secao" id="blocoPendentes" style="display:none;">
+      <h2>Pendentes <span style="font-weight:normal; font-size:12px; color:#888;">(rascunhos salvos automaticamente, ainda não finalizados)</span></h2>
+      <div class="lista-contatos" id="listaPendentes"></div>
     </div>
 
     <div class="lista-contatos" id="listaContatos"></div>

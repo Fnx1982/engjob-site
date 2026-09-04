@@ -74,6 +74,8 @@ let visaoAtual = "setor"; // "setor" ou "material"
 let indiceEditando = null;
 let gruposFechados = new Set();
 let setoresFiltroSel = new Set(); // vazio = todos os setores
+let rascunhoAtualIdMaterial = null; // id do rascunho de auto-save em andamento
+let idMaterialOriginalRascunho = null; // se o rascunho retomado era edição de um material já existente, guarda o id dele aqui
 
 // ====================================================
 // MODAIS — abrir / fechar
@@ -91,6 +93,12 @@ modalSetor.addEventListener("click", (e) => {
   if (e.target === modalSetor) fecharModalEl(modalSetor);
 });
 
+function fecharModalMaterialComEstado() {
+  fecharModalEl(modalMaterial);
+  rascunhoAtualIdMaterial = null;
+  renderPendentesMateriais();
+}
+
 btnAbrirMaterial.addEventListener("click", () => {
   if (indiceEditando === null) {
     form.reset();
@@ -99,18 +107,39 @@ btnAbrirMaterial.addEventListener("click", () => {
     document.getElementById("unidadeMaterial").value = "UND";
     tituloModalMaterial.textContent = "Novo Material";
     btnSubmitMaterial.textContent = "Adicionar";
+    rascunhoAtualIdMaterial = null;
+    idMaterialOriginalRascunho = null;
   }
   abrirModal(modalMaterial);
 });
-fecharModalMaterial.addEventListener("click", () => fecharModalEl(modalMaterial));
+
+// Botão que aparece quando a busca não acha nada — abre o mesmo
+// modal de sempre (com todos os campos fiscais), só que já com o
+// nome preenchido a partir do que a pessoa buscou.
+document.getElementById("btnCadastrarDaBusca").addEventListener("click", () => {
+  const termo = buscaInput.value.trim();
+  indiceEditando = null;
+  form.reset();
+  document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
+  document.getElementById("origemMaterial").value = "0";
+  document.getElementById("unidadeMaterial").value = "UND";
+  document.getElementById("nomeMaterial").value = termo;
+  tituloModalMaterial.textContent = "Novo Material";
+  btnSubmitMaterial.textContent = "Adicionar";
+  rascunhoAtualIdMaterial = null;
+  idMaterialOriginalRascunho = null;
+  abrirModal(modalMaterial);
+});
+
+fecharModalMaterial.addEventListener("click", fecharModalMaterialComEstado);
 modalMaterial.addEventListener("click", (e) => {
-  if (e.target === modalMaterial) fecharModalEl(modalMaterial);
+  if (e.target === modalMaterial) fecharModalMaterialComEstado();
 });
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   fecharModalEl(modalSetor);
-  fecharModalEl(modalMaterial);
+  fecharModalMaterialComEstado();
 });
 
 // ====================================================
@@ -222,6 +251,123 @@ function lerCamposExtrasMaterial() {
 
 document.getElementById("btnAddCampoExtraMaterial").addEventListener("click", () => adicionarLinhaExtraMaterial());
 
+// ====================================================
+// RASCUNHO AUTOMÁTICO (auto-save) — só salva enquanto o modal de
+// Material estiver realmente aberto, pra não disparar save de
+// campos escondidos com valor residual de uma edição anterior.
+// ====================================================
+function coletarDadosRascunhoMaterial() {
+  const idEmEdicao = indiceEditando !== null ? materiais[indiceEditando].id : (idMaterialOriginalRascunho || null);
+  return {
+    id: idEmEdicao,
+    nome: document.getElementById("nomeMaterial").value.trim(),
+    setor: selectSetorMaterial.value,
+    codigo: document.getElementById("codigoMaterial").value.trim(),
+    valor: document.getElementById("valorMaterial").value ? parseFloat(document.getElementById("valorMaterial").value) : 0,
+    quantidade: document.getElementById("quantidadeMaterial").value ? parseInt(document.getElementById("quantidadeMaterial").value, 10) : 0,
+    observacao: document.getElementById("obsMaterial").value.trim(),
+    ncm: document.getElementById("ncmMaterial").value.trim(),
+    cfop: document.getElementById("cfopMaterial").value.trim(),
+    cest: document.getElementById("cestMaterial").value.trim(),
+    ean: document.getElementById("eanMaterial").value.trim(),
+    origem: document.getElementById("origemMaterial").value,
+    cstCsosn: document.getElementById("cstCsosnMaterial").value.trim(),
+    unidade: document.getElementById("unidadeMaterial").value.trim().toUpperCase() || "UN",
+    camposAdicionais: lerCamposExtrasMaterial(),
+  };
+}
+
+function formularioMaterialTemConteudo(d) {
+  return !!(d.nome || d.setor || d.codigo || d.valor || d.observacao || d.ncm || d.cfop || d.cest || d.ean || d.cstCsosn || (d.camposAdicionais && d.camposAdicionais.length));
+}
+
+async function salvarRascunhoAtualMaterial() {
+  if (!modalMaterial.classList.contains("active")) return;
+  const dados = coletarDadosRascunhoMaterial();
+  if (!formularioMaterialTemConteudo(dados)) return;
+  const resposta = await apiSalvarRascunho("material", rascunhoAtualIdMaterial, dados);
+  if (resposta.ok) { rascunhoAtualIdMaterial = resposta.id; renderPendentesMateriais(); }
+}
+
+function salvarRascunhoAtualMaterialImediato() {
+  if (!modalMaterial.classList.contains("active")) return;
+  const dados = coletarDadosRascunhoMaterial();
+  if (!formularioMaterialTemConteudo(dados)) return;
+  if (!rascunhoAtualIdMaterial) rascunhoAtualIdMaterial = `rascunho_material_${Date.now()}`;
+  apiSalvarRascunhoImediato("material", rascunhoAtualIdMaterial, dados);
+}
+
+[
+  "nomeMaterial", "codigoMaterial", "valorMaterial", "quantidadeMaterial", "obsMaterial",
+  "ncmMaterial", "cfopMaterial", "cestMaterial", "eanMaterial", "cstCsosnMaterial",
+].forEach((id) => document.getElementById(id).addEventListener("blur", salvarRascunhoAtualMaterial));
+["setorMaterial", "origemMaterial", "unidadeMaterial"].forEach((id) => document.getElementById(id).addEventListener("change", salvarRascunhoAtualMaterial));
+document.getElementById("listaCamposExtrasMaterial").addEventListener("focusout", salvarRascunhoAtualMaterial);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") salvarRascunhoAtualMaterialImediato(); });
+window.addEventListener("beforeunload", salvarRascunhoAtualMaterialImediato);
+
+function continuarRascunhoMaterial(dados, idRascunho) {
+  rascunhoAtualIdMaterial = idRascunho;
+  idMaterialOriginalRascunho = dados.id || null;
+  indiceEditando = null;
+  document.getElementById("nomeMaterial").value = dados.nome || "";
+  selectSetorMaterial.value = dados.setor || "";
+  document.getElementById("codigoMaterial").value = dados.codigo || "";
+  document.getElementById("valorMaterial").value = dados.valor || "";
+  document.getElementById("quantidadeMaterial").value = dados.quantidade || "";
+  document.getElementById("obsMaterial").value = dados.observacao || "";
+  document.getElementById("ncmMaterial").value = dados.ncm || "";
+  document.getElementById("cfopMaterial").value = dados.cfop || "";
+  document.getElementById("cestMaterial").value = dados.cest || "";
+  document.getElementById("eanMaterial").value = dados.ean || "";
+  document.getElementById("origemMaterial").value = dados.origem || "0";
+  document.getElementById("cstCsosnMaterial").value = dados.cstCsosn || "";
+  definirUnidadeComSeguranca(document.getElementById("unidadeMaterial"), dados.unidade);
+  document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
+  (dados.camposAdicionais || []).forEach((c) => adicionarLinhaExtraMaterial(c));
+  tituloModalMaterial.textContent = dados.nome ? `Continuando rascunho — ${dados.nome}` : "Continuando rascunho";
+  btnSubmitMaterial.textContent = dados.id ? "Salvar Alterações" : "Adicionar";
+  abrirModal(modalMaterial);
+}
+
+async function renderPendentesMateriais() {
+  const bloco = document.getElementById("blocoPendentesMateriais");
+  const listaEl = document.getElementById("listaPendentesMateriais");
+  if (!bloco || !listaEl) return;
+  const resposta = await apiListarRascunhos("material");
+  if (!resposta.ok || !resposta.rascunhos || resposta.rascunhos.length === 0) {
+    bloco.style.display = "none";
+    listaEl.innerHTML = "";
+    return;
+  }
+  bloco.style.display = "block";
+  listaEl.innerHTML = "";
+  resposta.rascunhos.forEach((r) => {
+    const d = r.dados || {};
+    const dataFormatada = new Date(r.atualizadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    const el = document.createElement("div");
+    el.className = "item-contato";
+    el.innerHTML = `
+      <div>
+        <div class="nome">${escaparHtml(d.nome) || "(sem nome)"} <span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">Pendente</span></div>
+        <div class="meta">Salvo automaticamente em ${dataFormatada}</div>
+      </div>
+      <div class="acoes">
+        <button class="btn-editar">Continuar editando</button>
+        <button class="btn-excluir-item">Excluir</button>
+      </div>
+    `;
+    el.querySelector(".btn-editar").addEventListener("click", () => continuarRascunhoMaterial(d, r.id));
+    el.querySelector(".btn-excluir-item").addEventListener("click", async () => {
+      const ok = await confirmarAcao("Excluir rascunho pendente?", "Essa ação não pode ser desfeita.");
+      if (!ok) return;
+      await apiExcluirRascunho("material", r.id);
+      renderPendentesMateriais();
+    });
+    listaEl.appendChild(el);
+  });
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -268,7 +414,7 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
-  const idEmEdicao = indiceEditando !== null ? materiais[indiceEditando].id : null;
+  const idEmEdicao = indiceEditando !== null ? materiais[indiceEditando].id : (idMaterialOriginalRascunho || null);
   const registro = {
     id: idEmEdicao,
     nome, setor, codigo, valor, quantidade, observacao,
@@ -303,8 +449,11 @@ form.addEventListener("submit", async (e) => {
     document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
     document.getElementById("origemMaterial").value = "0";
     document.getElementById("unidadeMaterial").value = "UND";
+    if (rascunhoAtualIdMaterial) { await apiExcluirRascunho("material", rascunhoAtualIdMaterial); rascunhoAtualIdMaterial = null; }
+    idMaterialOriginalRascunho = null;
     fecharModalEl(modalMaterial);
     renderTudo();
+    renderPendentesMateriais();
   } finally {
     btnSubmitMaterial.disabled = false;
     btnSubmitMaterial.textContent = textoOriginalBotao;
@@ -313,6 +462,8 @@ form.addEventListener("submit", async (e) => {
 
 function editar(index) {
   const m = materiais[index];
+  rascunhoAtualIdMaterial = null;
+  idMaterialOriginalRascunho = null;
   document.getElementById("nomeMaterial").value = m.nome;
   selectSetorMaterial.value = m.setor;
   document.getElementById("codigoMaterial").value = m.codigo;
@@ -495,6 +646,17 @@ function renderGrupos() {
 
   if (itensFiltrados.length === 0) {
     semResultados.style.display = "block";
+    const termo = buscaInput.value.trim();
+    const btnCadastrar = document.getElementById("btnCadastrarDaBusca");
+    const textoSemResultados = document.getElementById("semResultadosTexto");
+    if (termo) {
+      textoSemResultados.textContent = `Nenhum material encontrado pra "${termo}".`;
+      btnCadastrar.textContent = `+ Cadastrar "${termo}" como material novo`;
+      btnCadastrar.style.display = "inline-block";
+    } else {
+      textoSemResultados.textContent = "Nenhum material encontrado com esses filtros.";
+      btnCadastrar.style.display = "none";
+    }
     atualizarTotalFixo([]);
     return;
   }
@@ -695,6 +857,7 @@ async function iniciarGestaoDeMaterial() {
     mostrarToast("Não foi possível carregar os materiais. Verifique sua conexão e recarregue a página.", "erro");
   }
   renderTudo();
+  renderPendentesMateriais();
 }
 
 iniciarGestaoDeMaterial();
