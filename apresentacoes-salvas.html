@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <script src="auth-worker.js"></script>
+  <script src="auth-worker.js?v=2"></script>
   <script src="auth-guard.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -17,7 +17,10 @@
         <h1>Apresentações Salvas</h1>
         <p>Todas as propostas comerciais em PDF já geradas pelo site.</p>
       </div>
-      <a href="gerar-apresentacao.html" class="btn-laranja" style="text-decoration:none; display:inline-flex; align-items:center;">+ Nova Apresentação</a>
+      <div style="display:flex; gap:10px;">
+        <a href="gerar-apresentacao.html" class="btn-laranja" style="text-decoration:none; display:inline-flex; align-items:center;">+ Nova Apresentação</a>
+        <a href="gerar-apresentacao.html" class="btn-voltar">← Voltar</a>
+      </div>
     </div>
 
     <div id="listaApresentacoesSalvas"></div>

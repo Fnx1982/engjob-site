@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <script src="auth-worker.js"></script>
+  <script src="auth-worker.js?v=2"></script>
 <script src="auth-guard.js"></script>
 <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -203,6 +203,13 @@
         <label class="campo-largura-total">
           Observação
           <textarea id="observacao" rows="2" placeholder="Opcional"></textarea>
+        </label>
+
+        <label class="campo-largura-total">
+          Vincular a um Boleto <span class="texto-opcional-inline">(opcional)</span>
+          <select id="vinculoBoletoLancamento">
+            <option value="">Nenhum</option>
+          </select>
         </label>
 
         <button type="submit" id="btnSubmitLancamento" class="btn-laranja campo-largura-total">Adicionar</button>

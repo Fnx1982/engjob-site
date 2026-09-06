@@ -98,7 +98,10 @@ function montarModalFormularioProposta() {
         <h3>Dados do Cliente / Obra</h3>
         <div class="form-grid">
           <label>Número do Orçamento
-            <input type="text" id="campoNumeroOrcamento" placeholder="Ex: 2026-001" />
+            <div style="display:flex; gap:6px;">
+              <input type="text" id="campoNumeroOrcamento" placeholder="Ex: 2026-001" style="flex:1;" />
+              <button type="button" id="btnConfigNumeracaoOrcamento" title="Configurar numeração automática" style="flex:0 0 auto; border:1px solid #ccc; border-radius:6px; background:#fff; cursor:pointer; padding:0 10px;">⚙</button>
+            </div>
           </label>
           <label>Cliente
             <input type="text" id="campoCliente" placeholder="Nome do cliente" list="listaClientesOrcamentoDatalist" />
@@ -232,6 +235,9 @@ function montarModalFormularioProposta() {
   document.getElementById("btnAddMaoDeObra").addEventListener("click", adicionarLinhaMaoDeObra);
   document.getElementById("btnAddMaterial").addEventListener("click", adicionarLinhaMaterial);
   document.getElementById("btnSalvarProposta").addEventListener("click", salvarFormularioProposta);
+  document.getElementById("btnConfigNumeracaoOrcamento").addEventListener("click", () => {
+    abrirModalConfigNumeracao("orcamento", "Orçamento");
+  });
   document.getElementById("campoTelefone").addEventListener("input", aplicarMascaraTelefoneProposta);
   document.getElementById("campoDocumentoCliente").addEventListener("blur", formatarDocumentoClienteOrcamento);
   document.getElementById("ajusteMaoDeObra").addEventListener("input", atualizarTotaisFormulario);
@@ -360,6 +366,15 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
   rascunhoAtualId = rascunhoId || null;
   propostaEmEdicao = id ? JSON.parse(JSON.stringify(buscarProposta(id))) : criarPropostaVazia();
   if (!id && dadosPreenchidos) Object.assign(propostaEmEdicao, dadosPreenchidos);
+
+  // Orçamento novo, sem número ainda — pega o próximo da numeração
+  // automática (se estiver configurada; senão fica em branco e a
+  // pessoa preenche na mão, como sempre foi).
+  if (!id && !propostaEmEdicao.numeroOrcamento) {
+    try {
+      propostaEmEdicao.numeroOrcamento = String(await proximoNumeroSequencial("orcamento"));
+    } catch (e) { /* sem numeração configurada — segue sem número */ }
+  }
 
   carregarAutocompleteContatosOrcamento();
 

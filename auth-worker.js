@@ -389,6 +389,76 @@ async function apiExcluirClienteCrm(id) {
   return chamarWorker("crm-clientes-excluir", { method: "POST", body: { id } });
 }
 
+// ── Numeração automática (Orçamento, Apresentação — compartilhada) ──
+// Cada "tipo" tem seu próprio contador (ex: "orcamento", "apresentacao").
+// Pega o próximo número da sequência e já incrementa pro próximo uso.
+async function proximoNumeroSequencial(tipo) {
+  const resp = await apiDataGet("contadorNumeracao");
+  const contadores = (resp.ok && resp.valor) ? resp.valor : {};
+  const atual = contadores[tipo] || 1;
+  contadores[tipo] = atual + 1;
+  await apiDataSet("contadorNumeracao", contadores);
+  return atual;
+}
+async function verNumeracaoAtual(tipo) {
+  const resp = await apiDataGet("contadorNumeracao");
+  const contadores = (resp.ok && resp.valor) ? resp.valor : {};
+  return contadores[tipo] || 1;
+}
+async function definirNumeracaoAtual(tipo, novoValor) {
+  const resp = await apiDataGet("contadorNumeracao");
+  const contadores = (resp.ok && resp.valor) ? resp.valor : {};
+  contadores[tipo] = novoValor;
+  return apiDataSet("contadorNumeracao", contadores);
+}
+
+// Modal pequeno pra configurar a numeração automática — reaproveitado
+// no Orçamento e na Apresentação (cada um com seu "tipo"). Constrói a
+// si mesmo na primeira vez que é usado, não precisa estar no HTML da
+// página.
+async function abrirModalConfigNumeracao(tipo, rotulo, aoSalvar) {
+  let modal = document.getElementById("modalConfigNumeracao");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "modalConfigNumeracao";
+    modal.className = "modal-overlay";
+    modal.innerHTML = `
+      <div class="modal-caixa">
+        <div class="modal-cabecalho">
+          <h2 id="tituloModalConfigNumeracao">Configurar numeração</h2>
+          <button type="button" class="modal-fechar" id="fecharModalConfigNumeracao">&times;</button>
+        </div>
+        <form id="formConfigNumeracao" class="form-modal-grid">
+          <label class="campo-largura-total" id="labelConfigNumeracao">
+            Próximo número a ser usado
+            <input type="number" id="campoValorConfigNumeracao" min="1" step="1" />
+          </label>
+          <button type="submit" class="btn-laranja campo-largura-total">Salvar</button>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById("fecharModalConfigNumeracao").addEventListener("click", () => modal.classList.remove("active"));
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("active"); });
+  }
+
+  document.getElementById("tituloModalConfigNumeracao").textContent = `Configurar numeração — ${rotulo}`;
+  document.getElementById("labelConfigNumeracao").firstChild.textContent = `Próximo número de ${rotulo.toLowerCase()} a ser usado`;
+  document.getElementById("campoValorConfigNumeracao").value = await verNumeracaoAtual(tipo);
+  modal.classList.add("active");
+
+  const form = document.getElementById("formConfigNumeracao");
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const valor = parseInt(document.getElementById("campoValorConfigNumeracao").value, 10);
+    if (isNaN(valor) || valor < 1) return;
+    await definirNumeracaoAtual(tipo, valor);
+    mostrarToast("Numeração atualizada.");
+    modal.classList.remove("active");
+    if (aoSalvar) aoSalvar(valor);
+  };
+}
+
 // ── Boletos ──
 async function apiListarBoletos() {
   return chamarWorker("boletos-list");
@@ -398,6 +468,17 @@ async function apiSalvarBoleto(dados) {
 }
 async function apiExcluirBoleto(id) {
   return chamarWorker("boletos-excluir", { method: "POST", body: { id } });
+}
+
+// ── Extrato bancário ──
+async function apiListarLancamentosExtrato() {
+  return chamarWorker("extrato-lancamentos-list");
+}
+async function apiSalvarLancamentoExtrato(dados) {
+  return chamarWorker("extrato-lancamentos-salvar", { method: "POST", body: dados });
+}
+async function apiExcluirLancamentoExtrato(id) {
+  return chamarWorker("extrato-lancamentos-excluir", { method: "POST", body: { id } });
 }
 
 // ── Token de download curto (10min) — usado em URLs de <img>/<a>

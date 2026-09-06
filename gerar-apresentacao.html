@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <script src="auth-worker.js"></script>
+  <script src="auth-worker.js?v=2"></script>
   <script src="auth-guard.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -55,7 +55,10 @@
             <datalist id="listaClientesApresDatalist"></datalist>
           </label>
           <label>N° do Documento
-            <input type="text" id="campoNumeroDoc" placeholder="Ex: 001" />
+            <div style="display:flex; gap:6px;">
+              <input type="text" id="campoNumeroDoc" placeholder="Ex: 001" style="flex:1;" />
+              <button type="button" id="btnConfigNumeracaoApres" title="Configurar numeração automática" style="flex:0 0 auto; border:1px solid #ccc; border-radius:6px; background:#fff; cursor:pointer; padding:0 10px;">⚙</button>
+            </div>
           </label>
           <label>Data
             <input type="date" id="campoDataDoc" />
@@ -196,6 +199,6 @@
     </div>
   </template>
 
-  <script src="gerar-apresentacao.js?v=7"></script>
+  <script src="gerar-apresentacao.js?v=8"></script>
 </body>
 </html>

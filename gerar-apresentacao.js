@@ -801,14 +801,25 @@ async function carregarApresentacaoPorId(id) {
 
 // Se a URL veio com ?id=..., já carrega essa apresentação salva pra
 // edição. Com ?baixar=1 junto, gera o PDF direto, sem precisar clicar
-// em nada — é o que o botão "Baixar" da lista usa.
+// em nada — é o que o botão "Baixar" da lista usa. Sem ?id (formulário
+// novo), preenche o N° do Documento com a numeração automática, se
+// estiver configurada.
 (async function verificarParametrosUrl() {
   const params = new URLSearchParams(window.location.search);
   const id = params.get("id");
-  if (!id) return;
+  if (!id) {
+    try {
+      document.getElementById("campoNumeroDoc").value = String(await proximoNumeroSequencial("apresentacao"));
+    } catch (e) { /* sem numeração configurada — segue sem número */ }
+    return;
+  }
   const apresentacao = await carregarApresentacaoPorId(id);
   if (apresentacao && params.get("baixar") === "1") {
     irParaEtapa(4);
     await gerarPdfApresentacao(coletarDadosApresentacao());
   }
 })();
+
+document.getElementById("btnConfigNumeracaoApres").addEventListener("click", () => {
+  abrirModalConfigNumeracao("apresentacao", "Apresentação");
+});
