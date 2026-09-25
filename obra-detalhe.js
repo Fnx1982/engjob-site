@@ -305,8 +305,12 @@ function uploadFotoDemanda(prefixo, arquivo) {
   });
 }
 
+// O Worker NÃO aceita o token de sessão na URL (por segurança) — só o
+// token de visualização de 10 min. Antes usava o de sessão, então a
+// foto não abria pra ninguém. garantirTokenDownload() é chamado antes
+// de desenhar a lista (ver carregarDemandas).
 function urlFotoDemanda(chave) {
-  const token = localStorage.getItem("sessionToken") || "";
+  const token = pegarTokenDownloadCache();
   return `${WORKER_URL_DEMANDAS}?action=get&key=${encodeURIComponent(chave)}&token=${encodeURIComponent(token)}`;
 }
 
@@ -326,6 +330,7 @@ async function carregarDemandas() {
   const resposta = await apiListarDemandas(obraId);
   if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao carregar demandas.", "erro"); return; }
   demandasCache = resposta.demandas;
+  await garantirTokenDownload();
   renderDemandas();
 }
 
@@ -348,7 +353,7 @@ function renderDemandas() {
 
     el.innerHTML = `
       <div style="display:flex; gap:12px; align-items:flex-start; width:100%;">
-        ${d.fotoChave ? `<img src="${urlFotoDemanda(d.fotoChave)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;" />` : ""}
+        ${d.fotoChave ? `<img src="${urlFotoDemanda(d.fotoChave)}" class="foto-demanda-miniatura" data-chave="${escaparHtml(d.fotoChave)}" data-legenda="Foto do pedido — ${escaparHtml(d.titulo)}" title="Clique para ampliar" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" />` : ""}
         <div style="flex:1;">
           <div style="font-weight:700; font-size:13.5px;">
             ${escaparHtml(d.titulo)}
@@ -359,7 +364,7 @@ function renderDemandas() {
             Pedido por ${escaparHtml(d.criadoPorNome)} · Atribuído a ${escaparHtml(d.atribuidoParaNome)}
           </div>
           ${concluida && d.observacaoConclusao ? `<div style="font-size:12px; color:#1C8A4B; margin-top:4px;">✓ ${escaparHtml(d.observacaoConclusao)}</div>` : ""}
-          ${concluida && d.fotoConclusaoChave ? `<img src="${urlFotoDemanda(d.fotoConclusaoChave)}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;margin-top:6px;" />` : ""}
+          ${concluida && d.fotoConclusaoChave ? `<img src="${urlFotoDemanda(d.fotoConclusaoChave)}" class="foto-demanda-miniatura" data-chave="${escaparHtml(d.fotoConclusaoChave)}" data-legenda="Foto da conclusão — ${escaparHtml(d.titulo)}" title="Clique para ampliar" style="width:52px;height:52px;object-fit:cover;border-radius:8px;margin-top:6px;cursor:zoom-in;" />` : ""}
         </div>
         <div style="display:flex; flex-direction:column; gap:6px;">
           ${!concluida ? `<button type="button" class="btn-concluir-demanda" data-id="${d.id}" style="background:#1C8A4B;color:#fff;border:none;border-radius:100px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;">✓ Marcar feito</button>` : ""}
@@ -367,6 +372,10 @@ function renderDemandas() {
         </div>
       </div>
     `;
+
+    el.querySelectorAll(".foto-demanda-miniatura").forEach((img) => {
+      img.addEventListener("click", () => abrirVisualizadorFotoDemanda(img.dataset.chave, img.dataset.legenda));
+    });
 
     const btnConcluir = el.querySelector(".btn-concluir-demanda");
     if (btnConcluir) {
@@ -489,3 +498,39 @@ function renderTudo() {
   popularSelectAtribuidoDemanda();
   carregarDemandas();
 })();
+
+// ====================================================
+// VISUALIZADOR DE FOTO — abre a foto grande dentro do próprio site,
+// sem baixar. Fecha no X, no Esc ou clicando fora da foto.
+// ====================================================
+function montarVisualizadorFotoDemanda() {
+  if (document.getElementById("visualizadorFotoDemanda")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "visualizadorFotoDemanda";
+  overlay.style.cssText = "display:none; position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,.85); align-items:center; justify-content:center; flex-direction:column; padding:20px;";
+  overlay.innerHTML = `
+    <button type="button" id="fecharVisualizadorFoto" title="Fechar"
+      style="position:absolute; top:16px; right:20px; background:rgba(255,255,255,.15); color:#fff; border:none; border-radius:50%; width:42px; height:42px; font-size:26px; line-height:1; cursor:pointer;">&times;</button>
+    <img id="imagemVisualizadorFoto" alt="" style="max-width:100%; max-height:82vh; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,.5); background:#222;" />
+    <div id="legendaVisualizadorFoto" style="color:#fff; font-size:13px; margin-top:12px; text-align:center; font-family:'Montserrat',sans-serif;"></div>
+  `;
+  document.body.appendChild(overlay);
+  const fechar = () => { overlay.style.display = "none"; document.getElementById("imagemVisualizadorFoto").src = ""; };
+  document.getElementById("fecharVisualizadorFoto").addEventListener("click", fechar);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) fechar(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && overlay.style.display === "flex") fechar(); });
+}
+
+async function abrirVisualizadorFotoDemanda(chave, legenda) {
+  if (!chave) return;
+  montarVisualizadorFotoDemanda();
+  // Pede um token novo se o atual estiver vencendo — assim a foto abre
+  // mesmo que a página esteja aberta há mais de 10 minutos.
+  await garantirTokenDownload();
+  const img = document.getElementById("imagemVisualizadorFoto");
+  img.src = urlFotoDemanda(chave);
+  img.onerror = () => { document.getElementById("legendaVisualizadorFoto").textContent = "Não foi possível carregar a foto. Recarregue a página e tente de novo."; };
+  document.getElementById("legendaVisualizadorFoto").textContent = legenda || "";
+  document.getElementById("visualizadorFotoDemanda").style.display = "flex";
+}
+

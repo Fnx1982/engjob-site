@@ -84,11 +84,32 @@ async function carregarNotificacoes() {
 
   resposta.notificacoes.slice(0, 30).forEach((n) => {
     const item = document.createElement("div");
-    item.style.cssText = `padding:10px; border-radius:8px; margin-bottom:4px; cursor:pointer; background:${n.lida ? "transparent" : "#FEF3DC"};`;
+    item.style.cssText = `position:relative; padding:10px ${n.podeExcluir ? "30px" : "10px"} 10px 10px; border-radius:8px; margin-bottom:4px; cursor:pointer; background:${n.lida ? "transparent" : "#FEF3DC"};`;
+    // Aviso de demanda concluída: pede pra quem solicitou conferir.
+    const complemento = n.tipo === "demanda-concluida"
+      ? `<div style="font-size:11.5px; color:#1C8A4B; font-weight:600; margin-top:3px;">✓ Feito — confira se ficou tudo certo.</div>`
+      : "";
     item.innerHTML = `
       <div style="font-size:12.5px; color:#333; line-height:1.4;">${escaparHtml(n.mensagem)}</div>
+      ${complemento}
       <div style="font-size:10.5px; color:#999; margin-top:3px;">${formatarTempoRelativo(n.criadoEm)}</div>
+      ${n.podeExcluir ? `<button type="button" class="btn-excluir-notificacao" title="Apagar notificação"
+        style="position:absolute; top:6px; right:6px; background:none; border:none; color:#999; font-size:18px; line-height:1; cursor:pointer; padding:2px 6px; border-radius:50%;">&times;</button>` : ""}
     `;
+    // X só aparece em notificação de demanda já concluída — o Worker
+    // decide isso (campo podeExcluir) e confere de novo ao apagar.
+    const btnExcluir = item.querySelector(".btn-excluir-notificacao");
+    if (btnExcluir) {
+      btnExcluir.addEventListener("mouseenter", () => { btnExcluir.style.color = "#DC143C"; });
+      btnExcluir.addEventListener("mouseleave", () => { btnExcluir.style.color = "#999"; });
+      btnExcluir.addEventListener("click", async (e) => {
+        e.stopPropagation(); // não abre a obra
+        item.style.opacity = "0.4";
+        const resp = await apiExcluirNotificacao(n.id);
+        if (!resp.ok && typeof mostrarToast === "function") mostrarToast(resp.erro || "Não foi possível apagar.", "erro");
+        carregarNotificacoes();
+      });
+    }
     item.addEventListener("click", async () => {
       if (!n.lida) { await apiMarcarNotificacaoLida(n.id); carregarNotificacoes(); }
       if (n.obraId) window.location.href = `obra-detalhe.html?id=${encodeURIComponent(n.obraId)}`;

@@ -151,6 +151,9 @@ async function apiListarNotificacoes() {
 async function apiMarcarNotificacaoLida(id) {
   return chamarWorker("notificacoes-marcar-lida", { method: "POST", body: { id } });
 }
+async function apiExcluirNotificacao(id) {
+  return chamarWorker("notificacoes-excluir", { method: "POST", body: { id } });
+}
 async function apiMarcarTodasNotificacoesLidas() {
   return chamarWorker("notificacoes-marcar-todas-lidas", { method: "POST", body: {} });
 }
