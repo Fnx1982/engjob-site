@@ -472,6 +472,9 @@ body {
   overflow-y: auto;
 }
 .autocomplete-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
   padding: 9px 12px;
   font-size: 13px;
   text-align: left;
@@ -482,6 +485,14 @@ body {
 .autocomplete-item.ativo {
   background: rgba(235, 153, 28, 0.12);
   color: #b96f0f;
+}
+/* Na tabela de itens a coluna é estreita — a lista fica mais larga
+   que o campo, pra o nome do item caber numa linha só. */
+.itens-tabela .autocomplete-lista { min-width: 340px; right: auto; }
+.autocomplete-detalhe {
+  color: #888;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .autocomplete-item:not(:last-child) {
   border-bottom: 1px solid #f0f0f0;

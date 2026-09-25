@@ -160,16 +160,11 @@ function montarModalFormularioProposta() {
       </div>
 
       <div class="form-secao">
-        <h3>Materiais do estoque</h3>
-        <p class="texto-ajuda">Marque os materiais que entram neste orçamento. A quantidade pode ser ajustada depois, na tabela abaixo. Pra um material novo, é só digitar o nome direto na tabela de itens, aqui embaixo — a busca já sugere os que existem, e cria um novo se não achar nada.</p>
-        <div class="checklist-materiais" id="checklistMateriaisEstoque"></div>
-      </div>
-
-      <div class="form-secao">
-        <h3>Itens de Materiais no Orçamento</h3>
+        <h3>Materiais</h3>
         <p class="texto-ajuda" style="margin-bottom:8px;">
-          Você pode preencher <strong>Qtd × Valor Unit.</strong> para calcular automaticamente,
-          ou deixar em branco e preencher o <strong>Valor Final</strong> diretamente.
+          Clique no campo <strong>Material</strong> para ver a lista, ou digite para pesquisar — o valor
+          já vem preenchido. Material novo é só digitar o nome: ele é salvo no catálogo ao salvar o orçamento.
+          Preencha <strong>Qtd × Valor Unit.</strong> ou direto o <strong>Valor Final</strong>.
         </p>
         <table class="itens-tabela" id="tabelaMateriais">
           <thead>
@@ -184,7 +179,7 @@ function montarModalFormularioProposta() {
           </thead>
           <tbody></tbody>
         </table>
-        <button type="button" class="btn-add-item" id="btnAddMaterial">+ Adicionar item manual (é salvo no catálogo ao salvar o orçamento)</button>
+        <button type="button" class="btn-add-item" id="btnAddMaterial">+ Adicionar material</button>
         <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
           <div>Subtotal Materiais: <span id="subtotalMateriaisTexto">R$ 0,00</span></div>
           <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
@@ -330,7 +325,13 @@ function montarModalFormularioProposta() {
 // o catálogo pode mudar entre um render e outro. "aoSelecionar" roda
 // depois que a pessoa escolhe uma sugestão, pra ligar o item ao
 // catálogo (mesma lógica que já existia pro datalist nativo).
-function criarAutocompleteCustomizado(inputEl, obterOpcoes, aoSelecionar) {
+// "obterDetalhe" (opcional) devolve um texto curto mostrado à direita
+// de cada sugestão — usado pra mostrar o preço do catálogo.
+function normalizarBusca(texto) {
+  return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function criarAutocompleteCustomizado(inputEl, obterOpcoes, aoSelecionar, obterDetalhe) {
   const wrapper = document.createElement("div");
   wrapper.className = "autocomplete-wrapper";
   inputEl.parentNode.insertBefore(wrapper, inputEl);
@@ -357,12 +358,18 @@ function criarAutocompleteCustomizado(inputEl, obterOpcoes, aoSelecionar) {
   }
 
   function renderSugestoes() {
-    const termo = inputEl.value.trim().toLowerCase();
-    if (!termo) { fecharLista(); return; }
-    opcoesAtuais = obterOpcoes().filter((nome) => nome.toLowerCase().includes(termo)).slice(0, 8);
+    // Campo vazio: mostra a lista inteira (em ordem alfabética) pra
+    // escolher clicando. Digitando: filtra, sem ligar pra acento.
+    const termo = normalizarBusca(inputEl.value.trim());
+    const todas = obterOpcoes().slice().sort((a, b) => a.localeCompare(b, "pt-BR"));
+    opcoesAtuais = termo ? todas.filter((nome) => normalizarBusca(nome).includes(termo)) : todas;
+    opcoesAtuais = opcoesAtuais.slice(0, 50);
     if (opcoesAtuais.length === 0) { fecharLista(); return; }
 
-    lista.innerHTML = opcoesAtuais.map((nome) => `<div class="autocomplete-item">${escaparHtml(nome)}</div>`).join("");
+    lista.innerHTML = opcoesAtuais.map((nome) => {
+      const detalhe = obterDetalhe ? obterDetalhe(nome) : "";
+      return `<div class="autocomplete-item"><span>${escaparHtml(nome)}</span>${detalhe ? `<span class="autocomplete-detalhe">${escaparHtml(detalhe)}</span>` : ""}</div>`;
+    }).join("");
     lista.style.display = "block";
     indiceAtivo = -1;
 
@@ -597,7 +604,7 @@ function renderTabelaMaoDeObra() {
     // Se valorFinal está preenchido, desabilita Qtd e Valor Unit
     const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
     const vinculado = !!item.servicoId;
-    const rotuloVinculo = vinculado ? '<span class="tag-vinculado">catálogo</span>' : "";
+    const rotuloVinculo = ""; // etiqueta "catálogo" removida a pedido — o vínculo continua funcionando
     tr.innerHTML = `
       <td class="col-descricao">
         ${rotuloVinculo}
@@ -662,7 +669,10 @@ function renderTabelaMaoDeObra() {
     // Descrição que bate com um serviço já cadastrado: liga o item a
     // ele e preenche o valor (só se ainda estiver vazio).
     if (input.dataset.moCampo === "descricao") {
-      criarAutocompleteCustomizado(input, () => servicosCatalogoCache.map((s) => s.nome));
+      criarAutocompleteCustomizado(input, () => servicosCatalogoCache.map((s) => s.nome), null, (nome) => {
+        const s = servicosCatalogoCache.find((x) => x.nome === nome);
+        return s && s.valor ? `R$ ${formatarMoeda(Number(s.valor))}` : "";
+      });
       input.addEventListener("change", () => {
         const idx = parseInt(input.dataset.moIndex, 10);
         const item = propostaEmEdicao.itensMaoDeObra[idx];
@@ -717,6 +727,7 @@ function adicionarLinhaMaoDeObra() {
 // ====================================================
 function renderChecklistMateriaisEstoque() {
   const container = document.getElementById("checklistMateriaisEstoque");
+  if (!container) return; // seção removida — a escolha é feita pela lista de pesquisa
   const estoque = lerMateriaisEstoque();
 
   if (estoque.length === 0) {
@@ -770,7 +781,7 @@ function renderTabelaMateriais() {
     const vf = valorFinalItem(item);
     const vinculado = item.materialId !== null && item.materialId !== undefined;
     const bloqueado = item.valorFinal !== undefined && item.valorFinal !== null && item.valorFinal !== "";
-    const rotuloVinculo = vinculado ? '<span class="tag-vinculado">estoque</span>' : "";
+    const rotuloVinculo = ""; // etiqueta "estoque" removida a pedido — o vínculo continua funcionando
 
     tr.innerHTML = `
       <td class="col-descricao">
@@ -836,7 +847,10 @@ function renderTabelaMateriais() {
     // que a Mão de Obra já tinha com Serviços, mas Material nunca
     // tinha isso.
     if (input.dataset.matCampo === "nome") {
-      criarAutocompleteCustomizado(input, () => materiaisEstoqueCache.map((m) => m.nome));
+      criarAutocompleteCustomizado(input, () => materiaisEstoqueCache.map((m) => m.nome), null, (nome) => {
+        const m = materiaisEstoqueCache.find((x) => x.nome === nome);
+        return m && m.valor ? `R$ ${formatarMoeda(Number(m.valor))}` : "";
+      });
       input.addEventListener("change", () => {
         const idx = parseInt(input.dataset.matIndex, 10);
         const item = propostaEmEdicao.itensMateriais[idx];
