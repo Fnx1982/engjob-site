@@ -102,7 +102,8 @@ function renderLista() {
         <span class="proposta-total">Total: R$ ${formatarMoeda(totalGeral(p))}</span>
       </div>
       <div class="proposta-acoes">
-        <button class="btn-pdf" data-pdf-id="${p.id}">Baixar PDF</button>
+        <button class="btn-pdf" data-pdf-id="${p.id}" title="Só com as observações para o cliente">PDF Cliente</button>
+        <button class="btn-pdf-interno" data-pdf-interno-id="${p.id}" title="Com impostos e observações internas — não enviar ao cliente">PDF Interno</button>
         <button class="btn-editar" data-edit-id="${p.id}">Editar</button>
         ${botoesStatus}
         <button class="btn-excluir-item" data-delete-id="${p.id}">Excluir</button>
@@ -112,7 +113,10 @@ function renderLista() {
   });
 
   listaPropostasEl.querySelectorAll("[data-pdf-id]").forEach((btn) => {
-    btn.addEventListener("click", () => gerarPdfProposta(buscarProposta(btn.dataset.pdfId)));
+    btn.addEventListener("click", () => gerarPdfProposta(buscarProposta(btn.dataset.pdfId), "cliente"));
+  });
+  listaPropostasEl.querySelectorAll("[data-pdf-interno-id]").forEach((btn) => {
+    btn.addEventListener("click", () => gerarPdfProposta(buscarProposta(btn.dataset.pdfInternoId), "interno"));
   });
   listaPropostasEl.querySelectorAll("[data-edit-id]").forEach((btn) => {
     btn.addEventListener("click", () => abrirFormularioProposta(btn.dataset.editId, renderLista));

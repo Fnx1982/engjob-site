@@ -58,7 +58,7 @@ document.getElementById("btnSalvarImpostosMensal").addEventListener("click", asy
   const chave = document.getElementById("campoMesImpostos").value;
   const inss = parseFloat(document.getElementById("campoInssMensal").value) || 0;
   const iss = parseFloat(document.getElementById("campoIssMensal").value) || 0;
-  impostosMensais[chave] = { inss, iss };
+  impostosMensais[chave] = { ...(impostosMensais[chave] || {}), inss, iss }; // mantém o % de material cadastrado no Orçamento
   const resp = await apiDataSet("impostosMensaisComissao", impostosMensais);
   if (!resp.ok) { mostrarToast(resp.erro || "Erro ao salvar.", "erro"); return; }
   mostrarToast("INSS/ISS do mês salvos.");

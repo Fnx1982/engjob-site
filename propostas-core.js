@@ -257,11 +257,16 @@ async function atualizarServicoNoCatalogo(servicoId, novosDados) {
 // ====================================================
 // CÁLCULOS
 // ====================================================
+// Soma igual à do formulário: respeita o "Valor Final" digitado no
+// item (antes era sempre Qtd × Valor Unit., e um item só com Valor
+// Final saía R$ 0,00 no PDF) e inclui o Ajuste (desconto/acréscimo).
 function totalMaoDeObra(proposta) {
-  return proposta.itensMaoDeObra.reduce((s, item) => s + item.qtd * item.valorUnit, 0);
+  return (proposta.itensMaoDeObra || []).reduce((s, item) => s + valorFinalItemProposta(item), 0)
+    + (parseFloat(proposta.ajusteMaoDeObra) || 0);
 }
 function totalMateriais(proposta) {
-  return proposta.itensMateriais.reduce((s, item) => s + item.qtd * item.valorUnit, 0);
+  return (proposta.itensMateriais || []).reduce((s, item) => s + valorFinalItemProposta(item), 0)
+    + (parseFloat(proposta.ajusteMateriais) || 0);
 }
 function totalGeral(proposta) {
   return totalMaoDeObra(proposta) + totalMateriais(proposta);
@@ -269,6 +274,83 @@ function totalGeral(proposta) {
 
 function formatarMoeda(valor) {
   return (valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ====================================================
+// IMPOSTOS DO ORÇAMENTO (só para a empresa — nunca vai no PDF do cliente)
+// ====================================================
+// A tabela de % por mês é a MESMA da tela de Comissão (chave
+// "impostosMensaisComissao") — assim o INSS/ISS é digitado num lugar
+// só. Formato: { "2026-8": { inss: 11, iss: 5, material: 3 } }, mês
+// 0-indexado (igual Date.getMonth()).
+// Cada orçamento guarda uma CÓPIA das % em proposta.impostos — mudar
+// a tabela depois não altera orçamentos que já existem.
+const CHAVE_TABELA_IMPOSTOS_MES = "impostosMensaisComissao";
+const NOMES_MESES_IMPOSTOS_ORC = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+let tabelaImpostosMesCache = {};
+
+async function carregarTabelaImpostosMes() {
+  try {
+    const resp = await apiDataGet(CHAVE_TABELA_IMPOSTOS_MES);
+    tabelaImpostosMesCache = (resp && resp.ok && resp.valor) ? resp.valor : {};
+  } catch (e) {
+    // Sem conexão: segue com o que já tinha — o usuário pode digitar as % na mão.
+  }
+  return tabelaImpostosMesCache;
+}
+
+function chaveMesImpostosOrc(data) {
+  const d = data ? new Date(data) : new Date();
+  return `${d.getFullYear()}-${d.getMonth()}`;
+}
+
+function rotuloMesImpostosOrc(chave) {
+  const [ano, mes] = String(chave || "").split("-").map(Number);
+  if (isNaN(ano) || isNaN(mes)) return "-";
+  return `${NOMES_MESES_IMPOSTOS_ORC[mes]} de ${ano}`;
+}
+
+// Mesma janela da Comissão: 3 meses à frente até 24 para trás.
+function opcoesMesesImpostosHtml(chaveSelecionada) {
+  const hoje = new Date();
+  const chaves = [];
+  for (let i = -3; i < 24; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    chaves.push(`${d.getFullYear()}-${d.getMonth()}`);
+  }
+  if (chaveSelecionada && !chaves.includes(chaveSelecionada)) chaves.push(chaveSelecionada);
+  return chaves.map((c) => `<option value="${c}" ${c === chaveSelecionada ? "selected" : ""}>${rotuloMesImpostosOrc(c)}</option>`).join("");
+}
+
+function taxasPadraoDoMesOrc(chave) {
+  const t = tabelaImpostosMesCache[chave] || {};
+  return { inss: Number(t.inss) || 0, iss: Number(t.iss) || 0, material: Number(t.material) || 0 };
+}
+
+function impostosPadraoParaProposta(chave) {
+  return { mesRef: chave, ...taxasPadraoDoMesOrc(chave) };
+}
+
+// INSS e ISS: só sobre a Mão de Obra. Material: só sobre os Materiais.
+// Em Curitiba o ISS não entra; fora de Curitiba entram INSS e ISS.
+// O imposto de material vale sempre.
+function calcularImpostosProposta(proposta) {
+  const imp = proposta.impostos || {};
+  const emCuritiba = (proposta.localObra || "curitiba") === "curitiba";
+  const baseMO = totalMaoDeObra(proposta);
+  const baseMat = totalMateriais(proposta);
+  const inssPerc = Number(imp.inss) || 0;
+  const issPerc = emCuritiba ? 0 : (Number(imp.iss) || 0);
+  const matPerc = Number(imp.material) || 0;
+  const valorInss = baseMO * inssPerc / 100;
+  const valorIss = baseMO * issPerc / 100;
+  const valorMat = baseMat * matPerc / 100;
+  const total = valorInss + valorIss + valorMat;
+  return {
+    emCuritiba, baseMO, baseMat, inssPerc, issPerc, matPerc,
+    valorInss, valorIss, valorMat, total,
+    liquido: totalGeral(proposta) - total,
+  };
 }
 
 // ====================================================
@@ -320,6 +402,10 @@ async function criarObraAPartirDaProposta(proposta) {
     servico: proposta.servico,
     valorMaoDeObraOrcamento: totalMaoDeObra(proposta),
     valorMateriaisOrcamento: totalMateriais(proposta),
+    // % de INSS/ISS vindas do orçamento — a Comissão usa estas em vez
+    // da tabela do mês. Em Curitiba o ISS vai como 0.
+    inssPercentualObra: proposta.impostos ? calcularImpostosProposta(proposta).inssPerc : null,
+    issPercentualObra: proposta.impostos ? calcularImpostosProposta(proposta).issPerc : null,
     observacao: "",
     funcionarios: [], // { id, nome, valorCobrado, valorPago, pagamentoMes }
     materiais: [], // { id, nome, codigo, valor, data }
@@ -600,7 +686,11 @@ const EMPRESA_INFO = {
   site: "www.engjob.com.br",
 };
 
-function gerarPdfProposta(proposta) {
+// modo "cliente": só as observações para o cliente.
+// modo "interno": tudo — observações do cliente, observações internas
+// e o quadro de impostos. Nunca enviar o interno ao cliente.
+function gerarPdfProposta(proposta, modo) {
+  const interno = modo === "interno";
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const margem = 40;
@@ -641,6 +731,18 @@ function gerarPdfProposta(proposta) {
   doc.line(margem, y, margem + larguraUtil, y);
   y += 18;
 
+  if (interno) {
+    doc.setFillColor(253, 240, 220);
+    doc.setDrawColor(235, 153, 28);
+    doc.rect(margem, y - 12, larguraUtil, 22, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(180, 110, 10);
+    doc.text("DOCUMENTO INTERNO — NÃO ENVIAR AO CLIENTE", margem + larguraUtil / 2, y + 3, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+    y += 26;
+  }
+
   // ----- Dados do cliente / obra -----
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
@@ -673,14 +775,7 @@ function gerarPdfProposta(proposta) {
   doc.text("MÃO DE OBRA", margem, y);
   y += 8;
 
-  const linhasMao = (proposta.itensMaoDeObra || []).map((item, i) => [
-    String(i + 1),
-    String(item.qtd),
-    item.unid || "",
-    item.descricao,
-    `R$ ${formatarMoeda(item.valorUnit)}`,
-    `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`,
-  ]);
+  const linhasMao = linhasItensPdf(proposta.itensMaoDeObra, "descricao", interno);
 
   doc.autoTable({
     startY: y,
@@ -689,7 +784,7 @@ function gerarPdfProposta(proposta) {
     margin: { left: margem, right: margem },
     styles: { fontSize: 9 },
     headStyles: { fillColor: [235, 153, 28] },
-    foot: [["", "", "", "", "Total Mão de Obra", `R$ ${formatarMoeda(totalMaoDeObra(proposta))}`]],
+    foot: rodapeTabelaPdf(totalMaoDeObra(proposta), proposta.ajusteMaoDeObra, "Total Mão de Obra"),
     footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
   });
   y = doc.lastAutoTable.finalY + 24;
@@ -701,14 +796,7 @@ function gerarPdfProposta(proposta) {
   doc.text("MATERIAIS", margem, y);
   y += 8;
 
-  const linhasMat = (proposta.itensMateriais || []).map((item, i) => [
-    String(i + 1),
-    String(item.qtd),
-    item.unid || "",
-    item.nome,
-    `R$ ${formatarMoeda(item.valorUnit)}`,
-    `R$ ${formatarMoeda(item.qtd * item.valorUnit)}`,
-  ]);
+  const linhasMat = linhasItensPdf(proposta.itensMateriais, "nome", interno);
 
   doc.autoTable({
     startY: y,
@@ -717,7 +805,7 @@ function gerarPdfProposta(proposta) {
     margin: { left: margem, right: margem },
     styles: { fontSize: 9 },
     headStyles: { fillColor: [235, 153, 28] },
-    foot: [["", "", "", "", "Total Materiais", `R$ ${formatarMoeda(totalMateriais(proposta))}`]],
+    foot: rodapeTabelaPdf(totalMateriais(proposta), proposta.ajusteMateriais, "Total Materiais"),
     footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
   });
   y = doc.lastAutoTable.finalY + 16;
@@ -733,6 +821,37 @@ function gerarPdfProposta(proposta) {
   doc.text(`R$ ${formatarMoeda(totalGeral(proposta))}`, margem + larguraUtil - 10, y + 17, { align: "right" });
   doc.setTextColor(0, 0, 0);
   y += 44;
+
+  if (interno) {
+    const imp = calcularImpostosProposta(proposta);
+    y = garantirEspacoPdf(doc, y, 150);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("IMPOSTOS (INTERNO)", margem, y);
+    y += 8;
+    const pct = (v) => `${String(v).replace(".", ",")}%`;
+    doc.autoTable({
+      startY: y,
+      head: [["Descrição", "Base de cálculo", "%", "Valor"]],
+      body: [
+        ["Local da obra", imp.emCuritiba ? "Curitiba" : "Fora de Curitiba", "", ""],
+        ["Mês de referência", rotuloMesImpostosOrc((proposta.impostos || {}).mesRef), "", ""],
+        ["INSS (sobre mão de obra)", `R$ ${formatarMoeda(imp.baseMO)}`, pct(imp.inssPerc), `R$ ${formatarMoeda(imp.valorInss)}`],
+        [imp.emCuritiba ? "ISS (não se aplica em Curitiba)" : "ISS (sobre mão de obra)", `R$ ${formatarMoeda(imp.baseMO)}`, pct(imp.issPerc), `R$ ${formatarMoeda(imp.valorIss)}`],
+        ["Imposto de material", `R$ ${formatarMoeda(imp.baseMat)}`, pct(imp.matPerc), `R$ ${formatarMoeda(imp.valorMat)}`],
+      ],
+      foot: [
+        ["Total de impostos", "", "", `R$ ${formatarMoeda(imp.total)}`],
+        ["Valor líquido (total - impostos)", "", "", `R$ ${formatarMoeda(imp.liquido)}`],
+      ],
+      margin: { left: margem, right: margem },
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [235, 153, 28] },
+      footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
+      columnStyles: { 2: { halign: "center" }, 3: { halign: "right" } },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+  }
 
   // ----- Condições / avisos -----
   y = garantirEspacoPdf(doc, y, 90);
@@ -777,8 +896,49 @@ function gerarPdfProposta(proposta) {
     y
   );
 
-  const nomeArquivo = `proposta_${(proposta.cliente || "sem_nome").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.pdf`;
+  const nomeArquivo = `proposta_${(proposta.cliente || "sem_nome").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}${interno ? "_INTERNO" : ""}.pdf`;
   doc.save(nomeArquivo);
+}
+
+// Linhas da tabela de itens do PDF. Embaixo de cada item vão as
+// observações: a do cliente sempre; a interna só no PDF interno.
+function linhasItensPdf(itens, campoNome, interno) {
+  const linhas = [];
+  (itens || []).forEach((item, i) => {
+    const temQtd = item.qtd !== null && item.qtd !== undefined && item.qtd !== "" && Number(item.qtd) !== 0;
+    const temUnit = item.valorUnit !== null && item.valorUnit !== undefined && item.valorUnit !== "" && Number(item.valorUnit) !== 0;
+    linhas.push([
+      String(i + 1),
+      temQtd ? String(item.qtd).replace(".", ",") : "-",
+      item.unid || "",
+      item[campoNome] || "",
+      temUnit ? `R$ ${formatarMoeda(Number(item.valorUnit))}` : "-",
+      `R$ ${formatarMoeda(valorFinalItemProposta(item))}`,
+    ]);
+    const obsCliente = (item.obsCliente || "").trim();
+    const obsInterna = (item.obsInterna || "").trim();
+    if (obsCliente) {
+      linhas.push([{ content: `Obs.: ${obsCliente}`, colSpan: 6,
+        styles: { fontStyle: "italic", textColor: [80, 80, 80], fontSize: 8 } }]);
+    }
+    if (interno && obsInterna) {
+      linhas.push([{ content: `Interno: ${obsInterna}`, colSpan: 6,
+        styles: { fontStyle: "italic", textColor: [180, 110, 10], fontSize: 8, fillColor: [253, 244, 230] } }]);
+    }
+  });
+  return linhas.length ? linhas : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]];
+}
+
+// Rodapé da tabela: com ajuste, mostra Subtotal / Desconto ou
+// Acréscimo / Total — igual ao formulário.
+function rodapeTabelaPdf(total, ajuste, rotuloTotal) {
+  const aj = parseFloat(ajuste) || 0;
+  if (!aj) return [["", "", "", "", rotuloTotal, `R$ ${formatarMoeda(total)}`]];
+  return [
+    ["", "", "", "", "Subtotal", `R$ ${formatarMoeda(total - aj)}`],
+    ["", "", "", "", aj < 0 ? "Desconto" : "Acréscimo", `${aj < 0 ? "- " : "+ "}R$ ${formatarMoeda(Math.abs(aj))}`],
+    ["", "", "", "", rotuloTotal, `R$ ${formatarMoeda(total)}`],
+  ];
 }
 
 function garantirEspacoPdf(doc, y, minimo) {

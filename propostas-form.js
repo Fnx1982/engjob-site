@@ -198,6 +198,41 @@ function montarModalFormularioProposta() {
         </div>
       </div>
 
+      <div class="form-secao secao-impostos">
+        <h3>Impostos <span class="tag-interno">só empresa</span></h3>
+        <p class="texto-ajuda">
+          Não aparece no PDF do cliente. INSS e ISS são calculados só sobre a <strong>Mão de Obra</strong>;
+          o imposto de material, só sobre os <strong>Materiais</strong>. Em Curitiba o ISS não entra.
+        </p>
+        <div class="form-grid">
+          <label>Local da obra
+            <select id="campoLocalObra">
+              <option value="curitiba">Curitiba</option>
+              <option value="fora">Fora de Curitiba</option>
+            </select>
+          </label>
+          <label>Mês de referência
+            <select id="campoMesImpostosOrc"></select>
+          </label>
+        </div>
+        <div class="grid-impostos">
+          <label>INSS %
+            <input type="number" id="campoInssOrc" min="0" max="100" step="0.01" placeholder="0" />
+          </label>
+          <label id="rotuloIssOrc">ISS %
+            <input type="number" id="campoIssOrc" min="0" max="100" step="0.01" placeholder="0" />
+            <small class="aviso-iss-curitiba" id="avisoIssCuritiba">Não entra em Curitiba</small>
+          </label>
+          <label>Material %
+            <input type="number" id="campoMatOrc" min="0" max="100" step="0.01" placeholder="0" />
+          </label>
+        </div>
+        <table class="tabela-resumo-impostos">
+          <tbody id="resumoImpostosOrc"></tbody>
+        </table>
+        <button type="button" class="btn-link-impostos" id="btnEditarImpostosMesForm">Editar % padrão de cada mês</button>
+      </div>
+
       <div class="form-secao">
         <h3>Condições</h3>
         <div class="form-grid">
@@ -245,6 +280,27 @@ function montarModalFormularioProposta() {
   document.getElementById("campoCliente").addEventListener("change", tentarAutopreencherClienteOrcamento);
   limparErroAoEditar(document.getElementById("campoCliente"));
 
+  // Impostos: trocar o mês puxa as % padrão daquele mês; as % podem ser
+  // ajustadas na mão só para este orçamento.
+  document.getElementById("campoLocalObra").addEventListener("change", () => {
+    coletarImpostosDoFormulario();
+    atualizarResumoImpostos();
+  });
+  document.getElementById("campoMesImpostosOrc").addEventListener("change", (e) => {
+    propostaEmEdicao.impostos = impostosPadraoParaProposta(e.target.value);
+    preencherCamposImpostos();
+    atualizarResumoImpostos();
+  });
+  ["campoInssOrc", "campoIssOrc", "campoMatOrc"].forEach((idCampo) => {
+    document.getElementById(idCampo).addEventListener("input", () => {
+      coletarImpostosDoFormulario();
+      atualizarResumoImpostos();
+    });
+  });
+  document.getElementById("btnEditarImpostosMesForm").addEventListener("click", () => {
+    abrirModalImpostosMes(propostaEmEdicao && propostaEmEdicao.impostos ? propostaEmEdicao.impostos.mesRef : null);
+  });
+
   // Auto-save: qualquer um destes campos, ao perder o foco, salva o
   // formulário inteiro como rascunho no servidor — sem precisar clicar
   // em nada. Itens de mão de obra/materiais já disparam o próprio save
@@ -252,6 +308,7 @@ function montarModalFormularioProposta() {
   const camposComAutoSave = [
     "campoNumeroOrcamento", "campoCliente", "campoTelefone", "campoLocal",
     "campoServico", "campoObservacao", "campoFormaPagamento", "campoPlanejamento", "campoValidade",
+    "campoLocalObra", "campoMesImpostosOrc", "campoInssOrc", "campoIssOrc", "campoMatOrc",
   ];
   camposComAutoSave.forEach((idCampo) => {
     const el = document.getElementById(idCampo);
@@ -398,7 +455,15 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
   // Carrega os catálogos de material/serviço da nuvem antes de montar
   // os checklists e o autocomplete — abre o modal já, e preenche essa
   // parte assim que a resposta chegar (evita travar a tela esperando).
-  await carregarCatalogosDeItens();
+  await Promise.all([carregarCatalogosDeItens(), carregarTabelaImpostosMes()]);
+
+  // Orçamento novo (ou antigo, de antes dos impostos existirem): pega
+  // as % padrão do mês em que foi criado.
+  if (!propostaEmEdicao.localObra) propostaEmEdicao.localObra = "curitiba";
+  if (!propostaEmEdicao.impostos) {
+    propostaEmEdicao.impostos = impostosPadraoParaProposta(chaveMesImpostosOrc(propostaEmEdicao.criadoEm));
+  }
+  preencherCamposImpostos();
 
   renderChecklistMateriaisEstoque();
   atualizarDatalistServicos();
@@ -445,6 +510,7 @@ function coletarCamposBasicosDoFormulario() {
   propostaEmEdicao.formaPagamento = (campo("campoFormaPagamento")?.value || "").trim();
   propostaEmEdicao.planejamentoDias = campo("campoPlanejamento")?.value || "";
   propostaEmEdicao.validadeDias = campo("campoValidade")?.value || "";
+  coletarImpostosDoFormulario();
 }
 
 // Só vale a pena salvar (e criar) um rascunho se o usuário já digitou
@@ -562,7 +628,9 @@ function renderTabelaMaoDeObra() {
       </td>
       <td><button type="button" class="btn-remover-item" data-mo-remover="${index}">&times;</button></td>
     `;
+    tr.className = "linha-item-principal";
     tbody.appendChild(tr);
+    tbody.appendChild(criarLinhaObservacoesItem(item, index, "mo"));
   });
 
   tbody.querySelectorAll("[data-mo-index]").forEach((input) => {
@@ -614,7 +682,8 @@ function renderTabelaMaoDeObra() {
 
     // Ao sair do campo valorFinal, rerenderiza para habilitar/desabilitar os outros
     if (input.dataset.moCampo === "valorFinal") {
-      input.addEventListener("blur", async () => {
+      input.addEventListener("blur", async (ev) => {
+        const destino = ev.relatedTarget;
         const idx = parseInt(input.dataset.moIndex, 10);
         const item = propostaEmEdicao.itensMaoDeObra[idx];
         if (item.servicoId) {
@@ -623,6 +692,7 @@ function renderTabelaMaoDeObra() {
         }
         renderTabelaMaoDeObra();
         atualizarTotaisFormulario();
+        restaurarFocoNaTabela(destino, "tabelaMaoDeObra", "mo");
       });
     }
   });
@@ -637,7 +707,7 @@ function renderTabelaMaoDeObra() {
 }
 
 function adicionarLinhaMaoDeObra() {
-  propostaEmEdicao.itensMaoDeObra.push({ qtd: null, unid: "UND", descricao: "", valorUnit: null, valorFinal: null, servicoId: null });
+  propostaEmEdicao.itensMaoDeObra.push({ qtd: null, unid: "UND", descricao: "", valorUnit: null, valorFinal: null, servicoId: null, obsCliente: "", obsInterna: "" });
   renderTabelaMaoDeObra();
   atualizarTotaisFormulario();
 }
@@ -672,6 +742,7 @@ function renderChecklistMateriaisEstoque() {
         propostaEmEdicao.itensMateriais.push({
           qtd: 1, unid: material.unidade || "un", nome: material.nome,
           valorUnit: material.valor, valorFinal: null, materialId: material.id,
+          obsCliente: "", obsInterna: "",
         });
       } else {
         propostaEmEdicao.itensMateriais = propostaEmEdicao.itensMateriais.filter(
@@ -731,7 +802,9 @@ function renderTabelaMateriais() {
       </td>
       <td><button type="button" class="btn-remover-item" data-mat-remover="${index}">&times;</button></td>
     `;
+    tr.className = "linha-item-principal";
     tbody.appendChild(tr);
+    tbody.appendChild(criarLinhaObservacoesItem(item, index, "mat"));
   });
 
   tbody.querySelectorAll("[data-mat-index]").forEach((input) => {
@@ -780,7 +853,8 @@ function renderTabelaMateriais() {
     }
 
     if (input.dataset.matCampo === "valorFinal") {
-      input.addEventListener("blur", async () => {
+      input.addEventListener("blur", async (ev) => {
+        const destino = ev.relatedTarget;
         const idx = parseInt(input.dataset.matIndex, 10);
         const item = propostaEmEdicao.itensMateriais[idx];
         if (item.materialId) {
@@ -789,6 +863,7 @@ function renderTabelaMateriais() {
         }
         renderTabelaMateriais();
         atualizarTotaisFormulario();
+        restaurarFocoNaTabela(destino, "tabelaMateriais", "mat");
       });
     }
   });
@@ -804,7 +879,7 @@ function renderTabelaMateriais() {
 }
 
 function adicionarLinhaMaterial() {
-  propostaEmEdicao.itensMateriais.push({ qtd: null, unid: "UND", nome: "", valorUnit: null, valorFinal: null, materialId: null });
+  propostaEmEdicao.itensMateriais.push({ qtd: null, unid: "UND", nome: "", valorUnit: null, valorFinal: null, materialId: null, obsCliente: "", obsInterna: "" });
   renderTabelaMateriais();
   atualizarTotaisFormulario();
 }
@@ -841,6 +916,8 @@ function atualizarTotaisFormulario() {
   // Salva os ajustes na proposta para serem gravados
   propostaEmEdicao.ajusteMaoDeObra = ajusteMO;
   propostaEmEdicao.ajusteMateriais = ajusteMat;
+
+  atualizarResumoImpostos();
 }
 
 // ====================================================
@@ -861,6 +938,7 @@ async function salvarFormularioProposta() {
   propostaEmEdicao.formaPagamento = document.getElementById("campoFormaPagamento").value.trim();
   propostaEmEdicao.planejamentoDias = document.getElementById("campoPlanejamento").value;
   propostaEmEdicao.validadeDias = document.getElementById("campoValidade").value;
+  coletarImpostosDoFormulario();
 
   if (!propostaEmEdicao.cliente) {
     marcarCampoComErro(campoCliente, "Informe o nome do cliente.");
@@ -923,3 +1001,197 @@ async function salvarFormularioProposta() {
     botaoSalvar.textContent = textoOriginalBotao;
   }
 }
+
+// ====================================================
+// OBSERVAÇÕES POR ITEM (cliente / interna)
+// ====================================================
+// Linha extra logo abaixo de cada item. Usa os mesmos atributos
+// data-mo-campo / data-mat-campo dos outros campos, então o listener
+// "input" que já existe na tabela grava o texto no item sozinho, e o
+// "focusout" da tabela já salva o rascunho.
+function criarLinhaObservacoesItem(item, index, prefixo) {
+  const tr = document.createElement("tr");
+  tr.className = "linha-obs-item";
+  tr.innerHTML = `
+    <td colspan="6">
+      <div class="obs-item-grid">
+        <label class="obs-cliente">Observação para o cliente
+          <textarea rows="1" placeholder="Aparece no PDF do cliente"
+            data-${prefixo}-campo="obsCliente" data-${prefixo}-index="${index}">${escaparHtml(item.obsCliente || "")}</textarea>
+        </label>
+        <label class="obs-interna"><span>Observação interna <span class="tag-interno">só empresa</span></span>
+          <textarea rows="1" placeholder="Só aparece no PDF interno"
+            data-${prefixo}-campo="obsInterna" data-${prefixo}-index="${index}">${escaparHtml(item.obsInterna || "")}</textarea>
+        </label>
+      </div>
+    </td>
+  `;
+  return tr;
+}
+
+// Ao sair do "Valor Final" a tabela é redesenhada — sem isto, o campo
+// em que a pessoa acabou de clicar (ex.: a observação logo abaixo)
+// sumia e ela tinha que clicar de novo.
+function restaurarFocoNaTabela(destino, idTabela, prefixo) {
+  if (!destino || !destino.dataset) return;
+  const campo = destino.dataset[prefixo + "Campo"];
+  const indice = destino.dataset[prefixo + "Index"];
+  if (!campo || indice === undefined) return;
+  const novo = document.querySelector(`#${idTabela} [data-${prefixo}-campo="${campo}"][data-${prefixo}-index="${indice}"]`);
+  if (novo && !novo.disabled) novo.focus();
+}
+
+// ====================================================
+// IMPOSTOS — formulário
+// ====================================================
+function preencherCamposImpostos() {
+  if (!propostaEmEdicao) return;
+  const imp = propostaEmEdicao.impostos || impostosPadraoParaProposta(chaveMesImpostosOrc());
+  document.getElementById("campoLocalObra").value = propostaEmEdicao.localObra || "curitiba";
+  document.getElementById("campoMesImpostosOrc").innerHTML = opcoesMesesImpostosHtml(imp.mesRef);
+  document.getElementById("campoInssOrc").value = imp.inss || "";
+  document.getElementById("campoIssOrc").value = imp.iss || "";
+  document.getElementById("campoMatOrc").value = imp.material || "";
+}
+
+function coletarImpostosDoFormulario() {
+  if (!propostaEmEdicao) return;
+  const el = (id) => document.getElementById(id);
+  if (!el("campoLocalObra")) return;
+  propostaEmEdicao.localObra = el("campoLocalObra").value || "curitiba";
+  propostaEmEdicao.impostos = {
+    mesRef: el("campoMesImpostosOrc").value || chaveMesImpostosOrc(),
+    inss: parseFloat(el("campoInssOrc").value) || 0,
+    iss: parseFloat(el("campoIssOrc").value) || 0,
+    material: parseFloat(el("campoMatOrc").value) || 0,
+  };
+}
+
+function atualizarResumoImpostos() {
+  const tbody = document.getElementById("resumoImpostosOrc");
+  if (!tbody || !propostaEmEdicao) return;
+  const imp = calcularImpostosProposta(propostaEmEdicao);
+
+  // Em Curitiba o ISS fica apagado (o valor digitado é mantido, só não conta)
+  const rotuloIss = document.getElementById("rotuloIssOrc");
+  if (rotuloIss) rotuloIss.classList.toggle("iss-inativo", imp.emCuritiba);
+
+  const pct = (v) => `${String(v).replace(".", ",")}%`;
+  const linha = (rotulo, detalhe, valor, classe) => `
+    <tr class="${classe || ""}">
+      <td>${rotulo}</td>
+      <td class="detalhe">${detalhe}</td>
+      <td class="valor">${valor}</td>
+    </tr>`;
+
+  tbody.innerHTML =
+    linha("INSS", `${pct(imp.inssPerc)} de R$ ${formatarMoeda(imp.baseMO)} (M.O.)`, `- R$ ${formatarMoeda(imp.valorInss)}`) +
+    linha("ISS", imp.emCuritiba ? "Não entra (obra em Curitiba)" : `${pct(imp.issPerc)} de R$ ${formatarMoeda(imp.baseMO)} (M.O.)`, `- R$ ${formatarMoeda(imp.valorIss)}`) +
+    linha("Material", `${pct(imp.matPerc)} de R$ ${formatarMoeda(imp.baseMat)} (Materiais)`, `- R$ ${formatarMoeda(imp.valorMat)}`) +
+    linha("Total de impostos", "", `- R$ ${formatarMoeda(imp.total)}`, "linha-total-impostos") +
+    linha("Valor líquido", "Total geral − impostos", `R$ ${formatarMoeda(imp.liquido)}`, "linha-liquido");
+}
+
+// ====================================================
+// IMPOSTOS DO MÊS — tabela padrão (mesma da Comissão)
+// ====================================================
+function montarModalImpostosMes() {
+  if (document.getElementById("modalImpostosMes")) return;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.id = "modalImpostosMes";
+  overlay.style.zIndex = "1100"; // pode abrir por cima do formulário do orçamento
+  overlay.innerHTML = `
+    <div class="modal-caixa-grande" style="max-width:460px;">
+      <div class="modal-cabecalho">
+        <h2>Impostos do mês</h2>
+        <button type="button" class="modal-fechar" id="fecharModalImpostosMes">&times;</button>
+      </div>
+      <p class="texto-ajuda">
+        % padrão de cada mês. Todo orçamento novo copia as % do mês dele — e dá para ajustar
+        dentro do orçamento. É a mesma tabela usada na tela de Comissão.
+      </p>
+      <div class="form-secao">
+        <div class="form-grid">
+          <label class="campo-largura-total">Mês
+            <select id="campoMesTabelaImpostos"></select>
+          </label>
+          <label>INSS %
+            <input type="number" id="campoInssTabela" min="0" max="100" step="0.01" placeholder="0" />
+          </label>
+          <label>ISS %
+            <input type="number" id="campoIssTabela" min="0" max="100" step="0.01" placeholder="0" />
+          </label>
+          <label class="campo-largura-total">Imposto de material %
+            <input type="number" id="campoMatTabela" min="0" max="100" step="0.01" placeholder="0" />
+          </label>
+        </div>
+      </div>
+      <div class="modal-rodape">
+        <button type="button" class="btn-secundario" id="btnCancelarImpostosMes">Cancelar</button>
+        <button type="button" class="btn-laranja" id="btnSalvarImpostosMes">Salvar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const fechar = () => overlay.classList.remove("active");
+  document.getElementById("fecharModalImpostosMes").addEventListener("click", fechar);
+  document.getElementById("btnCancelarImpostosMes").addEventListener("click", fechar);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) fechar(); });
+  document.getElementById("campoMesTabelaImpostos").addEventListener("change", preencherCamposTabelaImpostos);
+  document.getElementById("btnSalvarImpostosMes").addEventListener("click", salvarTabelaImpostosMes);
+}
+
+function preencherCamposTabelaImpostos() {
+  const chave = document.getElementById("campoMesTabelaImpostos").value;
+  const taxas = taxasPadraoDoMesOrc(chave);
+  document.getElementById("campoInssTabela").value = taxas.inss || "";
+  document.getElementById("campoIssTabela").value = taxas.iss || "";
+  document.getElementById("campoMatTabela").value = taxas.material || "";
+}
+
+async function abrirModalImpostosMes(chaveInicial) {
+  montarModalImpostosMes();
+  await carregarTabelaImpostosMes();
+  const chave = chaveInicial || chaveMesImpostosOrc();
+  document.getElementById("campoMesTabelaImpostos").innerHTML = opcoesMesesImpostosHtml(chave);
+  preencherCamposTabelaImpostos();
+  document.getElementById("modalImpostosMes").classList.add("active");
+}
+
+async function salvarTabelaImpostosMes() {
+  const botao = document.getElementById("btnSalvarImpostosMes");
+  const chave = document.getElementById("campoMesTabelaImpostos").value;
+  const novas = {
+    inss: parseFloat(document.getElementById("campoInssTabela").value) || 0,
+    iss: parseFloat(document.getElementById("campoIssTabela").value) || 0,
+    material: parseFloat(document.getElementById("campoMatTabela").value) || 0,
+  };
+
+  botao.disabled = true;
+  try {
+    // Relê antes de gravar: se alguém salvou outro mês agora há pouco
+    // (aqui ou na Comissão), não apaga o que a outra pessoa fez.
+    const tabela = await carregarTabelaImpostosMes();
+    tabela[chave] = { ...(tabela[chave] || {}), ...novas };
+    const resp = await apiDataSet(CHAVE_TABELA_IMPOSTOS_MES, tabela);
+    if (!resp || !resp.ok) {
+      mostrarToast((resp && resp.erro) || "Não foi possível salvar os impostos do mês.", "erro");
+      return;
+    }
+    tabelaImpostosMesCache = tabela;
+    mostrarToast(`Impostos de ${rotuloMesImpostosOrc(chave)} salvos.`);
+    document.getElementById("modalImpostosMes").classList.remove("active");
+
+    // Se o orçamento aberto usa esse mês, já aplica as % novas nele.
+    if (propostaEmEdicao && propostaEmEdicao.impostos && propostaEmEdicao.impostos.mesRef === chave) {
+      propostaEmEdicao.impostos = impostosPadraoParaProposta(chave);
+      preencherCamposImpostos();
+      atualizarResumoImpostos();
+    }
+  } finally {
+    botao.disabled = false;
+  }
+}
+
