@@ -75,6 +75,15 @@
     -webkit-overflow-scrolling: touch;
     white-space: nowrap;
   }
+  /* EXCEÇÃO: a grade do calendário (FullCalendar) também é feita de
+     tabelas — ela precisa continuar sendo tabela normal, senão os dias
+     ficam embaralhados e não dá pra tocar num dia pra agendar. */
+  .fc table {
+    display: table !important;
+    width: 100% !important;
+    overflow: visible !important;
+    white-space: normal !important;
+  }
   .itens-tabela textarea { white-space: normal; min-width: 240px; }
   /* Tabela de itens do orçamento: cada coluna com um mínimo legível
      (a tabela rola de lado com o dedo). */
@@ -82,7 +91,7 @@
   .itens-tabela td input, .itens-tabela td select { min-width: 76px; }
 
   /* Janelas (modais) ocupam quase a tela toda e rolam por dentro */
-  .modal-caixa, .modal-caixa-grande, .modal-content, .modal-conteudo, .modal-box, .modal {
+  .modal-caixa, .modal-caixa-grande, .modal-content, .modal-conteudo, .modal-box {
     width: 96vw !important;
     max-width: 96vw !important;
     max-height: 92vh;

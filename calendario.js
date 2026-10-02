@@ -6,9 +6,26 @@
 let calendar;
 let eventoSelecionado = null;
 
+// Mostra "Conectado como fulano@gmail.com" + Trocar conta/Desconectar,
+// ou só o botão "Conectar com Google".
 function showLoginButton(show) {
-  document.getElementById("btnLogin").style.display = show ? "block" : "none";
-  document.getElementById("btnLogout").style.display = show ? "none" : "block";
+  const conectado = !show;
+  document.getElementById("btnLogin").style.display = conectado ? "none" : "inline-block";
+  document.getElementById("btnTrocarConta").style.display = conectado ? "inline-block" : "none";
+  document.getElementById("btnLogout").style.display = conectado ? "inline-block" : "none";
+  document.getElementById("btnNovoEvento").style.display = conectado ? "block" : "none";
+  const status = document.getElementById("statusGoogle");
+  if (conectado) {
+    status.innerHTML = `Conectado como <b>${escaparHtml(getGoogleEmailSalvo() || "sua conta Google")}</b>`;
+  } else {
+    const aviso = (typeof googleAvisoConexao !== "undefined" && googleAvisoConexao) ? `<br><small>${escaparHtml(googleAvisoConexao)}</small>` : "";
+    status.innerHTML = `Conecte seu Gmail uma vez — depois fica conectado.${aviso}`;
+  }
+}
+
+// Celular: tela estreita usa uma barra de botões menor e a opção "Lista"
+function ehTelaPequena() {
+  return window.matchMedia("(max-width: 768px)").matches;
 }
 
 function mostrarAvisoErroGoogle() {
@@ -39,36 +56,45 @@ function iniciarTelaCalendario() {
     listarEventos();
   }
 
-  // Botão de login interativo (abre popup do Google)
-  const btnLogin = document.getElementById("btnLogin");
-  btnLogin.onclick = () => {
-    googleLoginInterativo(() => {
-      showLoginButton(false);
-      listarEventos();
-    });
-  };
+  // Conectar e Trocar conta abrem a janela do Google (só nesses cliques)
+  const aposConectar = () => { showLoginButton(false); listarEventos(); };
+  document.getElementById("btnLogin").onclick = () => googleLoginInterativo(aposConectar);
+  document.getElementById("btnTrocarConta").onclick = () => googleLoginInterativo(aposConectar);
 
-  // Botão de logout
-  const btnLogout = document.getElementById("btnLogout");
-  btnLogout.onclick = () => {
-    googleLogout(() => {
+  document.getElementById("btnLogout").onclick = async () => {
+    if (!confirm("Desconectar o Gmail do calendário?")) return;
+    await googleLogout(() => {
       showLoginButton(true);
       if (calendar) calendar.removeAllEvents();
     });
   };
 
+  // Botão "+ Novo evento" — no celular é mais fácil que tocar no dia
+  document.getElementById("btnNovoEvento").onclick = () => {
+    const hoje = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    abrirModalNovo(`${hoje.getFullYear()}-${pad(hoje.getMonth() + 1)}-${pad(hoje.getDate())}`);
+  };
+
   // Inicializa o calendário visual (uma única vez)
   if (!calendar) {
     const calendarEl = document.getElementById("calendar");
+    const celular = ehTelaPequena();
     calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: "dayGridMonth",
       locale: "pt-br",
-      headerToolbar: {
-        left: "prev,next today",
-        center: "title",
-        right: "dayGridMonth,timeGridWeek,timeGridDay",
+      height: "auto",
+      headerToolbar: celular
+        ? { left: "prev,next", center: "title", right: "today" }
+        : { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listMonth" },
+      footerToolbar: celular ? { center: "dayGridMonth,listMonth" } : false,
+      buttonText: { today: "Hoje", month: "Mês", week: "Semana", day: "Dia", list: "Lista" },
+      dayMaxEventRows: celular ? 2 : false,
+      // Tocar num dia abre "Novo evento" já com a data
+      dateClick: (info) => {
+        if (!isGoogleAuthenticated()) { alert("Conecte seu Gmail primeiro (botão acima)."); return; }
+        abrirModalNovo(info.dateStr.slice(0, 10));
       },
-      dateClick: (info) => abrirModalNovo(info.dateStr),
       eventClick: (info) => abrirModalEditar(info.event),
       events: [],
     });
@@ -121,6 +147,14 @@ function listarEventos() {
     .catch((err) => {
       console.error("Erro ao buscar eventos:", err);
     });
+}
+
+// Explica o erro do Google em português, em vez de só "Erro".
+function mensagemErroGoogle(err) {
+  const status = err && (err.status || (err.result && err.result.error && err.result.error.code));
+  if (status === 401) return " A conexão com o Google expirou — recarregue a página ou use \"Trocar conta\".";
+  if (status === 403) return " Essa conta Google não tem permissão na agenda.";
+  return "";
 }
 
 function abrirModalNovo(data) {
@@ -190,7 +224,7 @@ function salvarEvento() {
     })
     .catch((err) => {
       console.error("Erro ao criar evento:", err);
-      alert("Erro ao criar evento.");
+      alert("Erro ao criar evento." + mensagemErroGoogle(err));
     });
 }
 
@@ -225,7 +259,7 @@ function editarEvento() {
     })
     .catch((err) => {
       console.error("Erro ao editar evento:", err);
-      alert("Erro ao editar evento.");
+      alert("Erro ao editar evento." + mensagemErroGoogle(err));
     });
 }
 
@@ -243,6 +277,6 @@ function excluirEvento() {
     })
     .catch((err) => {
       console.error("Erro ao excluir evento:", err);
-      alert("Erro ao excluir evento.");
+      alert("Erro ao excluir evento." + mensagemErroGoogle(err));
     });
 }

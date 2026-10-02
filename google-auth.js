@@ -1,8 +1,20 @@
 // ============================================================
 // google-auth.js
-// Autenticação centralizada com o Google Calendar.
-// Usado tanto em home.html quanto em calendario.html, para que
-// o login feito em uma página valha também para a outra.
+// Conexão com o Google Agenda — usada em home.html e calendario.html.
+//
+// COMO FUNCIONA AGORA (sem piscar a tela):
+// A pessoa conecta o Gmail UMA vez, na tela do Calendário. O Google
+// devolve uma autorização permanente, que fica guardada no Worker
+// (servidor), ligada ao login da pessoa no EnJob. Depois disso, cada
+// página só pede ao Worker uma "chave de acesso" nova — sem abrir
+// janela do Google, sem piscar, inclusive no celular.
+//
+// ANTES: toda vez que a tela inicial abria, o site abria uma janela
+// do Google escondida pra renovar o acesso (era isso que piscava). No
+// celular essa janela costumava ser bloqueada, por isso os eventos de
+// hoje não apareciam.
+//
+// Trocar de Gmail: tela do Calendário → "Trocar conta".
 // ============================================================
 
 const GOOGLE_CLIENT_ID = "866300043173-9f6gpjb65lb1np1hi3sf1n7531uohqhb.apps.googleusercontent.com";
@@ -10,52 +22,22 @@ const GOOGLE_API_KEY = "AIzaSyC4oQY27c_q2RVx5o4xEX3IyVlAAJP91eM";
 const GOOGLE_DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
 const GOOGLE_SCOPES = "https://www.googleapis.com/auth/calendar openid email profile";
 
-let googleTokenClient;
 let googleTokenExpiresAt = 0;
 let googleApiReady = false;
-let googleApiIniciando = false; // evita inicializar o gapi mais de uma vez
-let googleApiErroInicializacao = null; // guarda o motivo, se a inicialização falhar
+let googleApiIniciando = false;
+let googleApiErroInicializacao = null;
+let googleEmailConectado = "";
+let googleAvisoConexao = ""; // ex.: "a conexão expirou, conecte de novo"
 
-// ============================================================
-// Esconde visualmente qualquer iframe/elemento que o Google
-// Identity Services injete na página durante a renovação
-// silenciosa do token. O processo continua funcionando (o
-// script roda normalmente), só não aparece mais o "flash"
-// de uma janelinha branca na tela.
-// ============================================================
-(function injetarCssParaEsconderIframeGoogle() {
-  if (document.getElementById("google-auth-hide-style")) return;
-  const style = document.createElement("style");
-  style.id = "google-auth-hide-style";
-  style.textContent = `
-    iframe[src*="accounts.google.com"] {
-      position: absolute !important;
-      width: 1px !important;
-      height: 1px !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
-      top: -9999px !important;
-      left: -9999px !important;
-      border: none !important;
-    }
-  `;
-  document.head.appendChild(style);
-})();
+// Limpa as marcações do jeito antigo (não são mais usadas)
+localStorage.removeItem("googleLogado");
 
-// Lista de funções que querem ser avisadas quando o login terminar
-// (cada página registra a sua própria função de "callback")
 const onGoogleAuthReadyCallbacks = [];
-// Funções que querem ser avisadas SEMPRE que o estado de autenticação
-// mudar (inclusive depois da primeira vez, ex: token atrasado chegando
-// depois do timeout de fallback, ou logout).
 const onGoogleAuthChangeCallbacks = [];
 
 function onGoogleAuthReady(callback) {
-  if (googleApiReady) {
-    callback();
-  } else {
-    onGoogleAuthReadyCallbacks.push(callback);
-  }
+  if (googleApiReady) callback();
+  else onGoogleAuthReadyCallbacks.push(callback);
 }
 
 function onGoogleAuthChange(callback) {
@@ -66,7 +48,6 @@ function onGoogleAuthChange(callback) {
 function notifyGoogleAuthReady() {
   const jaEstavaPronto = googleApiReady;
   googleApiReady = true;
-
   if (!jaEstavaPronto) {
     onGoogleAuthReadyCallbacks.forEach((cb) => {
       try { cb(); } catch (err) { console.error("Erro num callback de auth:", err); }
@@ -79,102 +60,56 @@ function notifyGoogleAuthReady() {
   }
 }
 
-// Guarda no localStorage que o usuário já autorizou o app antes,
-// e qual e-mail foi usado — assim a renovação silenciosa sabe
-// exatamente qual conta usar, sem precisar mostrar a tela de
-// "Escolha uma conta" quando há várias contas Google no navegador.
-function googleLoginLocal(email) {
-  localStorage.setItem("googleLogado", "true");
-  if (email) localStorage.setItem("googleEmail", email);
+function getGoogleEmailSalvo() {
+  return googleEmailConectado || localStorage.getItem("googleEmail") || "";
 }
-function googleLogoutLocal() {
-  localStorage.removeItem("googleLogado");
+
+function aplicarTokenGoogle(resposta) {
+  gapi.client.setToken({ access_token: resposta.accessToken });
+  googleTokenExpiresAt = Date.now() + (resposta.expiresIn || 3000) * 1000;
+  googleEmailConectado = resposta.email || "";
+  if (googleEmailConectado) localStorage.setItem("googleEmail", googleEmailConectado);
+  googleAvisoConexao = "";
+}
+
+function limparTokenGoogle() {
+  if (window.gapi && gapi.client) gapi.client.setToken(null);
+  googleTokenExpiresAt = 0;
+  googleEmailConectado = "";
   localStorage.removeItem("googleEmail");
 }
-function isGoogleLoggedLocal() {
-  return localStorage.getItem("googleLogado") === "true";
-}
-function getGoogleEmailSalvo() {
-  return localStorage.getItem("googleEmail") || "";
-}
 
-async function descobrirEmailDoToken(accessToken) {
+// Pede ao Worker uma chave de acesso nova. Nunca abre janela.
+async function buscarTokenGoogleNoServidor() {
   try {
-    const resp = await fetch(
-      "https://www.googleapis.com/oauth2/v3/userinfo",
-      { headers: { Authorization: "Bearer " + accessToken } }
-    );
-    const info = await resp.json();
-    return info.email || "";
-  } catch (err) {
-    console.warn("[google-auth] Não foi possível obter o e-mail da conta:", err);
-    return "";
+    const resp = await chamarWorker("google-token");
+    if (resp.ok && resp.conectado) {
+      aplicarTokenGoogle(resp);
+      return true;
+    }
+    limparTokenGoogle();
+    if (resp.ok && resp.motivo) googleAvisoConexao = resp.motivo;
+    if (!resp.ok) googleAvisoConexao = resp.erro || "";
+    return false;
+  } catch (e) {
+    console.warn("[google-auth] Não foi possível falar com o servidor:", e);
+    return false;
   }
 }
 
-// Chamado pelo onload do <script src="https://apis.google.com/js/api.js">
+// Chamado quando o script do Google (api.js) termina de carregar.
 function initGoogleAPI() {
-  if (googleApiIniciando || googleApiReady) {
-    return;
-  }
+  if (googleApiIniciando || googleApiReady) return;
   googleApiIniciando = true;
 
   gapi.load("client", () => {
     gapi.client
-      .init({
-        apiKey: GOOGLE_API_KEY,
-        discoveryDocs: GOOGLE_DISCOVERY_DOCS,
-      })
-      .then(() => {
-        googleTokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: GOOGLE_SCOPES,
-          callback: (tokenResponse) => {
-            if (tokenResponse.error) {
-              googleLogoutLocal();
-              notifyGoogleAuthReady();
-              return;
-            }
-            gapi.client.setToken(tokenResponse);
-            googleTokenExpiresAt = Date.now() + tokenResponse.expires_in * 1000;
-
-            descobrirEmailDoToken(tokenResponse.access_token).then((email) => {
-              googleLoginLocal(email);
-            });
-
-            notifyGoogleAuthReady();
-          },
-        });
-
-        // Se o usuário já autorizou antes, tenta renovar sem mostrar popup.
-        // Isso é o que faz a sessão "continuar logada" entre acessos.
-        if (isGoogleLoggedLocal()) {
-          const emailSalvo = getGoogleEmailSalvo();
-          googleTokenClient.requestAccessToken({
-            prompt: "",
-            hint: emailSalvo || undefined,
-          });
-
-          // Fallback: se o callback do Google não responder em 8 segundos
-          // (ex: bloqueado por cookies de terceiros), libera a tela mesmo
-          // assim, mostrando o botão de login em vez de travar esperando.
-          setTimeout(() => {
-            if (!googleApiReady) {
-              notifyGoogleAuthReady();
-            }
-          }, 8000);
-        } else {
-          notifyGoogleAuthReady();
-        }
+      .init({ apiKey: GOOGLE_API_KEY, discoveryDocs: GOOGLE_DISCOVERY_DOCS })
+      .then(async () => {
+        await buscarTokenGoogleNoServidor();
+        notifyGoogleAuthReady();
       })
       .catch((erro) => {
-        // ANTES: se essa chamada falhasse (chave bloqueada por restrição
-        // de domínio ainda propagando, instabilidade do Google, sem
-        // internet, etc.), a Promise rejeitava e NADA acontecia — a tela
-        // ficava travada pra sempre, sem erro visível, parecendo que o
-        // sistema simplesmente "não fazia nada". Agora, qualquer falha
-        // aqui libera a tela (mostrando o botão de login normal, sem
-        // sessão restaurada) e avisa no console qual foi o motivo real.
         console.error("[google-auth] Falha ao inicializar a Google Calendar API:", erro);
         googleApiErroInicializacao = erro;
         googleApiIniciando = false;
@@ -183,40 +118,53 @@ function initGoogleAPI() {
   });
 }
 
-// Login interativo (abre popup) — chamar a partir de um clique de botão
+// Conectar / trocar de conta — abre a janela do Google UMA vez.
+// Precisa ser chamado direto de um clique de botão (senão o celular
+// bloqueia a janela).
 function googleLoginInterativo(onDone) {
-  if (!googleTokenClient) return;
-  googleTokenClient.callback = (tokenResponse) => {
-    if (tokenResponse.error) {
-      return;
-    }
-    gapi.client.setToken(tokenResponse);
-    googleTokenExpiresAt = Date.now() + tokenResponse.expires_in * 1000;
-    descobrirEmailDoToken(tokenResponse.access_token).then((email) => {
-      googleLoginLocal(email);
-    });
-    if (onDone) onDone();
-  };
-  googleTokenClient.requestAccessToken();
+  if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    alert("O Google ainda está carregando. Espere alguns segundos e tente de novo.");
+    return;
+  }
+  const cliente = google.accounts.oauth2.initCodeClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GOOGLE_SCOPES,
+    ux_mode: "popup",
+    select_account: true, // sempre deixa escolher qual Gmail usar
+    callback: async (resposta) => {
+      if (resposta.error) return; // pessoa fechou a janela ou não autorizou
+      const r = await chamarWorker("google-conectar", { method: "POST", body: { code: resposta.code } });
+      if (!r.ok) {
+        alert(r.erro || "Não foi possível conectar com o Google.");
+        return;
+      }
+      aplicarTokenGoogle(r);
+      notifyGoogleAuthReady();
+      if (onDone) onDone();
+    },
+    error_callback: (erro) => {
+      if (erro && erro.type === "popup_failed_to_open") {
+        alert("O navegador bloqueou a janela do Google. Libere janelas pop-up para este site e tente de novo.");
+      }
+    },
+  });
+  cliente.requestCode();
 }
 
-function googleLogout(onDone) {
-  googleLogoutLocal();
-  gapi.client.setToken(null);
+async function googleLogout(onDone) {
+  await chamarWorker("google-desconectar", { method: "POST" });
+  limparTokenGoogle();
+  notifyGoogleAuthReady();
   if (onDone) onDone();
 }
 
 function isGoogleAuthenticated() {
-  return !!(gapi.client && gapi.client.getToken());
+  return !!(window.gapi && gapi.client && gapi.client.getToken && gapi.client.getToken());
 }
 
-// Renova o token automaticamente antes de expirar (a cada 5 min, verifica)
-function renovarGoogleTokenSeNecessario() {
-  if (!googleTokenClient || !isGoogleLoggedLocal()) return;
-  const agora = Date.now();
-  if (googleTokenExpiresAt - agora < 5 * 60 * 1000) {
-    const emailSalvo = getGoogleEmailSalvo();
-    googleTokenClient.requestAccessToken({ prompt: "", hint: emailSalvo || undefined });
-  }
-}
-setInterval(renovarGoogleTokenSeNecessario, 5 * 60 * 1000);
+// A chave de acesso do Google vale 1 hora. Com a página aberta por
+// muito tempo, pede uma nova ao Worker antes de vencer (sem janela).
+setInterval(() => {
+  if (!googleEmailConectado) return;
+  if (googleTokenExpiresAt - Date.now() < 5 * 60 * 1000) buscarTokenGoogleNoServidor();
+}, 4 * 60 * 1000);
