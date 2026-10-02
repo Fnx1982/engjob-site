@@ -240,3 +240,92 @@ nav.menu.expanded ~ .dashboard {
 .menu::-webkit-scrollbar { width: 4px; }
 .menu::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
 .menu::-webkit-scrollbar-thumb:hover { background: #eb991c; }
+
+/* ==========================================================================
+   CELULAR — o menu lateral vira uma barra no topo com botão ☰.
+   Tocando no botão o menu abre por cima da tela inteira; tocando num
+   item, vai pra página. Os cards descem um embaixo do outro.
+   ========================================================================== */
+.btn-menu-mobile { display: none; }
+
+/* Etiqueta nas telas de nota fiscal travadas (em desenvolvimento) */
+.tag-em-breve {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #eb991c;
+  border: 1px solid rgba(235, 153, 28, 0.5);
+  border-radius: 10px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}
+
+@media (max-width: 768px) {
+  .menu,
+  .menu:hover {
+    width: 100%;
+    height: 64px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .menu > a { order: 0; }
+  .menu .logo {
+    width: 46px;
+    margin: 9px auto;
+  }
+  .btn-menu-mobile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 10px;
+    background: #1f1f1f;
+    color: #eb991c;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .btn-menu-mobile .bx { font-size: 28px; }
+
+  /* Menu aberto: tela cheia, com rolagem */
+  nav.menu.aberto-mobile {
+    height: 100vh;
+    overflow-y: auto;
+  }
+  nav.menu.aberto-mobile ul { padding-bottom: 30px; }
+
+  /* No celular os textos do menu aparecem sempre (não há "passar o mouse") */
+  .menu .span-menu,
+  .menu .submenu-arrow { opacity: 1; }
+  .menu li a { padding: 13px 18px; font-size: 17px; }
+
+  .menu:hover ~ .dashboard,
+  nav.menu.expanded ~ .dashboard,
+  .dashboard {
+    margin-left: 0;
+    padding: 80px 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* Cards fixos no canto viram blocos normais, um embaixo do outro */
+  .dashboard .card-montante,
+  .menu:hover ~ .dashboard .card-montante {
+    position: static;
+    width: 100%;
+  }
+  .calendar-box {
+    position: static;
+    width: auto;
+    margin: 0 14px 20px;
+  }
+
+  /* Sino de notificações alinhado dentro da barra do topo */
+  #sinoNotificacao { top: 10px !important; right: 12px !important; }
+}

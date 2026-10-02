@@ -6,11 +6,16 @@
 <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="home.css">
+  <link rel="stylesheet" href="home.css?v=2">
   <title>Página Inicial</title>
+  <link rel="stylesheet" href="mobile.css?v=1" />
 </head>
-<body>
-  <nav class="menu">
+<body class="pagina-home">
+  <nav class="menu" id="menuPrincipal">
+    <!-- Botão do menu no celular (no computador fica escondido) -->
+    <button type="button" class="btn-menu-mobile" id="btnMenuMobile" aria-label="Abrir menu">
+      <i class='bx bx-menu'></i>
+    </button>
     <!-- LOGO -->
     <a href="#">
       <img src="logo-2-horizontal-fundo-cinza.jpg" alt="Engjob Engenharia e Manutenção" class="logo">
@@ -147,19 +152,19 @@
           <li class="lista">
             <a href="nfse.html">
               <i class='bx bx-wrench'></i>
-              <span class="span-menu">Mão de Obra</span>
+              <span class="span-menu">Mão de Obra <small class="tag-em-breve">em breve</small></span>
             </a>
           </li>
           <li class="lista">
             <a href="nfe.html">
               <i class='bx bx-cube'></i>
-              <span class="span-menu">Material</span>
+              <span class="span-menu">Material <small class="tag-em-breve">em breve</small></span>
             </a>
           </li>
           <li class="lista">
             <a href="consulta-notas.html">
               <i class='bx bx-search'></i>
-              <span class="span-menu">Consulta</span>
+              <span class="span-menu">Consulta <small class="tag-em-breve">em breve</small></span>
             </a>
           </li>
           <li class="lista">
@@ -325,7 +330,7 @@
 
 <script src="google-auth.js"></script>
 <script src="permissoes-setor.js"></script>
-<script src="home.js"></script>
+<script src="home.js?v=2"></script>
 <script>
   window.onload = () => initGoogleAPI();
 </script>

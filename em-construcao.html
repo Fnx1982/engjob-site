@@ -6,13 +6,14 @@
 <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Em construção</title>
-  <link rel="stylesheet" href="em-construcao.css" />
+  <link rel="stylesheet" href="em-construcao.css?v=2" />
+  <link rel="stylesheet" href="mobile.css?v=1" />
 </head>
 <body>
   <main class="container">
     <div class="topo-pagina">
       <h1 id="tituloPagina">Página</h1>
-      <a href="home.html" class="btn-voltar">Voltar</a>
+      <a href="home.html" class="btn-voltar" id="btnVoltarConstrucao">&larr; Voltar</a>
     </div>
 
     <div class="cena-obra">
@@ -60,7 +61,9 @@
         <rect x="220" y="246" width="240" height="2" class="linha-chao"/>
       </svg>
 
-      <div class="texto-em-baixo">já fica pronto</div>
+      <div class="texto-em-baixo" id="textoEmBaixo">já fica pronto</div>
+      <p class="texto-explicacao" id="textoExplicacao" hidden></p>
+      <a href="home.html" class="btn-voltar-grande" id="btnVoltarGrande">&larr; Voltar</a>
     </div>
   </main>
 
@@ -71,6 +74,24 @@
       document.getElementById("tituloPagina").textContent = nomePagina;
       document.title = `${nomePagina} — Em construção`;
     }
+
+    // Telas de nota fiscal travadas (nfe/nfse/consulta) chegam aqui com tipo=notas
+    if (params.get("tipo") === "notas") {
+      document.querySelector(".texto-em-obra").firstChild.textContent = "Em desenvolvimento";
+      document.getElementById("textoEmBaixo").textContent = "Emissão de notas fiscais";
+      const explicacao = document.getElementById("textoExplicacao");
+      explicacao.textContent = "Essa parte está sendo finalizada e será liberada em breve. Enquanto isso, as notas continuam sendo emitidas pelo sistema atual.";
+      explicacao.hidden = false;
+    }
+
+    // Voltar: volta pra tela de onde a pessoa veio (se veio do próprio
+    // site); se abriu direto pelo link, vai pra tela inicial.
+    function voltar(e) {
+      const veioDoSite = document.referrer && new URL(document.referrer).origin === location.origin;
+      if (veioDoSite && history.length > 1) { e.preventDefault(); history.back(); }
+    }
+    document.getElementById("btnVoltarConstrucao").addEventListener("click", voltar);
+    document.getElementById("btnVoltarGrande").addEventListener("click", voltar);
   </script>
 </body>
 </html>

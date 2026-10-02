@@ -89,6 +89,9 @@ function setupSubmenuToggle(menuId) {
   });
 
   menu.addEventListener("mouseleave", () => {
+    // No celular não existe "tirar o mouse" de verdade — o navegador
+    // simula esse evento no toque e fechava o submenu na mesma hora.
+    if (window.matchMedia("(max-width: 768px)").matches) return;
     if (submenu) submenu.style.display = "none";
     if (arrow) arrow.style.transform = "rotate(0deg)";
   });
@@ -266,3 +269,18 @@ async function fetchTodayEvents() {
 // para não perder a notificação caso initGoogleAPI() (chamado no
 // window.onload) seja rápido.
 onGoogleAuthChange(fetchTodayEvents);
+
+// ====================================================
+// MENU NO CELULAR — botão ☰ abre/fecha o menu em tela cheia.
+// ====================================================
+(function () {
+  const menu = document.getElementById("menuPrincipal");
+  const botao = document.getElementById("btnMenuMobile");
+  if (!menu || !botao) return;
+  botao.addEventListener("click", (e) => {
+    e.preventDefault();
+    const aberto = menu.classList.toggle("aberto-mobile");
+    botao.querySelector("i").className = aberto ? "bx bx-x" : "bx bx-menu";
+    botao.setAttribute("aria-label", aberto ? "Fechar menu" : "Abrir menu");
+  });
+})();
