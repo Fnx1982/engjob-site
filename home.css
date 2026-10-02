@@ -292,12 +292,25 @@ nav.menu.expanded ~ .dashboard {
   }
   .btn-menu-mobile .bx { font-size: 28px; }
 
-  /* Menu aberto: tela cheia, com rolagem */
+  /* Menu aberto: tela cheia, com rolagem.
+     100dvh = altura que REALMENTE aparece no celular (sem a barra de
+     endereço do navegador). Com 100vh, o fim do menu (Calendário, Sair)
+     ficava escondido atrás da barra e não dava pra alcançar. */
   nav.menu.aberto-mobile {
     height: 100vh;
+    height: 100dvh;
     overflow-y: auto;
+    overscroll-behavior: contain; /* rolar o menu não rola a página de trás */
+    -webkit-overflow-scrolling: touch;
+    z-index: 3000;
   }
-  nav.menu.aberto-mobile ul { padding-bottom: 30px; }
+  nav.menu.aberto-mobile ul {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+  }
+  /* O botão de fechar (X) fica sempre visível, mesmo rolando o menu */
+  nav.menu.aberto-mobile .btn-menu-mobile { position: fixed; z-index: 3001; }
+  /* Com o menu aberto, a página de trás fica parada */
+  body.menu-mobile-aberto { overflow: hidden; }
 
   /* No celular os textos do menu aparecem sempre (não há "passar o mouse") */
   .menu .span-menu,
@@ -322,6 +335,7 @@ nav.menu.expanded ~ .dashboard {
   }
   .calendar-box {
     position: static;
+    z-index: auto;
     width: auto;
     margin: 0 14px 20px;
   }

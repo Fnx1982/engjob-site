@@ -280,6 +280,8 @@ onGoogleAuthChange(fetchTodayEvents);
   botao.addEventListener("click", (e) => {
     e.preventDefault();
     const aberto = menu.classList.toggle("aberto-mobile");
+    document.body.classList.toggle("menu-mobile-aberto", aberto);
+    if (aberto) menu.scrollTop = 0;
     botao.querySelector("i").className = aberto ? "bx bx-x" : "bx bx-menu";
     botao.setAttribute("aria-label", aberto ? "Fechar menu" : "Abrir menu");
   });
