@@ -343,3 +343,91 @@ nav.menu.expanded ~ .dashboard {
   /* Sino de notificações alinhado dentro da barra do topo */
   #sinoNotificacao { top: 10px !important; right: 12px !important; }
 }
+
+/* ==========================================================================
+   CONTA LOGADA — botão com as iniciais ao lado do sino
+   ========================================================================== */
+#contaLogada {
+  position: fixed;
+  top: 16px;
+  right: 70px; /* fica à esquerda do sino */
+  z-index: 2000;
+  font-family: 'Montserrat', sans-serif;
+}
+#btnContaLogada {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px 0 4px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 22px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+.avatar-conta {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #eb991c;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.avatar-conta.grande { width: 46px; height: 46px; font-size: 17px; }
+#painelConta {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  width: 280px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.18);
+  padding: 14px;
+}
+.painel-conta-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.painel-conta-nome { font-weight: 700; font-size: 15px; color: #222; }
+.painel-conta-setor { font-size: 12px; color: #888; }
+.painel-conta-linha {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  padding: 8px 0;
+  border-top: 1px solid #f0f0f0;
+}
+.painel-conta-linha span { color: #888; }
+.painel-conta-linha b { color: #333; text-align: right; word-break: break-all; }
+.painel-conta-linha a { color: #eb991c; }
+.painel-conta-sair {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: none;
+  border-radius: 20px;
+  background: #f4f4f4;
+  color: #c62828;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.painel-conta-sair:hover { background: #fdecec; }
+
+@media (max-width: 768px) {
+  /* No celular: só as iniciais, dentro da barra do topo, ao lado do sino */
+  #contaLogada { top: 10px; right: 64px; }
+  #btnContaLogada { padding: 0 4px; width: 44px; justify-content: center; }
+  .nome-conta { display: none; }
+  #painelConta { position: fixed; top: 62px; right: 10px; width: calc(100vw - 20px); max-width: 320px; }
+  /* Com o menu aberto, o botão some pra não ficar por cima */
+  body.menu-mobile-aberto #contaLogada { display: none; }
+}
