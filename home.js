@@ -91,7 +91,7 @@ function setupSubmenuToggle(menuId) {
   menu.addEventListener("mouseleave", () => {
     // No celular não existe "tirar o mouse" de verdade — o navegador
     // simula esse evento no toque e fechava o submenu na mesma hora.
-    if (window.matchMedia("(max-width: 768px)").matches) return;
+    if (window.matchMedia("(max-width: 768px), (hover: none) and (max-width: 1100px)").matches) return;
     if (submenu) submenu.style.display = "none";
     if (arrow) arrow.style.transform = "rotate(0deg)";
   });

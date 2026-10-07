@@ -851,6 +851,38 @@ function gerarPdfProposta(proposta, modo) {
       columnStyles: { 2: { halign: "center" }, 3: { halign: "right" } },
     });
     y = doc.lastAutoTable.finalY + 20;
+
+    // Links dos materiais (só no PDF interno), clicáveis
+    const links = (proposta.linksMateriais || []).filter((l) => (l.nome || "").trim() || (l.url || "").trim());
+    if (links.length) {
+      y = garantirEspacoPdf(doc, y, 60);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text("LINKS DOS MATERIAIS (INTERNO)", margem, y);
+      y += 14;
+      doc.setFontSize(9);
+      links.forEach((l) => {
+        y = garantirEspacoPdf(doc, y, 30);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text(`• ${l.nome || "(sem nome)"}`, margem, y);
+        y += 11;
+        if ((l.url || "").trim()) {
+          const url = /^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : "https://" + l.url.trim();
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(30, 90, 200);
+          const linhas = doc.splitTextToSize(url, larguraUtil - 12);
+          linhas.forEach((linha) => {
+            doc.textWithLink(linha, margem + 10, y, { url });
+            y += 11;
+          });
+        }
+        y += 4;
+      });
+      doc.setTextColor(0, 0, 0);
+      y += 10;
+    }
   }
 
   // ----- Condições / avisos -----

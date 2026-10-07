@@ -193,6 +193,19 @@ function montarModalFormularioProposta() {
         </div>
       </div>
 
+      <div class="form-secao secao-links-materiais">
+        <h3>Links dos materiais <span class="tag-interno">só empresa</span></h3>
+        <p class="texto-ajuda">
+          Onde comprar cada material (loja, site, fornecedor). <strong>Não aparece no PDF do cliente</strong> —
+          só na tela e no PDF Interno, com o link clicável.
+        </p>
+        <div id="listaLinksMateriais"></div>
+        <div class="botoes-links-materiais">
+          <button type="button" class="btn-add-item" id="btnAddLinkMaterial">+ Adicionar link</button>
+          <button type="button" class="btn-link-impostos" id="btnPuxarMateriaisLinks">Puxar os materiais desta proposta</button>
+        </div>
+      </div>
+
       <div class="form-secao secao-impostos">
         <h3>Impostos <span class="tag-interno">só empresa</span></h3>
         <p class="texto-ajuda">
@@ -264,6 +277,8 @@ function montarModalFormularioProposta() {
 
   document.getElementById("btnAddMaoDeObra").addEventListener("click", adicionarLinhaMaoDeObra);
   document.getElementById("btnAddMaterial").addEventListener("click", adicionarLinhaMaterial);
+  document.getElementById("btnAddLinkMaterial").addEventListener("click", () => adicionarLinkMaterial("", ""));
+  document.getElementById("btnPuxarMateriaisLinks").addEventListener("click", puxarMateriaisParaLinks);
   document.getElementById("btnSalvarProposta").addEventListener("click", salvarFormularioProposta);
   document.getElementById("btnConfigNumeracaoOrcamento").addEventListener("click", () => {
     abrirModalConfigNumeracao("orcamento", "Orçamento");
@@ -471,6 +486,8 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
     propostaEmEdicao.impostos = impostosPadraoParaProposta(chaveMesImpostosOrc(propostaEmEdicao.criadoEm));
   }
   preencherCamposImpostos();
+  if (!Array.isArray(propostaEmEdicao.linksMateriais)) propostaEmEdicao.linksMateriais = [];
+  renderLinksMateriais();
 
   renderChecklistMateriaisEstoque();
   atualizarDatalistServicos();
@@ -1207,5 +1224,91 @@ async function salvarTabelaImpostosMes() {
   } finally {
     botao.disabled = false;
   }
+}
+
+// ====================================================
+// LINKS DOS MATERIAIS (só empresa) — nome do produto + link de onde
+// comprar. Fica em propostaEmEdicao.linksMateriais e vai junto no
+// rascunho e no orçamento salvo. Nunca entra no PDF do cliente.
+// ====================================================
+function normalizarLinkMaterial(url) {
+  const u = String(url || "").trim();
+  if (!u) return "";
+  return /^https?:\/\//i.test(u) ? u : "https://" + u;
+}
+
+function renderLinksMateriais() {
+  const lista = document.getElementById("listaLinksMateriais");
+  if (!lista || !propostaEmEdicao) return;
+  const links = propostaEmEdicao.linksMateriais || [];
+  if (!links.length) {
+    lista.innerHTML = '<p class="links-vazio">Nenhum link ainda.</p>';
+    return;
+  }
+  lista.innerHTML = links.map((l, i) => `
+    <div class="linha-link-material">
+      <input type="text" placeholder="Nome do produto" value="${escaparHtml(l.nome || "")}" data-link-idx="${i}" data-link-campo="nome" />
+      <input type="url" placeholder="Cole o link aqui" value="${escaparHtml(l.url || "")}" data-link-idx="${i}" data-link-campo="url" />
+      <a class="btn-abrir-link" href="${escaparHtml(normalizarLinkMaterial(l.url) || "#")}" target="_blank" rel="noopener"
+         title="Abrir o link" ${l.url ? "" : 'style="visibility:hidden"'}>Abrir ↗</a>
+      <button type="button" class="btn-remover-item" data-link-remover="${i}" title="Remover">&times;</button>
+    </div>
+  `).join("");
+
+  lista.querySelectorAll("[data-link-idx]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const item = propostaEmEdicao.linksMateriais[Number(input.dataset.linkIdx)];
+      item[input.dataset.linkCampo] = input.value;
+      if (input.dataset.linkCampo === "url") {
+        const abrir = input.parentElement.querySelector(".btn-abrir-link");
+        abrir.href = normalizarLinkMaterial(input.value) || "#";
+        abrir.style.visibility = input.value.trim() ? "visible" : "hidden";
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (input.dataset.linkCampo === "url" && input.value.trim()) {
+        input.value = normalizarLinkMaterial(input.value);
+        propostaEmEdicao.linksMateriais[Number(input.dataset.linkIdx)].url = input.value;
+      }
+      salvarRascunhoAtual();
+    });
+  });
+  lista.querySelectorAll("[data-link-remover]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      propostaEmEdicao.linksMateriais.splice(Number(btn.dataset.linkRemover), 1);
+      renderLinksMateriais();
+      salvarRascunhoAtual();
+    });
+  });
+}
+
+function adicionarLinkMaterial(nome, url) {
+  if (!propostaEmEdicao) return;
+  if (!Array.isArray(propostaEmEdicao.linksMateriais)) propostaEmEdicao.linksMateriais = [];
+  propostaEmEdicao.linksMateriais.push({ nome: nome || "", url: url || "" });
+  renderLinksMateriais();
+  // Leva o cursor direto pro campo que falta preencher
+  const inputs = document.querySelectorAll(`#listaLinksMateriais [data-link-idx="${propostaEmEdicao.linksMateriais.length - 1}"]`);
+  const alvo = nome ? inputs[1] : inputs[0];
+  if (alvo) alvo.focus();
+}
+
+// Cria uma linha (sem link ainda) pra cada material da proposta que
+// ainda não está na lista — só falta colar os links.
+function puxarMateriaisParaLinks() {
+  if (!propostaEmEdicao) return;
+  if (!Array.isArray(propostaEmEdicao.linksMateriais)) propostaEmEdicao.linksMateriais = [];
+  const jaTem = new Set(propostaEmEdicao.linksMateriais.map((l) => normalizarBusca(l.nome)));
+  let novos = 0;
+  (propostaEmEdicao.itensMateriais || []).forEach((m) => {
+    const nome = (m.nome || "").trim();
+    if (nome && !jaTem.has(normalizarBusca(nome))) {
+      propostaEmEdicao.linksMateriais.push({ nome, url: "" });
+      jaTem.add(normalizarBusca(nome));
+      novos++;
+    }
+  });
+  renderLinksMateriais();
+  mostrarToast(novos ? `${novos} material(is) adicionado(s) — falta colar os links.` : "Todos os materiais da proposta já estão na lista.");
 }
 

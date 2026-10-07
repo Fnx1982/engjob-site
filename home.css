@@ -260,7 +260,8 @@ nav.menu.expanded ~ .dashboard {
   margin-left: 4px;
 }
 
-@media (max-width: 768px) {
+/* Celular E tablet (tela de toque até 1100px): menu ☰ no topo */
+@media (max-width: 768px), (hover: none) and (max-width: 1100px) {
   .menu,
   .menu:hover {
     width: 100%;
@@ -321,11 +322,22 @@ nav.menu.expanded ~ .dashboard {
   nav.menu.expanded ~ .dashboard,
   .dashboard {
     margin-left: 0;
-    padding: 80px 14px 20px;
+    padding: 14px 14px 20px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 14px;
   }
+
+  /* "Eventos de Hoje" sobe pro topo da tela (antes ficava escondido lá
+     embaixo, depois de uma tela inteira de espaço vazio). */
+  body.pagina-home {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: rgb(208, 207, 207);
+  }
+  body.pagina-home > .calendar-box { order: -1; margin: 78px 14px 0 !important; }
 
   /* Cards fixos no canto viram blocos normais, um embaixo do outro */
   .dashboard .card-montante,
@@ -350,7 +362,7 @@ nav.menu.expanded ~ .dashboard {
 #contaLogada {
   position: fixed;
   top: 16px;
-  right: 70px; /* fica à esquerda do sino */
+  right: 124px; /* fica à esquerda do 💡 de sugestões, que fica ao lado do sino */
   z-index: 2000;
   font-family: 'Montserrat', sans-serif;
 }
@@ -384,6 +396,25 @@ nav.menu.expanded ~ .dashboard {
   flex-shrink: 0;
 }
 .avatar-conta.grande { width: 46px; height: 46px; font-size: 17px; }
+.avatar-conta.com-foto {
+  background-size: cover;
+  background-position: center;
+  background-color: #ddd;
+}
+.painel-conta-foto { display: flex; gap: 8px; margin-bottom: 10px; }
+.painel-conta-foto button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 18px;
+  border: 1px solid #eb991c;
+  background: #fff7ea;
+  color: #b46e0a;
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.painel-conta-foto #btnRemoverFotoPerfil { border-color: #ddd; background: #f6f6f6; color: #777; }
 #painelConta {
   position: absolute;
   top: 52px;
@@ -422,9 +453,10 @@ nav.menu.expanded ~ .dashboard {
 }
 .painel-conta-sair:hover { background: #fdecec; }
 
-@media (max-width: 768px) {
+/* Celular E tablet (tela de toque até 1100px): menu ☰ no topo */
+@media (max-width: 768px), (hover: none) and (max-width: 1100px) {
   /* No celular: só as iniciais, dentro da barra do topo, ao lado do sino */
-  #contaLogada { top: 10px; right: 64px; }
+  #contaLogada { top: 10px; right: 116px; }
   #btnContaLogada { padding: 0 4px; width: 44px; justify-content: center; }
   .nome-conta { display: none; }
   #painelConta { position: fixed; top: 62px; right: 10px; width: calc(100vw - 20px); max-width: 320px; }

@@ -43,6 +43,7 @@ async function apiLogout() {
   localStorage.removeItem("userId");
   localStorage.removeItem("userNome");
   localStorage.removeItem("userSetor");
+  localStorage.removeItem("userFotoPerfil"); // foto de perfil não fica pra próxima pessoa
 }
 
 async function apiVerificarSessao() {

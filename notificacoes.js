@@ -112,6 +112,17 @@ async function carregarNotificacoes() {
     }
     item.addEventListener("click", async () => {
       if (!n.lida) { await apiMarcarNotificacaoLida(n.id); carregarNotificacoes(); }
+      if (n.sugestaoId) {
+        // Aviso de sugestão: abre a janela de sugestões (na tela inicial)
+        const aba = n.tipo === "nova-sugestao" ? "ti" : "minhas";
+        if (typeof window.abrirPainelSugestoes === "function") {
+          document.getElementById("painelNotificacoes").style.display = "none";
+          window.abrirPainelSugestoes(aba);
+        } else {
+          window.location.href = `home.html?sugestoes=${aba}`;
+        }
+        return;
+      }
       if (n.obraId) window.location.href = `obra-detalhe.html?id=${encodeURIComponent(n.obraId)}`;
     });
     lista.appendChild(item);
