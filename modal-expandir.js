@@ -1,9 +1,9 @@
 // ============================================================
-// modal-expandir.js — botão ⤢ "Expandir" nas janelas do site.
+// modal-expandir.js — botão ⤢ "Tela cheia" nas janelas do site.
 //
 // As janelas (Novo orçamento, cadastros, etc.) abrem do tamanho de
-// sempre. No computador aparece um botão ⤢ ao lado do X: ele estica a
-// janela pra quase a tela toda; clicando de novo (⤡) volta ao normal.
+// sempre. No computador aparece um botão ⤢ ao lado do X: ele deixa a
+// janela em tela cheia; clicando de novo (⤡) volta ao tamanho normal.
 // O site lembra a escolha: se deixou expandido, a próxima janela já
 // abre expandida.
 //
@@ -32,20 +32,27 @@
     .btn-expandir-modal:hover { background: #fff; color: #000; border-color: #999; }
     @media (min-width: 1024px) and (hover: hover) {
       .btn-expandir-modal { display: inline-flex; align-items: center; justify-content: center; }
+      /* Tela cheia: a janela ocupa a janela inteira do navegador,
+         sem bordas nem cantos arredondados */
       .modal-expandida {
-        width: 96vw !important;
-        max-width: 96vw !important;
-        height: 94vh !important;
-        max-height: 94vh !important;
+        width: 100vw !important;
+        max-width: 100vw !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        border-radius: 0 !important;
+        margin: 0 !important;
       }
+      .overlay-com-modal-expandida { padding: 0 !important; align-items: stretch !important; justify-content: stretch !important; }
     }
   `;
   document.head.appendChild(estilo);
 
   function aplicar(caixa, expandir, botao) {
     caixa.classList.toggle("modal-expandida", expandir);
+    const fundo = caixa.closest(".modal-overlay");
+    if (fundo) fundo.classList.toggle("overlay-com-modal-expandida", expandir);
     botao.textContent = expandir ? "⤡" : "⤢";
-    botao.title = expandir ? "Voltar ao tamanho normal" : "Expandir janela";
+    botao.title = expandir ? "Voltar ao tamanho normal" : "Tela cheia";
   }
 
   function prepararCabecalho(cabecalho) {

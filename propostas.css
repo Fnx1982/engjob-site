@@ -722,3 +722,48 @@ body {
     .linha-link-material { grid-template-columns: 1fr auto; }
     .linha-link-material input[data-link-campo="nome"] { grid-column: 1 / -1; }
 }
+
+/* ==========================================================================
+   ORÇAMENTO EM TELA CHEIA (botão ⤢, só no computador com tela larga)
+   Divide a janela em duas colunas:
+     cima:     Dados do cliente  |  Impostos
+     meio:     Mão de obra       |  Materiais
+     embaixo:  Links dos materiais e depois Condições (largura toda),
+               e o total geral
+   No tamanho normal da janela continua tudo um embaixo do outro.
+   ========================================================================== */
+@media (min-width: 1280px) {
+    .caixa-orcamento.modal-expandida {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas:
+            "cabecalho cabecalho"
+            "status    status"
+            "cliente   impostos"
+            "maoobra   materiais"
+            "links     links"
+            "condicoes condicoes"
+            "total     total"
+            "rodape    rodape";
+        column-gap: 18px;
+        align-content: start;
+    }
+    .caixa-orcamento.modal-expandida > .modal-cabecalho        { grid-area: cabecalho; }
+    .caixa-orcamento.modal-expandida > #statusRascunhoProposta { grid-area: status; }
+    .caixa-orcamento.modal-expandida > .secao-cliente          { grid-area: cliente; }
+    .caixa-orcamento.modal-expandida > .secao-impostos         { grid-area: impostos; }
+    .caixa-orcamento.modal-expandida > .secao-links-materiais  { grid-area: links; }
+    .caixa-orcamento.modal-expandida > .secao-mao-obra         { grid-area: maoobra; }
+    .caixa-orcamento.modal-expandida > .secao-materiais        { grid-area: materiais; }
+    .caixa-orcamento.modal-expandida > .secao-condicoes        { grid-area: condicoes; }
+    .caixa-orcamento.modal-expandida > .linha-total-secao      { grid-area: total; }
+    .caixa-orcamento.modal-expandida > .modal-rodape           { grid-area: rodape; }
+
+    /* Lado a lado as seções ficam com a mesma altura na linha */
+    .caixa-orcamento.modal-expandida > .form-secao { margin-bottom: 18px; }
+
+    /* Condições: os 3 campos numa linha só */
+    .caixa-orcamento.modal-expandida .secao-condicoes .form-grid { grid-template-columns: repeat(3, 1fr); }
+    .caixa-orcamento.modal-expandida .secao-condicoes .campo-largura-total { grid-column: auto; }
+
+}

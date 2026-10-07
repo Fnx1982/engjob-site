@@ -87,14 +87,14 @@ function montarModalFormularioProposta() {
   overlay.className = "modal-overlay";
   overlay.id = "modalProposta";
   overlay.innerHTML = `
-    <div class="modal-caixa-grande">
+    <div class="modal-caixa-grande caixa-orcamento">
       <div class="modal-cabecalho">
         <h2 id="tituloModalProposta">Novo Orçamento</h2>
         <button type="button" class="modal-fechar" id="fecharModalProposta">&times;</button>
       </div>
       <p id="statusRascunhoProposta" style="font-size:12px; color:#888; margin:-6px 0 10px;"></p>
 
-      <div class="form-secao">
+      <div class="form-secao secao-cliente">
         <h3>Dados do Cliente / Obra</h3>
         <div class="form-grid">
           <label>Número do Orçamento
@@ -125,7 +125,7 @@ function montarModalFormularioProposta() {
         </div>
       </div>
 
-      <div class="form-secao">
+      <div class="form-secao secao-mao-obra">
         <h3>Mão de Obra</h3>
         <p class="texto-ajuda" style="margin-bottom:8px;">
           Digitar uma descrição que já existe no catálogo de Serviços preenche o valor sozinho.
@@ -159,7 +159,7 @@ function montarModalFormularioProposta() {
         </div>
       </div>
 
-      <div class="form-secao">
+      <div class="form-secao secao-materiais">
         <h3>Materiais</h3>
         <p class="texto-ajuda" style="margin-bottom:8px;">
           Clique no campo <strong>Material</strong> para ver a lista, ou digite para pesquisar — o valor
@@ -241,7 +241,7 @@ function montarModalFormularioProposta() {
         <button type="button" class="btn-link-impostos" id="btnEditarImpostosMesForm">Editar % padrão de cada mês</button>
       </div>
 
-      <div class="form-secao">
+      <div class="form-secao secao-condicoes">
         <h3>Condições</h3>
         <div class="form-grid">
           <label>Forma de pagamento
