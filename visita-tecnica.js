@@ -7,6 +7,9 @@ let visitasCache = [];
 let fotosSelecionadas = []; // arquivos escolhidos, ainda não enviados
 let fotosJaSalvas = []; // chaves R2 de fotos já salvas (ao editar uma visita existente)
 let rascunhoAtualId = null; // id do rascunho de auto-save em andamento (null = ainda não criado)
+let medidasVisita = []; // [{ descricao, m1, m2, qtd, unidade }]
+let eventoVinculado = null; // { id, titulo } quando a visita veio do Google Agenda
+let eventosAgendaCache = [];
 
 const WORKER_URL_VISITA = "https://engjob-storage.engjobmanut.workers.dev";
 
@@ -90,6 +93,10 @@ function limparFormulario() {
   ["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao"].forEach((id) => {
     document.getElementById(id).value = "";
   });
+  document.getElementById("campoDataVisita").value = hojeISOVisita();
+  medidasVisita = [];
+  renderMedidas();
+  definirEventoVinculado(null);
   fotosSelecionadas = [];
   fotosJaSalvas = [];
   document.getElementById("campoFotos").value = "";
@@ -109,6 +116,10 @@ function preencherFormulario(visita) {
   document.getElementById("campoBairro").value = visita.bairro || "";
   document.getElementById("campoCidade").value = visita.cidade || "";
   document.getElementById("campoDescricao").value = visita.descricao || "";
+  document.getElementById("campoDataVisita").value = visita.dataVisita || "";
+  medidasVisita = Array.isArray(visita.medidas) ? visita.medidas.map((m) => ({ ...m })) : [];
+  renderMedidas();
+  definirEventoVinculado(visita.eventoCalendarioId ? { id: visita.eventoCalendarioId, titulo: visita.eventoCalendarioTitulo || "" } : null);
   fotosSelecionadas = [];
   fotosJaSalvas = [...(visita.fotos || [])];
   renderPreviaFotos();
@@ -136,11 +147,12 @@ function coletarDadosRascunhoVisita() {
     cidade: document.getElementById("campoCidade").value.trim(),
     descricao: document.getElementById("campoDescricao").value.trim(),
     fotos: [...fotosJaSalvas],
+    ...camposExtrasVisita(),
   };
 }
 
 function formularioVisitaTemConteudo(d) {
-  return !!(d.clienteNome || d.telefone || d.local || d.endereco || d.bairro || d.cidade || d.descricao || d.fotos.length);
+  return !!(d.clienteNome || d.telefone || d.local || d.endereco || d.bairro || d.cidade || d.descricao || d.fotos.length || (d.medidas && d.medidas.length));
 }
 
 async function salvarRascunhoAtual() {
@@ -157,7 +169,7 @@ function salvarRascunhoAtualImediato() {
   apiSalvarRascunhoImediato("visita", rascunhoAtualId, dados);
 }
 
-["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao"].forEach((idCampo) => {
+["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao", "campoDataVisita"].forEach((idCampo) => {
   document.getElementById(idCampo).addEventListener("blur", salvarRascunhoAtual);
 });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") salvarRascunhoAtualImediato(); });
@@ -174,6 +186,10 @@ function preencherFormularioComRascunho(dados, idRascunho) {
   document.getElementById("campoBairro").value = dados.bairro || "";
   document.getElementById("campoCidade").value = dados.cidade || "";
   document.getElementById("campoDescricao").value = dados.descricao || "";
+  document.getElementById("campoDataVisita").value = dados.dataVisita || hojeISOVisita();
+  medidasVisita = Array.isArray(dados.medidas) ? dados.medidas.map((m) => ({ ...m })) : [];
+  renderMedidas();
+  definirEventoVinculado(dados.eventoCalendarioId ? { id: dados.eventoCalendarioId, titulo: dados.eventoCalendarioTitulo || "" } : null);
   fotosSelecionadas = [];
   fotosJaSalvas = [...(dados.fotos || [])];
   renderPreviaFotos();
@@ -250,14 +266,16 @@ document.getElementById("btnSalvarVisita").addEventListener("click", async () =>
       cidade: document.getElementById("campoCidade").value.trim(),
       descricao: document.getElementById("campoDescricao").value.trim(),
       fotos: chavesFotos,
+      ...camposExtrasVisita(),
     };
     const resposta = await apiSalvarVisita(dados);
     if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar.", "erro"); return; }
     mostrarToast("Visita salva.");
     if (rascunhoAtualId) { await apiExcluirRascunho("visita", rascunhoAtualId); rascunhoAtualId = null; }
     limparFormulario();
-    carregarVisitas();
+    await carregarVisitas();
     renderPendentes();
+    renderAgenda(); // marca o agendamento como "visita registrada"
   } catch (e) {
     mostrarToast(e.message || "Erro ao salvar a visita.", "erro");
   } finally {
@@ -272,6 +290,7 @@ async function carregarVisitas() {
   if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao carregar visitas.", "erro"); return; }
   visitasCache = resposta.visitas;
   renderizarLista();
+  if (eventosAgendaCache.length) renderAgenda(); // atualiza quais agendamentos já viraram visita
 }
 
 function renderizarLista() {
@@ -279,7 +298,7 @@ function renderizarLista() {
   let filtradas = visitasCache;
   if (busca) {
     filtradas = filtradas.filter((v) =>
-      (v.clienteNome || "").toLowerCase().includes(busca) || (v.local || "").toLowerCase().includes(busca)
+      (v.clienteNome || "").toLowerCase().includes(busca) || (v.local || "").toLowerCase().includes(busca) || (v.endereco || "").toLowerCase().includes(busca)
     );
   }
 
@@ -299,8 +318,8 @@ function renderizarLista() {
       <div style="display:flex; align-items:center;">
         ${fotoThumb}
         <div>
-          <div class="nome">${escaparHtml(v.clienteNome)} ${v.convertidaEmPropostaId ? '<span class="badge-tipo" style="background:#E7F6EC;color:#1C8A4B;">Já virou orçamento</span>' : ""}</div>
-          <div class="meta">${enderecoPartes || "Sem endereço"} · ${new Date(v.criadoEm).toLocaleDateString("pt-BR")} · ${v.fotos.length} foto(s)</div>
+          <div class="nome">${escaparHtml(v.clienteNome)} ${v.eventoCalendarioId ? '<span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">📅 Do calendário</span>' : ""} ${v.convertidaEmPropostaId ? '<span class="badge-tipo" style="background:#E7F6EC;color:#1C8A4B;">Já virou orçamento</span>' : ""}</div>
+          <div class="meta">${enderecoPartes || "Sem endereço"} · ${v.dataVisita ? dataBRVisita(v.dataVisita) : new Date(v.criadoEm).toLocaleDateString("pt-BR")} · ${(v.fotos || []).length} foto(s)${(v.medidas || []).length ? " · " + escaparHtml(resumoTotaisMedidas(v.medidas)) : ""}</div>
         </div>
       </div>
       <div class="acoes">
@@ -316,7 +335,7 @@ function renderizarLista() {
         cliente: v.clienteNome,
         telefone: v.telefone,
         local: [v.local, v.endereco, v.bairro, v.cidade].filter(Boolean).join(", "),
-        observacao: v.descricao,
+        observacao: [v.descricao, textoMedidasParaOrcamento(v.medidas)].filter(Boolean).join("\n\n"),
       };
       const codificado = btoa(unescape(encodeURIComponent(JSON.stringify(dadosProposta))));
       navegarParaOrcamento(`orcamento.html?dadosVisita=${encodeURIComponent(codificado)}`);
@@ -346,3 +365,289 @@ garantirTokenDownload().then(() => {
   carregarVisitas();
   renderPendentes();
 });
+
+// ====================================================
+// UTILITÁRIOS
+// ====================================================
+function hojeISOVisita() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function dataBRVisita(iso) {
+  const [a, m, d] = String(iso).split("-");
+  return d && m && a ? `${d}/${m}/${a}` : iso;
+}
+function numeroBR(texto) {
+  const n = parseFloat(String(texto || "").replace(/\./g, "").replace(",", "."));
+  return isNaN(n) ? 0 : n;
+}
+function formatarNumeroBR(n) {
+  return Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+
+function camposExtrasVisita() {
+  return {
+    dataVisita: document.getElementById("campoDataVisita").value || "",
+    medidas: medidasVisita.filter((m) => (m.descricao || "").trim() || m.m1 || m.m2),
+    eventoCalendarioId: eventoVinculado ? eventoVinculado.id : null,
+    eventoCalendarioTitulo: eventoVinculado ? eventoVinculado.titulo : "",
+    origem: eventoVinculado ? "calendario" : "avulsa",
+  };
+}
+
+// Mostra se a visita do formulário veio do calendário ou é avulsa
+function definirEventoVinculado(evento) {
+  eventoVinculado = evento;
+  const el = document.getElementById("origemVisita");
+  if (!el) return;
+  if (evento) {
+    el.innerHTML = `<span class="tag-origem calendario">📅 Do calendário${evento.titulo ? ": " + escaparHtml(evento.titulo) : ""}</span>
+      <button type="button" id="btnDesvincularEvento" style="background:none;border:none;color:#888;font-size:12px;cursor:pointer;text-decoration:underline;">tornar avulsa</button>`;
+    document.getElementById("btnDesvincularEvento").addEventListener("click", () => definirEventoVinculado(null));
+  } else {
+    el.innerHTML = '<span class="tag-origem avulsa">Visita avulsa (sem agendamento)</span>';
+  }
+}
+
+// ====================================================
+// MEDIDAS — cada linha: descrição, medida 1 × medida 2, quantidade
+// e unidade. m² = m1 × m2 × qtd · m (linear) = m1 × qtd · un = qtd.
+// Aceita vírgula (12,5).
+// ====================================================
+function resultadoMedida(m) {
+  const qtd = numeroBR(m.qtd) || 1;
+  if (m.unidade === "m") return { valor: numeroBR(m.m1) * qtd, unidade: "m" };
+  if (m.unidade === "un") return { valor: numeroBR(m.qtd) || 0, unidade: "un" };
+  return { valor: numeroBR(m.m1) * numeroBR(m.m2) * qtd, unidade: "m²" };
+}
+
+function resumoTotaisMedidas(medidas) {
+  const totais = {};
+  (medidas || []).forEach((m) => {
+    const r = resultadoMedida(m);
+    if (r.valor) totais[r.unidade] = (totais[r.unidade] || 0) + r.valor;
+  });
+  return Object.entries(totais).map(([u, v]) => `${formatarNumeroBR(v)} ${u}`).join(" · ");
+}
+
+function textoMedidasParaOrcamento(medidas) {
+  const linhas = (medidas || []).filter((m) => (m.descricao || "").trim() || m.m1).map((m) => {
+    const r = resultadoMedida(m);
+    const qtd = numeroBR(m.qtd) > 1 ? ` (x${formatarNumeroBR(numeroBR(m.qtd))})` : "";
+    let conta = "";
+    if (r.unidade === "m²") conta = `${m.m1 || 0} × ${m.m2 || 0} m${qtd} = ${formatarNumeroBR(r.valor)} m²`;
+    else if (r.unidade === "m") conta = `${m.m1 || 0} m${qtd} = ${formatarNumeroBR(r.valor)} m`;
+    else conta = `${formatarNumeroBR(r.valor)} un`;
+    return `- ${m.descricao || "Medida"}: ${conta}`;
+  });
+  if (!linhas.length) return "";
+  return `Medidas da visita:\n${linhas.join("\n")}\nTotal: ${resumoTotaisMedidas(medidas)}`;
+}
+
+function renderMedidas() {
+  const lista = document.getElementById("listaMedidas");
+  if (!lista) return;
+  if (!medidasVisita.length) {
+    lista.innerHTML = "";
+  } else {
+    lista.innerHTML = `
+      <div class="linha-medida cab-medidas"><span>Descrição / ambiente</span><span>Medida 1</span><span></span><span>Medida 2</span><span>Qtd</span><span>Unidade</span><span style="text-align:right">Resultado</span><span></span></div>
+      ${medidasVisita.map((m, i) => `
+        <div class="linha-medida" data-medida="${i}">
+          <input class="med-desc" type="text" placeholder="Ex.: Fachada frente" value="${escaparHtml(m.descricao || "")}" data-campo="descricao" />
+          <input type="text" inputmode="decimal" placeholder="m" value="${escaparHtml(m.m1 || "")}" data-campo="m1" />
+          <span class="vezes">×</span>
+          <input type="text" inputmode="decimal" placeholder="m" value="${escaparHtml(m.m2 || "")}" data-campo="m2" ${m.unidade === "m" || m.unidade === "un" ? "disabled" : ""} />
+          <input class="med-qtd" type="text" inputmode="decimal" placeholder="1" value="${escaparHtml(m.qtd || "")}" data-campo="qtd" />
+          <select class="med-unid" data-campo="unidade">
+            <option value="m2" ${!m.unidade || m.unidade === "m2" ? "selected" : ""}>m²</option>
+            <option value="m" ${m.unidade === "m" ? "selected" : ""}>m (linear)</option>
+            <option value="un" ${m.unidade === "un" ? "selected" : ""}>unidade</option>
+          </select>
+          <span class="resultado-medida"></span>
+          <button type="button" class="btn-remover-medida" title="Remover">&times;</button>
+        </div>`).join("")}`;
+  }
+
+  lista.querySelectorAll(".linha-medida[data-medida]").forEach((linha) => {
+    const i = Number(linha.dataset.medida);
+    const atualizarResultado = () => {
+      const r = resultadoMedida(medidasVisita[i]);
+      linha.querySelector(".resultado-medida").textContent = r.valor ? `${formatarNumeroBR(r.valor)} ${r.unidade}` : "—";
+      document.getElementById("totalMedidas").textContent = resumoTotaisMedidas(medidasVisita) ? "Total: " + resumoTotaisMedidas(medidasVisita) : "";
+    };
+    linha.querySelectorAll("[data-campo]").forEach((campo) => {
+      campo.addEventListener("input", () => {
+        medidasVisita[i][campo.dataset.campo] = campo.value;
+        if (campo.dataset.campo === "unidade") {
+          linha.querySelector('[data-campo="m2"]').disabled = campo.value !== "m2";
+        }
+        atualizarResultado();
+      });
+      campo.addEventListener("blur", salvarRascunhoAtual);
+    });
+    linha.querySelector(".btn-remover-medida").addEventListener("click", () => {
+      medidasVisita.splice(i, 1);
+      renderMedidas();
+      salvarRascunhoAtual();
+    });
+    atualizarResultado();
+  });
+  document.getElementById("totalMedidas").textContent = resumoTotaisMedidas(medidasVisita) ? "Total: " + resumoTotaisMedidas(medidasVisita) : "";
+}
+
+document.getElementById("btnAddMedida").addEventListener("click", () => {
+  medidasVisita.push({ descricao: "", m1: "", m2: "", qtd: "", unidade: "m2" });
+  renderMedidas();
+  const linhas = document.querySelectorAll("#listaMedidas .linha-medida[data-medida] .med-desc");
+  if (linhas.length) linhas[linhas.length - 1].focus();
+});
+
+// ====================================================
+// AGENDA DO GOOGLE — lista os agendamentos e transforma em visita
+// ====================================================
+// O descritivo do Google pode vir com HTML (negrito, links, <br>)
+function textoSemHtml(html) {
+  const comQuebras = String(html || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li)>/gi, "\n");
+  const doc = new DOMParser().parseFromString(comQuebras, "text/html");
+  return (doc.body.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// Endereço do Google Maps costuma vir assim:
+// "Rua Treze de Maio, 301 - Centro, Curitiba - PR, 80020-270, Brasil"
+// Tenta separar rua/número, bairro e cidade. Se não reconhecer o
+// formato, põe tudo em Endereço.
+function separarEnderecoGoogle(texto) {
+  const partes = String(texto || "").split(",").map((p) => p.trim()).filter(Boolean);
+  const resultado = { endereco: String(texto || "").trim(), bairro: "", cidade: "" };
+  if (partes.length >= 3 && partes[1].includes(" - ")) {
+    const [numero, bairro] = partes[1].split(" - ").map((s) => s.trim());
+    const cidade = partes[2].split(" - ")[0].trim();
+    resultado.endereco = `${partes[0]}, ${numero}`;
+    resultado.bairro = bairro || "";
+    resultado.cidade = /\d{5}-?\d{3}/.test(cidade) ? "" : cidade;
+  }
+  return resultado;
+}
+
+function periodoAgenda() {
+  const agora = new Date();
+  const dia = 24 * 60 * 60 * 1000;
+  const v = document.getElementById("periodoAgenda").value;
+  if (v === "proximas") return { inicio: new Date(agora.getTime() - dia), fim: new Date(agora.getTime() + 30 * dia) };
+  if (v === "passadas") return { inicio: new Date(agora.getTime() - 60 * dia), fim: agora };
+  return { inicio: new Date(agora.getTime() - 30 * dia), fim: new Date(agora.getTime() + 30 * dia) };
+}
+
+async function carregarAgendaVisitas() {
+  const lista = document.getElementById("listaAgenda");
+  if (!lista) return;
+  if (typeof isGoogleAuthenticated !== "function" || !isGoogleAuthenticated()) {
+    lista.innerHTML = '<div class="vazio-agenda">Seu Gmail não está conectado. Conecte uma vez na tela do <a href="calendario.html">Calendário</a> e os agendamentos aparecem aqui.<br>Enquanto isso, dá para registrar uma <b>visita avulsa</b> no formulário abaixo.</div>';
+    return;
+  }
+  lista.innerHTML = '<div class="vazio-agenda">Carregando o calendário…</div>';
+  const { inicio, fim } = periodoAgenda();
+  try {
+    const resp = await gapi.client.calendar.events.list({
+      calendarId: "primary",
+      timeMin: inicio.toISOString(),
+      timeMax: fim.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 250,
+      showDeleted: false,
+    });
+    eventosAgendaCache = (resp.result.items || []).filter((ev) => ev.status !== "cancelled");
+    renderAgenda();
+  } catch (e) {
+    console.error("[visita] Erro ao ler o calendário:", e);
+    lista.innerHTML = '<div class="vazio-agenda">Não foi possível ler o calendário agora. Recarregue a página.</div>';
+  }
+}
+
+function dataInicioEvento(ev) {
+  if (ev.start && ev.start.dateTime) return new Date(ev.start.dateTime);
+  if (ev.start && ev.start.date) return new Date(ev.start.date + "T00:00:00");
+  return null;
+}
+
+function renderAgenda() {
+  const lista = document.getElementById("listaAgenda");
+  if (!lista || !eventosAgendaCache.length && lista.textContent.includes("Gmail")) return;
+  const busca = normalizarBuscaVisita(document.getElementById("buscaAgenda").value);
+  let eventos = eventosAgendaCache;
+  if (busca) {
+    eventos = eventos.filter((ev) => normalizarBuscaVisita([ev.summary, ev.location, ev.description, ev.extendedProperties?.private?.clientePagamento].join(" ")).includes(busca));
+  }
+  if (!eventos.length) {
+    lista.innerHTML = '<div class="vazio-agenda">Nenhum agendamento nesse período.</div>';
+    return;
+  }
+  lista.innerHTML = "";
+  eventos.forEach((ev) => {
+    const cliente = ev.extendedProperties?.private?.clientePagamento || "";
+    const inicioEv = dataInicioEvento(ev);
+    const dataTexto = inicioEv
+      ? inicioEv.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }) + (ev.start.dateTime ? " · " + inicioEv.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "")
+      : "";
+    const visitaExistente = visitasCache.find((v) => v.eventoCalendarioId === ev.id);
+    const descricao = textoSemHtml(ev.description);
+    const el = document.createElement("div");
+    el.className = "item-agenda" + (visitaExistente ? " registrada" : "");
+    el.innerHTML = `
+      <div style="min-width:0;">
+        <div class="data-agenda">${escaparHtml(dataTexto)}</div>
+        <div class="titulo-agenda">${escaparHtml(cliente ? cliente + " — " : "")}${escaparHtml(ev.summary || "(sem título)")}</div>
+        ${ev.location ? `<div class="info-agenda">📍 ${escaparHtml(ev.location)}</div>` : ""}
+        ${descricao ? `<div class="desc-agenda">${escaparHtml(descricao)}</div>` : ""}
+      </div>
+      ${visitaExistente
+        ? '<button type="button" class="btn-registrar-agenda" style="background:#1C8A4B">✓ Ver visita</button>'
+        : '<button type="button" class="btn-registrar-agenda">Registrar visita</button>'}
+    `;
+    el.querySelector(".btn-registrar-agenda").addEventListener("click", () => {
+      if (visitaExistente) preencherFormulario(visitaExistente);
+      else registrarVisitaDoEvento(ev);
+    });
+    lista.appendChild(el);
+  });
+}
+
+function normalizarBuscaVisita(t) {
+  return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+// Joga o agendamento no formulário: cliente, data, endereço e descritivo
+async function registrarVisitaDoEvento(ev) {
+  const temAlgo = formularioVisitaTemConteudo(coletarDadosRascunhoVisita());
+  if (temAlgo) {
+    const ok = await confirmarAcao("Substituir o que está no formulário?", "O formulário já tem informações. Elas continuam salvas em Pendentes.");
+    if (!ok) return;
+    await salvarRascunhoAtual();
+  }
+  limparFormulario();
+  const cliente = ev.extendedProperties?.private?.clientePagamento || "";
+  const end = separarEnderecoGoogle(ev.location);
+  const inicioEv = dataInicioEvento(ev);
+  const p = (n) => String(n).padStart(2, "0");
+  document.getElementById("campoClienteNome").value = cliente || ev.summary || "";
+  document.getElementById("campoEndereco").value = end.endereco;
+  document.getElementById("campoBairro").value = end.bairro;
+  document.getElementById("campoCidade").value = end.cidade;
+  if (inicioEv) document.getElementById("campoDataVisita").value = `${inicioEv.getFullYear()}-${p(inicioEv.getMonth() + 1)}-${p(inicioEv.getDate())}`;
+  // Se o evento tem cliente separado, o título (ex.: "Vistoria fachada")
+  // entra como primeira linha do descritivo.
+  const descricao = textoSemHtml(ev.description);
+  document.getElementById("campoDescricao").value = [cliente ? ev.summary : "", descricao].filter(Boolean).join("\n");
+  definirEventoVinculado({ id: ev.id, titulo: ev.summary || "" });
+  document.getElementById("tituloFormulario").textContent = `Nova visita — ${cliente || ev.summary || ""}`;
+  document.getElementById("btnCancelarEdicao").style.display = "inline-block";
+  window.scrollTo({ top: document.getElementById("tituloFormulario").getBoundingClientRect().top + window.scrollY - 20, behavior: "smooth" });
+  mostrarToast("Agendamento trazido para o formulário. Complete com medidas e fotos e salve.");
+}
+
+document.getElementById("periodoAgenda").addEventListener("change", carregarAgendaVisitas);
+document.getElementById("buscaAgenda").addEventListener("input", renderAgenda);
+
