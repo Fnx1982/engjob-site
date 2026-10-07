@@ -131,7 +131,7 @@ function renderLista() {
   });
 }
 
-btnNovoOrcamento.addEventListener("click", () => abrirFormularioProposta(null, renderLista));
+btnNovoOrcamento.addEventListener("click", () => abrirFormularioProposta(null, aposSalvarOrcamento));
 document.getElementById("btnImpostosMes").addEventListener("click", () => abrirModalImpostosMes());
 buscaInput.addEventListener("input", renderLista);
 filtroMes.addEventListener("change", renderLista);
@@ -153,9 +153,121 @@ renderLista();
   if (!dadosCodificados) return;
   try {
     const dados = JSON.parse(decodeURIComponent(escape(atob(dadosCodificados))));
-    abrirFormularioProposta(null, renderLista, dados);
+    abrirFormularioProposta(null, aposSalvarOrcamento, dados);
   } catch (e) {
     console.warn("[orcamento] Não foi possível ler os dados da visita na URL:", e);
   }
 })();
 carregarObrasCache();
+
+// ====================================================
+// VISITAS AGUARDANDO ORÇAMENTO
+// Toda visita técnica salva que ainda não virou orçamento aparece
+// aqui (pra todo mundo). "Criar orçamento" abre o formulário já
+// preenchido; ao salvar o orçamento, a visita sai da lista.
+// "Não vai virar orçamento" tira da lista sem criar nada.
+// ====================================================
+function dadosPropostaDaVisita(v) {
+  const medidas = (v.medidas || []).filter((m) => (m.descricao || "").trim() || m.m1);
+  const textoMedidas = medidas.length
+    ? "Medidas da visita:\n" + medidas.map((m) => `- ${m.descricao || "Medida"}: ${[m.m1, m.m2].filter(Boolean).join(" × ")}${m.qtd ? " (x" + m.qtd + ")" : ""} ${m.unidade === "m" ? "m" : m.unidade === "un" ? "un" : "m²"}`).join("\n")
+    : "";
+  return {
+    cliente: v.clienteNome || "",
+    telefone: v.telefone || "",
+    local: [v.local, v.endereco, v.bairro, v.cidade].filter(Boolean).join(", "),
+    observacao: [v.descricao, textoMedidas].filter(Boolean).join("\n\n"),
+    visitaId: v.id, // só pra mostrar as fotos da visita no canto
+  };
+}
+
+async function renderVisitasAguardando() {
+  const bloco = document.getElementById("blocoVisitasAguardando");
+  const lista = document.getElementById("listaVisitasAguardando");
+  if (!bloco || !lista) return;
+  const resp = await apiListarVisitas();
+  if (!resp.ok) { bloco.style.display = "none"; return; }
+  const aguardando = (resp.visitas || []).filter((v) => !v.convertidaEmPropostaId);
+  if (!aguardando.length) { bloco.style.display = "none"; return; }
+  bloco.style.display = "block";
+  document.getElementById("contVisitasAguardando").textContent = aguardando.length;
+  lista.innerHTML = "";
+  aguardando.forEach((v) => {
+    const quando = v.dataVisita ? v.dataVisita.split("-").reverse().join("/") : new Date(v.criadoEm).toLocaleDateString("pt-BR");
+    const endereco = [v.endereco, v.bairro, v.cidade].filter(Boolean).join(", ");
+    const el = document.createElement("div");
+    el.className = "item-fila";
+    el.innerHTML = `
+      <div class="info-fila">
+        <div class="nome-fila">${escaparHtml(v.clienteNome)}</div>
+        <div class="meta-fila">Visita em ${quando}${endereco ? " · " + escaparHtml(endereco) : ""} · ${(v.fotos || []).length} foto(s)${v.criadoPorNome ? " · por " + escaparHtml(v.criadoPorNome) : ""}</div>
+      </div>
+      <div class="acoes-fila">
+        <button type="button" class="btn-laranja btn-criar-da-visita">Criar orçamento</button>
+        <button type="button" class="btn-dispensar-visita" title="Tirar da lista sem criar orçamento">Não vai virar orçamento</button>
+      </div>`;
+    el.querySelector(".btn-criar-da-visita").addEventListener("click", () => abrirFormularioProposta(null, aposSalvarOrcamento, dadosPropostaDaVisita(v)));
+    el.querySelector(".btn-dispensar-visita").addEventListener("click", async () => {
+      const ok = await confirmarAcao(`Tirar "${v.clienteNome}" da lista?`, "A visita continua salva em Visita Técnica — só não aparece mais aqui.");
+      if (!ok) return;
+      const r = await apiSalvarVisita({ ...v, convertidaEmPropostaId: "dispensada" });
+      if (!r.ok) { mostrarToast(r.erro || "Não foi possível.", "erro"); return; }
+      renderVisitasAguardando();
+    });
+    lista.appendChild(el);
+  });
+}
+
+// ====================================================
+// ORÇAMENTOS NÃO FINALIZADOS (rascunhos automáticos)
+// Antes eles ficavam salvos no servidor, mas não havia onde reabrir.
+// ====================================================
+async function renderRascunhosOrcamento() {
+  const bloco = document.getElementById("blocoRascunhosOrcamento");
+  const lista = document.getElementById("listaRascunhosOrcamento");
+  if (!bloco || !lista) return;
+  const resp = await apiListarRascunhosProposta();
+  const rascunhos = resp.ok ? (resp.rascunhos || []) : [];
+  if (!rascunhos.length) { bloco.style.display = "none"; return; }
+  bloco.style.display = "block";
+  document.getElementById("contRascunhosOrcamento").textContent = rascunhos.length;
+  lista.innerHTML = "";
+  rascunhos.forEach((r) => {
+    const d = r.dados || {};
+    const quando = new Date(r.atualizadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    const el = document.createElement("div");
+    el.className = "item-fila";
+    el.innerHTML = `
+      <div class="info-fila">
+        <div class="nome-fila">${escaparHtml(d.cliente) || "(sem cliente)"}${d.numeroOrcamento ? " · nº " + escaparHtml(d.numeroOrcamento) : ""}</div>
+        <div class="meta-fila">Salvo sozinho em ${quando}${d.servico ? " · " + escaparHtml(d.servico) : ""}</div>
+      </div>
+      <div class="acoes-fila">
+        <button type="button" class="btn-laranja btn-continuar-rasc">Continuar</button>
+        <button type="button" class="btn-dispensar-visita btn-excluir-rasc">Excluir</button>
+      </div>`;
+    el.querySelector(".btn-continuar-rasc").addEventListener("click", () => {
+      const dados = { ...d }; delete dados.id; // rascunho vira orçamento NOVO ao salvar
+      abrirFormularioProposta(null, aposSalvarOrcamento, dados, r.id);
+    });
+    el.querySelector(".btn-excluir-rasc").addEventListener("click", async () => {
+      const ok = await confirmarAcao("Excluir este orçamento não finalizado?", "Essa ação não pode ser desfeita.");
+      if (!ok) return;
+      await apiExcluirRascunhoProposta(r.id);
+      renderRascunhosOrcamento();
+    });
+    lista.appendChild(el);
+  });
+}
+
+function aposSalvarOrcamento() {
+  renderLista();
+  renderVisitasAguardando();
+  renderRascunhosOrcamento();
+}
+
+// O formulário avisa quando um rascunho é salvo/fechado → atualiza a lista
+onListaPendentesAtualizarCallback = renderRascunhosOrcamento;
+renderVisitasAguardando();
+renderRascunhosOrcamento();
+

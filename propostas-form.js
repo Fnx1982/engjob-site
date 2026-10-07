@@ -486,6 +486,9 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
     propostaEmEdicao.impostos = impostosPadraoParaProposta(chaveMesImpostosOrc(propostaEmEdicao.criadoEm));
   }
   preencherCamposImpostos();
+  // Veio de uma visita técnica: mostra as fotos dela num quadro no canto
+  if (propostaEmEdicao.visitaId) mostrarPainelFotosVisita(propostaEmEdicao.visitaId);
+  else esconderPainelFotosVisita();
   if (!Array.isArray(propostaEmEdicao.linksMateriais)) propostaEmEdicao.linksMateriais = [];
   renderLinksMateriais();
 
@@ -506,6 +509,7 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
 function fecharFormularioProposta() {
   const modal = document.getElementById("modalProposta");
   if (modal) modal.classList.remove("active");
+  esconderPainelFotosVisita();
   // NÃO apaga o rascunho aqui — fechar o modal sem salvar é exatamente
   // o caso que o rascunho existe pra cobrir. Ele continua no servidor,
   // marcado como "Pendente", até o usuário voltar e finalizar de verdade.
@@ -1017,6 +1021,10 @@ async function salvarFormularioProposta() {
 
     salvarProposta(propostaEmEdicao);
 
+    // Orçamento criado a partir de uma visita: marca a visita como
+    // "já virou orçamento" (ela sai da lista de visitas aguardando).
+    if (propostaEmEdicao.visitaId) await marcarVisitaComoOrcada(propostaEmEdicao.visitaId, propostaEmEdicao.id);
+
     // Proposta finalizada de verdade — o rascunho que vinha sendo
     // salvo automaticamente não faz mais sentido, apaga ele.
     if (rascunhoAtualId) {
@@ -1310,5 +1318,133 @@ function puxarMateriaisParaLinks() {
   });
   renderLinksMateriais();
   mostrarToast(novos ? `${novos} material(is) adicionado(s) — falta colar os links.` : "Todos os materiais da proposta já estão na lista.");
+}
+
+// ====================================================
+// FOTOS DA VISITA NO CANTO — só pra consultar enquanto monta o
+// orçamento. As fotos NÃO são copiadas pra proposta: o orçamento
+// guarda só o número da visita (visitaId) pra saber quais mostrar.
+// ====================================================
+async function marcarVisitaComoOrcada(visitaId, propostaId) {
+  try {
+    const resp = await apiListarVisitas();
+    const visita = resp.ok ? (resp.visitas || []).find((v) => v.id === visitaId) : null;
+    if (visita && !visita.convertidaEmPropostaId) {
+      await apiSalvarVisita({ ...visita, convertidaEmPropostaId: propostaId || "sim" });
+    }
+  } catch (e) {
+    console.warn("[propostas-form] Não foi possível marcar a visita como orçada:", e);
+  }
+}
+
+function montarPainelFotosVisita() {
+  if (document.getElementById("painelFotosVisita")) return;
+  const estilo = document.createElement("style");
+  estilo.textContent = `
+    #painelFotosVisita { position: fixed; right: 16px; bottom: 16px; z-index: 1500; width: 300px; max-height: 70vh;
+      background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.28); display: none; flex-direction: column;
+      font-family: 'Montserrat', sans-serif; overflow: hidden; }
+    #painelFotosVisita.aberto { display: flex; }
+    #painelFotosVisita .topo-pfv { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      background: #2b2b2b; color: #fff; padding: 9px 12px; cursor: pointer; user-select: none; }
+    #painelFotosVisita .topo-pfv b { font-size: 13px; }
+    #painelFotosVisita .topo-pfv button { background: none; border: none; color: #fff; font-size: 16px; cursor: pointer; padding: 0 2px; }
+    #painelFotosVisita .corpo-pfv { padding: 10px; overflow-y: auto; }
+    #painelFotosVisita.minimizado .corpo-pfv { display: none; }
+    #painelFotosVisita .grade-pfv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    #painelFotosVisita .grade-pfv img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; cursor: zoom-in; }
+    #painelFotosVisita .texto-pfv { font-size: 12px; color: #444; white-space: pre-wrap; margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px; }
+    #painelFotosVisita .vazio-pfv { font-size: 12px; color: #999; text-align: center; padding: 10px 0; }
+    #zoomFotoVisita { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,.88); display: none;
+      align-items: center; justify-content: center; flex-direction: column; padding: 16px; }
+    #zoomFotoVisita img { max-width: 100%; max-height: 84vh; border-radius: 8px; }
+    #zoomFotoVisita .nav-zoom { display: flex; gap: 10px; margin-top: 12px; }
+    #zoomFotoVisita button { background: rgba(255,255,255,.15); color: #fff; border: none; border-radius: 20px; padding: 8px 16px; font-size: 14px; cursor: pointer; font-family: inherit; }
+    @media (max-width: 768px) {
+      #painelFotosVisita { right: 8px; left: 8px; bottom: 8px; width: auto; max-height: 55vh; }
+    }
+  `;
+  document.head.appendChild(estilo);
+
+  const painel = document.createElement("div");
+  painel.id = "painelFotosVisita";
+  painel.innerHTML = `
+    <div class="topo-pfv" id="topoPainelFotos" title="Minimizar / abrir">
+      <b id="tituloPainelFotos">📷 Fotos da visita</b>
+      <span><button type="button" id="btnMinPainelFotos" aria-label="Minimizar">▾</button><button type="button" id="btnFecharPainelFotos" aria-label="Fechar">✕</button></span>
+    </div>
+    <div class="corpo-pfv" id="corpoPainelFotos"></div>`;
+  document.body.appendChild(painel);
+
+  const zoom = document.createElement("div");
+  zoom.id = "zoomFotoVisita";
+  zoom.innerHTML = `<img id="imgZoomFotoVisita" alt="" /><div class="nav-zoom">
+    <button type="button" id="zoomAnterior">‹ Anterior</button><button type="button" id="zoomFechar">Fechar</button><button type="button" id="zoomProxima">Próxima ›</button></div>`;
+  document.body.appendChild(zoom);
+
+  const alternarMin = () => {
+    painel.classList.toggle("minimizado");
+    document.getElementById("btnMinPainelFotos").textContent = painel.classList.contains("minimizado") ? "▴" : "▾";
+  };
+  document.getElementById("topoPainelFotos").addEventListener("click", (e) => { if (e.target.id !== "btnFecharPainelFotos") alternarMin(); });
+  document.getElementById("btnFecharPainelFotos").addEventListener("click", (e) => { e.stopPropagation(); painel.classList.remove("aberto"); });
+
+  document.getElementById("zoomFechar").addEventListener("click", () => { zoom.style.display = "none"; });
+  zoom.addEventListener("click", (e) => { if (e.target === zoom) zoom.style.display = "none"; });
+  document.getElementById("zoomAnterior").addEventListener("click", () => mudarZoomFoto(-1));
+  document.getElementById("zoomProxima").addEventListener("click", () => mudarZoomFoto(1));
+  document.addEventListener("keydown", (e) => {
+    if (zoom.style.display !== "flex") return;
+    if (e.key === "Escape") zoom.style.display = "none";
+    if (e.key === "ArrowLeft") mudarZoomFoto(-1);
+    if (e.key === "ArrowRight") mudarZoomFoto(1);
+  });
+}
+
+let fotosPainelVisita = [];
+let indiceZoomFoto = 0;
+
+function urlFotoPainelVisita(chave) {
+  return `${AUTH_WORKER_URL}?action=get&key=${encodeURIComponent(chave)}&token=${encodeURIComponent(pegarTokenDownloadCache())}`;
+}
+
+function abrirZoomFoto(i) {
+  indiceZoomFoto = i;
+  document.getElementById("imgZoomFotoVisita").src = urlFotoPainelVisita(fotosPainelVisita[i]);
+  document.getElementById("zoomFotoVisita").style.display = "flex";
+}
+async function mudarZoomFoto(passo) {
+  if (!fotosPainelVisita.length) return;
+  await garantirTokenDownload();
+  abrirZoomFoto((indiceZoomFoto + passo + fotosPainelVisita.length) % fotosPainelVisita.length);
+}
+
+async function mostrarPainelFotosVisita(visitaId) {
+  montarPainelFotosVisita();
+  const painel = document.getElementById("painelFotosVisita");
+  const corpo = document.getElementById("corpoPainelFotos");
+  painel.classList.add("aberto");
+  painel.classList.toggle("minimizado", window.matchMedia("(max-width: 768px)").matches); // no celular começa fechadinho
+  document.getElementById("btnMinPainelFotos").textContent = painel.classList.contains("minimizado") ? "▴" : "▾";
+  corpo.innerHTML = '<div class="vazio-pfv">Carregando…</div>';
+
+  const [resp] = await Promise.all([apiListarVisitas(), garantirTokenDownload()]);
+  const visita = resp.ok ? (resp.visitas || []).find((v) => v.id === visitaId) : null;
+  if (!visita) { corpo.innerHTML = '<div class="vazio-pfv">A visita não foi encontrada (pode ter sido excluída).</div>'; return; }
+
+  fotosPainelVisita = visita.fotos || [];
+  document.getElementById("tituloPainelFotos").textContent = `📷 Fotos da visita (${fotosPainelVisita.length})`;
+  const quando = visita.dataVisita ? visita.dataVisita.split("-").reverse().join("/") : "";
+  corpo.innerHTML = `
+    ${fotosPainelVisita.length
+      ? `<div class="grade-pfv">${fotosPainelVisita.map((c, i) => `<img src="${urlFotoPainelVisita(c)}" data-i="${i}" alt="Foto ${i + 1}" />`).join("")}</div>`
+      : '<div class="vazio-pfv">Essa visita não tem fotos.</div>'}
+    <div class="texto-pfv"><b>${escaparHtml(visita.clienteNome)}</b>${quando ? " · visita em " + quando : ""}${visita.descricao ? "\n" + escaparHtml(visita.descricao) : ""}</div>`;
+  corpo.querySelectorAll("img[data-i]").forEach((img) => img.addEventListener("click", () => abrirZoomFoto(Number(img.dataset.i))));
+}
+
+function esconderPainelFotosVisita() {
+  const painel = document.getElementById("painelFotosVisita");
+  if (painel) painel.classList.remove("aberto");
 }
 

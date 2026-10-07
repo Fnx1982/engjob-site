@@ -268,14 +268,24 @@ document.getElementById("btnSalvarVisita").addEventListener("click", async () =>
       fotos: chavesFotos,
       ...camposExtrasVisita(),
     };
+    const ehNova = !visitaEmEdicaoId;
     const resposta = await apiSalvarVisita(dados);
     if (!resposta.ok) { mostrarToast(resposta.erro || "Erro ao salvar.", "erro"); return; }
     mostrarToast("Visita salva.");
+    const visitaSalva = { ...dados, id: resposta.id };
     if (rascunhoAtualId) { await apiExcluirRascunho("visita", rascunhoAtualId); rascunhoAtualId = null; }
     limparFormulario();
     await carregarVisitas();
     renderPendentes();
     renderAgenda(); // marca o agendamento como "visita registrada"
+
+    // Visita nova: já oferece abrir o orçamento dela. Se escolher
+    // "depois", ela fica em Orçamento → "Visitas aguardando orçamento".
+    if (ehNova) {
+      const agora = await confirmarAcao("Visita salva! Criar o orçamento agora?",
+        "Se preferir fazer depois, ela fica esperando em Orçamento → \"Visitas aguardando orçamento\".");
+      if (agora) abrirOrcamentoDaVisita(visitaSalva);
+    }
   } catch (e) {
     mostrarToast(e.message || "Erro ao salvar a visita.", "erro");
   } finally {
@@ -318,7 +328,7 @@ function renderizarLista() {
       <div style="display:flex; align-items:center;">
         ${fotoThumb}
         <div>
-          <div class="nome">${escaparHtml(v.clienteNome)} ${v.eventoCalendarioId ? '<span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">📅 Do calendário</span>' : ""} ${v.convertidaEmPropostaId ? '<span class="badge-tipo" style="background:#E7F6EC;color:#1C8A4B;">Já virou orçamento</span>' : ""}</div>
+          <div class="nome">${escaparHtml(v.clienteNome)} ${v.eventoCalendarioId ? '<span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">📅 Do calendário</span>' : ""} ${v.convertidaEmPropostaId === "dispensada" ? '<span class="badge-tipo" style="background:#EEF0F3;color:#666;">Sem orçamento</span>' : v.convertidaEmPropostaId ? '<span class="badge-tipo" style="background:#E7F6EC;color:#1C8A4B;">Já virou orçamento</span>' : '<span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">Aguardando orçamento</span>'}</div>
           ${v.endereco || v.cidade ? `<div class="endereco-com-mapa">${htmlLinksMapa(juntarEndereco(v.endereco, v.bairro, v.cidade))}</div>` : ""}
           <div class="meta">${enderecoPartes || "Sem endereço"} · ${v.dataVisita ? dataBRVisita(v.dataVisita) : new Date(v.criadoEm).toLocaleDateString("pt-BR")} · ${(v.fotos || []).length} foto(s)${(v.medidas || []).length ? " · " + escaparHtml(resumoTotaisMedidas(v.medidas)) : ""}</div>
         </div>
@@ -331,16 +341,7 @@ function renderizarLista() {
     `;
     el.querySelector(".btn-editar-visita").addEventListener("click", () => preencherFormulario(v));
 
-    el.querySelector(".btn-gerar-orcamento").addEventListener("click", () => {
-      const dadosProposta = {
-        cliente: v.clienteNome,
-        telefone: v.telefone,
-        local: [v.local, v.endereco, v.bairro, v.cidade].filter(Boolean).join(", "),
-        observacao: [v.descricao, textoMedidasParaOrcamento(v.medidas)].filter(Boolean).join("\n\n"),
-      };
-      const codificado = btoa(unescape(encodeURIComponent(JSON.stringify(dadosProposta))));
-      navegarParaOrcamento(`orcamento.html?dadosVisita=${encodeURIComponent(codificado)}`);
-    });
+    el.querySelector(".btn-gerar-orcamento").addEventListener("click", () => abrirOrcamentoDaVisita(v));
 
     el.querySelector(".btn-excluir-visita").addEventListener("click", async () => {
       const ok = await confirmarAcao(`Excluir a visita de "${v.clienteNome}"?`, "");
@@ -356,6 +357,20 @@ function renderizarLista() {
 }
 
 document.getElementById("buscaVisitas").addEventListener("input", renderizarLista);
+
+// Abre o Orçamento com um orçamento novo já preenchido com a visita.
+// "visitaId" faz as fotos da visita aparecerem num quadro no canto.
+function abrirOrcamentoDaVisita(v) {
+  const dadosProposta = {
+    cliente: v.clienteNome,
+    telefone: v.telefone,
+    local: [v.local, v.endereco, v.bairro, v.cidade].filter(Boolean).join(", "),
+    observacao: [v.descricao, textoMedidasParaOrcamento(v.medidas)].filter(Boolean).join("\n\n"),
+    visitaId: v.id,
+  };
+  const codificado = btoa(unescape(encodeURIComponent(JSON.stringify(dadosProposta))));
+  navegarParaOrcamento(`orcamento.html?dadosVisita=${encodeURIComponent(codificado)}`);
+}
 
 function navegarParaOrcamento(url) {
   window.location.href = url;
