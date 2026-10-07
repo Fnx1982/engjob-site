@@ -52,6 +52,13 @@ function renderCabecalho() {
   tituloObraEl.textContent = (obraAtual.cliente || "Obra") + numOrc;
   clienteObraEl.textContent = obraAtual.cliente || "(sem nome do cliente)";
   servicoObraEl.textContent = obraAtual.servico || "";
+  // Endereço da obra com atalho pro Maps/Waze
+  const localObraEl = document.getElementById("localObra");
+  if (localObraEl) {
+    localObraEl.innerHTML = obraAtual.local
+      ? `<span class="texto-endereco">📍 ${escaparHtml(obraAtual.local)}</span>${typeof htmlLinksMapa === "function" ? htmlLinksMapa(obraAtual.local) : ""}`
+      : "";
+  }
   campoObservacaoObra.value = obraAtual.observacao || "";
 
   // Renderiza o selo e botão de status

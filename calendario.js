@@ -157,11 +157,19 @@ function mensagemErroGoogle(err) {
   return "";
 }
 
+// Botões Maps/Waze embaixo do campo Endereço do evento
+function atualizarMapaEvento() {
+  const el = document.getElementById("mapaEvento");
+  if (el && typeof htmlLinksMapa === "function") el.innerHTML = htmlLinksMapa(document.getElementById("eventEndereco").value);
+}
+document.getElementById("eventEndereco").addEventListener("input", atualizarMapaEvento);
+
 function abrirModalNovo(data) {
   eventoSelecionado = null;
   document.getElementById("eventTitle").value = "";
   document.getElementById("eventClientePagamento").value = "";
   document.getElementById("eventEndereco").value = "";
+  atualizarMapaEvento();
   document.getElementById("eventDescricao").value = "";
   document.getElementById("eventStart").value = data + "T09:00";
   document.getElementById("eventEnd").value = data + "T10:00";
@@ -177,6 +185,7 @@ function abrirModalEditar(event) {
   document.getElementById("eventTitle").value = event.extendedProps?.tituloOriginal ?? event.title;
   document.getElementById("eventClientePagamento").value = event.extendedProps?.clientePagamento || "";
   document.getElementById("eventEndereco").value = event.extendedProps?.location || "";
+  atualizarMapaEvento();
   document.getElementById("eventDescricao").value = event.extendedProps?.description || "";
   document.getElementById("eventStart").value = event.startStr.slice(0, 16);
   document.getElementById("eventEnd").value = event.endStr ? event.endStr.slice(0, 16) : "";

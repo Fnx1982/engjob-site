@@ -100,6 +100,7 @@ function renderLista() {
               </div>
               <div class="card-obra-cliente">${escaparHtml(obra.cliente)||"(sem nome)"}</div>
               <div class="card-obra-servico">${escaparHtml(obra.servico)||""}</div>
+              ${obra.local && typeof htmlLinksMapa === "function" ? `<div class="endereco-com-mapa"><span class="texto-endereco">📍 ${escaparHtml(obra.local)}</span>${htmlLinksMapa(obra.local)}</div>` : ""}
               <div class="card-obra-lucro ${lucro>=0?"positivo":"negativo"}">
                 Lucro: R$ ${formatarMoeda(lucro)}
               </div>

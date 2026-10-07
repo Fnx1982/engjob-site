@@ -94,6 +94,7 @@ function renderLista() {
         <div>
           <div class="proposta-cliente">${escaparHtml(p.cliente) || "(sem nome do cliente)"}</div>
           <div class="proposta-servico">${escaparHtml(p.servico) || ""}</div>
+          ${p.local && typeof htmlLinksMapa === "function" ? `<div class="endereco-com-mapa"><span class="texto-endereco">📍 ${escaparHtml(p.local)}</span>${htmlLinksMapa(p.local)}</div>` : ""}
         </div>
         <span class="selo-status ${corStatus(p)}">${rotuloStatus(p)}</span>
       </div>

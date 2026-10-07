@@ -319,6 +319,7 @@ function renderizarLista() {
         ${fotoThumb}
         <div>
           <div class="nome">${escaparHtml(v.clienteNome)} ${v.eventoCalendarioId ? '<span class="badge-tipo" style="background:#FEF3DC;color:#7A5300;">📅 Do calendário</span>' : ""} ${v.convertidaEmPropostaId ? '<span class="badge-tipo" style="background:#E7F6EC;color:#1C8A4B;">Já virou orçamento</span>' : ""}</div>
+          ${v.endereco || v.cidade ? `<div class="endereco-com-mapa">${htmlLinksMapa(juntarEndereco(v.endereco, v.bairro, v.cidade))}</div>` : ""}
           <div class="meta">${enderecoPartes || "Sem endereço"} · ${v.dataVisita ? dataBRVisita(v.dataVisita) : new Date(v.criadoEm).toLocaleDateString("pt-BR")} · ${(v.fotos || []).length} foto(s)${(v.medidas || []).length ? " · " + escaparHtml(resumoTotaisMedidas(v.medidas)) : ""}</div>
         </div>
       </div>
@@ -600,7 +601,7 @@ function renderAgenda() {
       <div style="min-width:0;">
         <div class="data-agenda">${escaparHtml(dataTexto)}</div>
         <div class="titulo-agenda">${escaparHtml(cliente ? cliente + " — " : "")}${escaparHtml(ev.summary || "(sem título)")}</div>
-        ${ev.location ? `<div class="info-agenda">📍 ${escaparHtml(ev.location)}</div>` : ""}
+        ${ev.location ? `<div class="info-agenda">📍 ${escaparHtml(ev.location)}</div><div class="endereco-com-mapa">${htmlLinksMapa(ev.location)}</div>` : ""}
         ${descricao ? `<div class="desc-agenda">${escaparHtml(descricao)}</div>` : ""}
       </div>
       ${visitaExistente
@@ -649,5 +650,21 @@ async function registrarVisitaDoEvento(ev) {
 }
 
 document.getElementById("periodoAgenda").addEventListener("change", carregarAgendaVisitas);
+
+// Botões Maps/Waze do formulário: acompanham o endereço digitado
+function atualizarMapaFormVisita() {
+  const el = document.getElementById("mapaFormVisita");
+  if (!el) return;
+  const endereco = juntarEndereco(
+    document.getElementById("campoEndereco").value,
+    document.getElementById("campoBairro").value,
+    document.getElementById("campoCidade").value
+  );
+  el.innerHTML = htmlLinksMapa(endereco);
+}
+["campoEndereco", "campoBairro", "campoCidade"].forEach((id) => document.getElementById(id).addEventListener("input", atualizarMapaFormVisita));
+// Quando o formulário é preenchido pelo próprio site (editar, rascunho,
+// agendamento), os campos mudam sem digitação — confere a cada meio segundo.
+setInterval(atualizarMapaFormVisita, 500);
 document.getElementById("buscaAgenda").addEventListener("input", renderAgenda);
 

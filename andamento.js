@@ -108,6 +108,7 @@ function renderLista() {
             ${numOrc}
           </div>
           <div class="proposta-servico">${escaparHtml(p.servico) || ""}</div>
+          ${p.local && typeof htmlLinksMapa === "function" ? `<div class="endereco-com-mapa"><span class="texto-endereco">📍 ${escaparHtml(p.local)}</span>${htmlLinksMapa(p.local)}</div>` : ""}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
           <span class="selo-status ${corStatus(p)}">${rotuloStatus(p)}</span>

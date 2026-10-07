@@ -326,6 +326,7 @@ function renderizarLista() {
       <div>
         <div class="nome">${escaparHtml(c.nome)}<span class="badge-tipo">${c.tipoPessoa}</span></div>
         <div class="meta">${escaparHtml(c.documento)} ${c.cidade ? "· " + escaparHtml(c.cidade) + (c.uf ? "/" + escaparHtml(c.uf) : "") : ""}</div>
+        ${c.logradouro && typeof htmlLinksMapa === "function" ? `<div class="endereco-com-mapa">${htmlLinksMapa(juntarEndereco(c.logradouro + (c.numero ? ", " + c.numero : ""), c.bairro, c.cidade, c.uf))}</div>` : ""}
       </div>
       <div class="acoes">
         <button class="btn-editar-contato">Editar</button>

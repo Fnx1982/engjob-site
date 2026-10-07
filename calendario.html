@@ -62,6 +62,7 @@
 
       <label for="eventEndereco">Endereço</label>
       <input type="text" id="eventEndereco" placeholder="Rua, número, bairro, cidade" />
+      <div class="endereco-com-mapa" id="mapaEvento"></div>
 
       <label for="eventStart">Início</label>
       <input type="datetime-local" id="eventStart">
@@ -81,7 +82,8 @@
   </div>
 
 
-  <script src="calendario.js?v=2"></script>
+  <script src="mapas.js?v=1"></script>
+  <script src="calendario.js?v=3"></script>
   <script>
     // O calendario.js está no final do <body>, então os elementos
     // (#btnLogin, #calendar, etc.) já existem nesse ponto — não
