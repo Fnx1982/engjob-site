@@ -215,3 +215,6 @@ function navegarParaNotaAndamento(url) {
   window.location.href = url;
 }
 carregarObrasCache();
+
+// Orçamentos chegaram da nuvem: redesenha a lista
+document.addEventListener("propostas-carregadas", () => renderLista());

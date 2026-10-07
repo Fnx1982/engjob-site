@@ -197,3 +197,6 @@ if (paramsUrlObras.get("erro") === "obra_nao_encontrada") {
   atualizarContadoresAbas();
   renderLista();
 })();
+
+// Orçamentos chegaram da nuvem: redesenha a lista
+document.addEventListener("propostas-carregadas", () => renderLista());

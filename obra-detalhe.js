@@ -541,3 +541,5 @@ async function abrirVisualizadorFotoDemanda(chave, legenda) {
   document.getElementById("visualizadorFotoDemanda").style.display = "flex";
 }
 
+// Orçamentos chegaram da nuvem: atualiza o cabeçalho (número do orçamento etc.)
+document.addEventListener("propostas-carregadas", () => { if (typeof obraAtual !== "undefined" && obraAtual) renderCabecalho(); });

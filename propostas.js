@@ -172,3 +172,6 @@ renderLista();
 // antes de aprovar/excluir uma proposta (evita duplicar obra se
 // aprovar duas vezes rápido, por exemplo).
 carregarObrasCache();
+
+// Orçamentos chegaram da nuvem: redesenha a lista
+document.addEventListener("propostas-carregadas", () => renderLista());

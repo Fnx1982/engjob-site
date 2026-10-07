@@ -823,3 +823,6 @@ async function carregarApresentacaoPorId(id) {
 document.getElementById("btnConfigNumeracaoApres").addEventListener("click", () => {
   abrirModalConfigNumeracao("apresentacao", "Apresentação");
 });
+
+// Orçamentos chegaram da nuvem: atualiza a lista de clientes
+document.addEventListener("propostas-carregadas", popularClientesApresDatalist);

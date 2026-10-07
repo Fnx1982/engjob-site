@@ -1019,7 +1019,7 @@ async function salvarFormularioProposta() {
     // documento, se a pessoa preencheu (não é obrigatório aqui).
     await garantirClienteEmContatos(propostaEmEdicao.cliente, propostaEmEdicao.telefone, propostaEmEdicao.documentoCliente);
 
-    salvarProposta(propostaEmEdicao);
+    await salvarProposta(propostaEmEdicao);
 
     // Orçamento criado a partir de uma visita: marca a visita como
     // "já virou orçamento" (ela sai da lista de visitas aguardando).

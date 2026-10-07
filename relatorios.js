@@ -1051,8 +1051,9 @@ const MESES_NOMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                      "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const MESES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-function lerPropostas2() { return JSON.parse(localStorage.getItem("propostas_lista")) || []; }
-function lerFinanceiro2() { return JSON.parse(localStorage.getItem("financeiro")) || []; }
+function lerPropostas2() { return typeof lerPropostas === "function" ? lerPropostas() : []; } // nuvem (propostas-core.js)
+function lerFinanceiro2() { return financeiroFuncCache.funcionarios || []; } // nuvem (auth-worker.js)
+carregarFinanceiroFunc();
 function lerObras2()      { return JSON.parse(localStorage.getItem("obras_lista")) || []; }
 function lerUsuarios2()   { console.warn("[relatorios.js] lerUsuarios2() está obsoleta — use await lerUsuariosDoServidor()."); return []; }
 async function lerUsuariosDoServidor() {

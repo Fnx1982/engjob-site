@@ -529,3 +529,50 @@ function escaparHtml(texto) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+// ====================================================
+// FINANCEIRO DE FUNCIONÁRIOS NA NUVEM
+// (tela Funcionários + funcionários lançados dentro das Obras)
+// Antes: localStorage "obrasFinanceiro" e "financeiro" (só no navegador).
+// Na primeira vez, se a nuvem estiver vazia e este navegador tiver
+// dados, eles sobem automaticamente.
+// ====================================================
+let financeiroFuncCache = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("financeiro_func_copia_nuvem")) || {
+      obras: JSON.parse(localStorage.getItem("obrasFinanceiro")) || [],
+      funcionarios: JSON.parse(localStorage.getItem("financeiro")) || [],
+    };
+  } catch (e) { return { obras: [], funcionarios: [] }; }
+})();
+
+async function carregarFinanceiroFunc() {
+  const r = await chamarWorker("financeiro-func-get");
+  if (!r.ok) return financeiroFuncCache; // sem conexão: usa a cópia local
+  if (r.dados) {
+    financeiroFuncCache = { obras: r.dados.obras || [], funcionarios: r.dados.funcionarios || [] };
+  } else {
+    // Nuvem vazia: migra o que este navegador tinha
+    let obras = [], funcionarios = [];
+    try {
+      obras = JSON.parse(localStorage.getItem("obrasFinanceiro")) || [];
+      funcionarios = JSON.parse(localStorage.getItem("financeiro")) || [];
+    } catch (e) { /* nada */ }
+    financeiroFuncCache = { obras, funcionarios };
+    if (obras.length || funcionarios.length) {
+      const s = await chamarWorker("financeiro-func-salvar", { method: "POST", body: financeiroFuncCache });
+      if (s.ok) console.info(`[financeiro] ${funcionarios.length} pagamento(s) deste navegador enviados para a nuvem.`);
+    }
+  }
+  try { localStorage.setItem("financeiro_func_copia_nuvem", JSON.stringify(financeiroFuncCache)); } catch (e) { /* ok */ }
+  return financeiroFuncCache;
+}
+
+async function salvarFinanceiroFunc(dados) {
+  financeiroFuncCache = { obras: dados.obras || [], funcionarios: dados.funcionarios || [] };
+  try { localStorage.setItem("financeiro_func_copia_nuvem", JSON.stringify(financeiroFuncCache)); } catch (e) { /* ok */ }
+  const r = await chamarWorker("financeiro-func-salvar", { method: "POST", body: financeiroFuncCache });
+  if (!r.ok && typeof mostrarToast === "function") mostrarToast("Não foi possível salvar na nuvem agora. Confira a internet.", "erro");
+  return r.ok;
+}
+

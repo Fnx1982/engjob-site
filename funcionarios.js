@@ -43,8 +43,10 @@ const btnFecharPopup = document.getElementById("btn-fechar-popup");
 // ====================================================
 // ESTADO
 // ====================================================
-let obras = JSON.parse(localStorage.getItem("obrasFinanceiro")) || [];
-let funcionarios = JSON.parse(localStorage.getItem("financeiro")) || [];
+// Começa com a última cópia salva neste aparelho e, logo em seguida,
+// troca pela versão da nuvem (ver INICIALIZAÇÃO no fim do arquivo).
+let obras = [...financeiroFuncCache.obras];
+let funcionarios = [...financeiroFuncCache.funcionarios];
 
 let visaoAtual = "obra"; // "obra" ou "funcionario"
 let indiceEditando = null; // se não for null, o form está editando esse índice
@@ -97,7 +99,7 @@ document.addEventListener("keydown", (e) => {
 // OBRAS (cadastro fixo, igual Setores)
 // ====================================================
 function salvarObras() {
-  localStorage.setItem("obrasFinanceiro", JSON.stringify(obras));
+  salvarFinanceiroFunc({ obras, funcionarios }); // nuvem
 }
 
 function renderObras() {
@@ -179,7 +181,7 @@ formObra.addEventListener("submit", (e) => {
 // PAGAMENTOS (cadastro / edição)
 // ====================================================
 function salvarFuncionarios() {
-  localStorage.setItem("financeiro", JSON.stringify(funcionarios));
+  salvarFinanceiroFunc({ obras, funcionarios }); // nuvem
 }
 
 form.addEventListener("submit", (e) => {
@@ -574,6 +576,11 @@ popup.addEventListener("click", (e) => {
 filtroObra.addEventListener("change", renderGrupos);
 
 // ====================================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO — mostra a cópia local na hora e atualiza com a nuvem
 // ====================================================
 renderTudo();
+carregarFinanceiroFunc().then((dados) => {
+  obras = [...dados.obras];
+  funcionarios = [...dados.funcionarios];
+  renderTudo();
+});

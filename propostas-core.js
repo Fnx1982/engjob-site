@@ -16,12 +16,97 @@ let obrasCache = []; // preenchido por carregarObrasCache() — Obras já vive n
 // ====================================================
 // LEITURA / ESCRITA
 // ====================================================
+// ====================================================
+// ORÇAMENTOS NA NUVEM
+// Antes: só no navegador (localStorage) — sumiam ao limpar o histórico
+// e não apareciam em outro computador/celular.
+// Agora: o servidor (Worker) é quem guarda. O site mantém uma cópia em
+// memória (propostasCache) pra continuar lendo na hora, e:
+//   • ao abrir a página, busca a lista atualizada no servidor e avisa
+//     as telas (evento "propostas-carregadas") pra redesenharem;
+//   • ao salvar, compara com o que tinha e manda pro servidor só os
+//     orçamentos que mudaram (e apaga lá os que foram excluídos);
+//   • na PRIMEIRA vez em cada navegador, envia os orçamentos que
+//     estavam guardados só nele (migração automática, sem perder nada).
+// Uma cópia de segurança fica no navegador (CHAVE_COPIA_LOCAL).
+// ====================================================
+const CHAVE_COPIA_LOCAL = "propostas_copia_nuvem";
+const CHAVE_MIGRADO = "propostas_migradas_para_nuvem";
+let propostasCache = (() => {
+  try { return JSON.parse(localStorage.getItem(CHAVE_COPIA_LOCAL)) || JSON.parse(localStorage.getItem(CHAVE_PROPOSTAS)) || []; }
+  catch (e) { return []; }
+})();
+let propostasCarregadasDoServidor = false;
+
+function guardarCopiaLocalPropostas() {
+  try { localStorage.setItem(CHAVE_COPIA_LOCAL, JSON.stringify(propostasCache)); } catch (e) { /* cheio: segue sem cópia */ }
+}
+
+async function carregarPropostasDoServidor() {
+  // 1) Migração: orçamentos que só existem neste navegador sobem pra nuvem
+  if (!localStorage.getItem(CHAVE_MIGRADO)) {
+    let antigas = [];
+    try { antigas = JSON.parse(localStorage.getItem(CHAVE_PROPOSTAS)) || []; } catch (e) { antigas = []; }
+    if (antigas.length) {
+      const r = await chamarWorker("propostas-salvar", { method: "POST", body: { propostas: antigas, somenteSeMaisNova: true } });
+      if (!r.ok) {
+        console.warn("[propostas] Migração não concluída, tenta de novo na próxima vez:", r.erro);
+      } else {
+        localStorage.setItem(CHAVE_MIGRADO, String(Date.now()));
+        // Guarda o original com outro nome, por segurança (não é mais usado)
+        localStorage.setItem(CHAVE_PROPOSTAS + "_backup_antes_da_nuvem", localStorage.getItem(CHAVE_PROPOSTAS));
+        localStorage.removeItem(CHAVE_PROPOSTAS);
+        console.info(`[propostas] ${r.salvas.length} orçamento(s) deste navegador enviados para a nuvem.`);
+      }
+    } else {
+      localStorage.setItem(CHAVE_MIGRADO, String(Date.now()));
+    }
+  }
+
+  // 2) Lista oficial, do servidor
+  const resp = await chamarWorker("propostas-list");
+  if (!resp.ok) {
+    if (typeof mostrarToast === "function") mostrarToast("Sem conexão com o servidor — mostrando a última cópia salva neste aparelho.", "erro");
+    return false;
+  }
+  propostasCache = resp.propostas || [];
+  propostasCarregadasDoServidor = true;
+  guardarCopiaLocalPropostas();
+  document.dispatchEvent(new CustomEvent("propostas-carregadas"));
+  return true;
+}
+
 function lerPropostas() {
-  return JSON.parse(localStorage.getItem(CHAVE_PROPOSTAS)) || [];
+  return propostasCache.map((p) => p); // cópia rasa da lista (os itens são os mesmos objetos)
 }
+
+// Recebe a lista completa (como sempre foi) e grava só a diferença no servidor
 function salvarPropostas(lista) {
-  localStorage.setItem(CHAVE_PROPOSTAS, JSON.stringify(lista));
+  const antes = new Map(propostasCache.map((p) => [p.id, JSON.stringify(p)]));
+  const depoisIds = new Set(lista.map((p) => p.id));
+  const mudaram = lista.filter((p) => antes.get(p.id) !== JSON.stringify(p));
+  const excluidas = [...antes.keys()].filter((id) => !depoisIds.has(id));
+
+  propostasCache = lista.map((p) => JSON.parse(JSON.stringify(p)));
+  guardarCopiaLocalPropostas();
+
+  const envios = [];
+  if (mudaram.length) envios.push(chamarWorker("propostas-salvar", { method: "POST", body: { propostas: mudaram } }));
+  excluidas.forEach((id) => envios.push(chamarWorker("propostas-excluir", { method: "POST", body: { id } })));
+  const tudo = Promise.all(envios).then((respostas) => {
+    const falhou = respostas.find((r) => !r || !r.ok);
+    if (falhou && typeof mostrarToast === "function") {
+      mostrarToast("Não foi possível salvar na nuvem agora. Confira a internet e salve de novo.", "erro");
+    }
+    return !falhou;
+  });
+  ultimoEnvioPropostas = tudo;
+  return tudo;
 }
+let ultimoEnvioPropostas = Promise.resolve(true);
+
+// Começa a buscar assim que a página abre
+const propostasProntas = carregarPropostasDoServidor();
 
 function buscarProposta(id) {
   return lerPropostas().find((p) => p.id === id);
@@ -112,7 +197,7 @@ function salvarProposta(proposta) {
   } else {
     lista.push(proposta);
   }
-  salvarPropostas(lista);
+  return salvarPropostas(lista);
 }
 
 async function excluirProposta(id) {
@@ -505,11 +590,12 @@ async function alternarStatusObra(id) {
 }
 
 // ----- Funcionários da obra (vinculados ao Financeiro) -----
-function lerFuncionariosFinanceiro() {
-  return JSON.parse(localStorage.getItem("financeiro")) || [];
+// Agora na nuvem (ver carregarFinanceiroFunc em auth-worker.js)
+async function lerFuncionariosFinanceiro() {
+  return (await carregarFinanceiroFunc()).funcionarios;
 }
-function salvarFuncionariosFinanceiro(lista) {
-  localStorage.setItem("financeiro", JSON.stringify(lista));
+async function salvarFuncionariosFinanceiro(lista) {
+  return salvarFinanceiroFunc({ ...financeiroFuncCache, funcionarios: lista });
 }
 
 const NOMES_MESES_OBRA = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -528,16 +614,14 @@ async function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
   // Garante que essa "obra" existe na lista fixa de obras do
   // Financeiro de Funcionários (obrasFinanceiro), senão ela não
   // aparece nos seletores por lá.
-  const obrasFinanceiro = JSON.parse(localStorage.getItem("obrasFinanceiro")) || [];
-  if (!obrasFinanceiro.includes(nomeObraNoFinanceiro)) {
-    obrasFinanceiro.push(nomeObraNoFinanceiro);
-    localStorage.setItem("obrasFinanceiro", JSON.stringify(obrasFinanceiro));
-  }
+  const dadosFin = await carregarFinanceiroFunc();
+  const obrasFinanceiro = dadosFin.obras;
+  if (!obrasFinanceiro.includes(nomeObraNoFinanceiro)) obrasFinanceiro.push(nomeObraNoFinanceiro);
 
   // Cria o pagamento no Financeiro de Funcionários, marcado com um
   // ID de vínculo estável (em vez de depender da posição no array,
   // que mudaria se outro pagamento fosse excluído antes dele).
-  const financeiro = lerFuncionariosFinanceiro();
+  const financeiro = dadosFin.funcionarios;
   financeiro.push({
     nome: dadosFuncionario.nome,
     obra: nomeObraNoFinanceiro,
@@ -546,7 +630,7 @@ async function adicionarFuncionarioNaObra(obraId, dadosFuncionario) {
     comprovante: null,
     vinculoObraId: vinculoId,
   });
-  salvarFuncionariosFinanceiro(financeiro);
+  await salvarFinanceiroFunc({ obras: obrasFinanceiro, funcionarios: financeiro });
 
   obra.funcionarios.push({
     id: `func_${Date.now()}`,
@@ -581,12 +665,12 @@ async function editarFuncionarioNaObra(obraId, funcionarioId, dadosNovos) {
   // ID de vínculo estável (funciona mesmo que outros pagamentos
   // tenham sido excluídos/reordenados desde a criação).
   if (func.vinculoObraId) {
-    const financeiro = lerFuncionariosFinanceiro();
+    const financeiro = await lerFuncionariosFinanceiro();
     const pagamento = financeiro.find((p) => p.vinculoObraId === func.vinculoObraId);
     if (pagamento) {
       pagamento.nome = dadosNovos.nome;
       pagamento.valor = dadosNovos.valorPago;
-      salvarFuncionariosFinanceiro(financeiro);
+      await salvarFuncionariosFinanceiro(financeiro);
     }
   }
 
@@ -604,9 +688,9 @@ async function excluirFuncionarioDaObra(obraId, funcionarioId) {
   // Remove também o pagamento vinculado no Financeiro, se existir
   // (procurado pelo ID de vínculo, não por posição no array).
   if (func && func.vinculoObraId) {
-    const financeiro = lerFuncionariosFinanceiro();
+    const financeiro = await lerFuncionariosFinanceiro();
     const novoFinanceiro = financeiro.filter((p) => p.vinculoObraId !== func.vinculoObraId);
-    salvarFuncionariosFinanceiro(novoFinanceiro);
+    await salvarFuncionariosFinanceiro(novoFinanceiro);
   }
 }
 

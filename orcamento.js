@@ -271,3 +271,5 @@ onListaPendentesAtualizarCallback = renderRascunhosOrcamento;
 renderVisitasAguardando();
 renderRascunhosOrcamento();
 
+// Orçamentos chegaram da nuvem: redesenha a lista
+document.addEventListener("propostas-carregadas", () => renderLista());

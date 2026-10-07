@@ -33,7 +33,7 @@ function coletarDados(mes, ano) {
   };
 
   // Propostas
-  const propostas = JSON.parse(localStorage.getItem("propostas_lista")) || [];
+  const propostas = (typeof lerPropostas === "function" ? lerPropostas() : []);
   const propostasDoMes = propostas.filter((p) => dentroDoMes(p.criadoEm));
 
   // Obras
@@ -41,7 +41,7 @@ function coletarDados(mes, ano) {
   const obrasDoMes = obras.filter((o) => dentroDoMes(o.criadoEm));
 
   // Financeiro de funcionários
-  const financeiro = JSON.parse(localStorage.getItem("financeiro")) || [];
+  const financeiro = (financeiroFuncCache.funcionarios || []);
 
   // Materiais
   const materiais = JSON.parse(localStorage.getItem("materiais_lista")) || [];
