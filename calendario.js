@@ -120,23 +120,29 @@ function listarEventos() {
     .then((response) => {
       const eventos = response.result.items || [];
 
+      const CORES_TIPO = { visita: "#EB991C", pagamento: "#D64545", outro: "#4A7BD0" };
+      const ICONE_TIPO = { visita: "📍", pagamento: "💳", outro: "" };
       const eventosFormatados = eventos.map((ev) => {
-        const clientePagamento = ev.extendedProperties?.private?.clientePagamento || "";
+        const priv = ev.extendedProperties?.private || {};
+        const clientePagamento = priv.clientePagamento || "";
+        const tipo = tipoEventoEnjob(ev);
+        // Eventos novos já têm o nome no título ("Visita — Ed. X");
+        // nos antigos mostra "Cliente: Título" como antes.
+        const tituloBase = priv.enjobTipo ? (ev.summary || "") : (clientePagamento ? `${clientePagamento}: ${ev.summary || ""}` : (ev.summary || ""));
         return {
           id: ev.id,
-          // No grid do calendário, mostra "Cliente: Título" quando tiver
-          // cliente/pagamento preenchido — ajuda a bater o olho sem
-          // precisar abrir o evento. O título "puro" (sem esse prefixo)
-          // fica guardado à parte, em extendedProps, pra reaparecer
-          // certo no campo de edição.
-          title: clientePagamento ? `${clientePagamento}: ${ev.summary || ""}` : (ev.summary || ""),
+          title: `${ICONE_TIPO[tipo] ? ICONE_TIPO[tipo] + " " : ""}${tituloBase}`,
           start: ev.start.dateTime || ev.start.date,
           end: ev.end?.dateTime || ev.end?.date,
+          backgroundColor: CORES_TIPO[tipo],
+          borderColor: CORES_TIPO[tipo],
           extendedProps: {
             tituloOriginal: ev.summary || "",
             location: ev.location || "",
             description: ev.description || "",
             clientePagamento,
+            tipo,
+            privado: priv,
           },
         };
       });
@@ -164,13 +170,74 @@ function atualizarMapaEvento() {
 }
 document.getElementById("eventEndereco").addEventListener("input", atualizarMapaEvento);
 
+// ===== Tipo do evento =====
+const DICAS_TIPO_EVENTO = {
+  visita: "Aparece em Visita Técnica → \"Agendadas no calendário\", com o local, cliente e endereço já prontos.",
+  pagamento: "Só a empresa e a data. Não aparece na Visita Técnica.",
+  outro: "Compromisso comum. Não aparece na Visita Técnica.",
+};
+function tipoSelecionadoEvento() {
+  const r = document.querySelector('input[name="tipoEvento"]:checked');
+  return r ? r.value : "visita";
+}
+function aplicarTipoEvento(tipo) {
+  const radio = document.querySelector(`input[name="tipoEvento"][value="${tipo}"]`);
+  if (radio) radio.checked = true;
+  document.querySelectorAll("#eventModal .so-tipo").forEach((el) => {
+    el.classList.toggle("escondido", !el.dataset.tipos.split(" ").includes(tipo));
+  });
+  document.getElementById("dicaTipoEvento").textContent = DICAS_TIPO_EVENTO[tipo] || "";
+  const rot = document.getElementById("rotuloDescricaoEvento");
+  rot.textContent = tipo === "visita" ? "O que precisa ser visto na visita" : tipo === "pagamento" ? "Observação (opcional)" : "Descritivo / Observação";
+}
+document.querySelectorAll('input[name="tipoEvento"]').forEach((r) => r.addEventListener("change", () => aplicarTipoEvento(tipoSelecionadoEvento())));
+
+// Lê o formulário e monta o evento do Google
+function montarEventoDoFormulario() {
+  const tipo = tipoSelecionadoEvento();
+  const v = (id) => document.getElementById(id).value.trim();
+  const start = v("eventStart"), end = v("eventEnd");
+  let titulo = v("eventTitle");
+  const localNome = v("eventLocalNome"), clienteVisita = v("eventClienteVisita"), telefone = v("eventTelefone");
+  const empresa = v("eventClientePagamento");
+  if (tipo === "visita") {
+    if (!localNome && !clienteVisita) return { erro: "Informe o nome do local ou o cliente da visita." };
+    titulo = `Visita — ${localNome || clienteVisita}`;
+  } else if (tipo === "pagamento") {
+    if (!empresa) return { erro: "Informe a empresa do pagamento." };
+    titulo = `Pagamento — ${empresa}`;
+  } else if (!titulo) {
+    return { erro: "Informe o título do evento." };
+  }
+  if (!start || !end) return { erro: "Preencha o início e o fim." };
+  if (new Date(end) < new Date(start)) return { erro: "O fim está antes do início." };
+  const privado = { enjobTipo: tipo };
+  if (tipo === "visita") { privado.localNome = localNome; privado.clienteVisita = clienteVisita; privado.telefone = telefone; privado.clientePagamento = clienteVisita || localNome; }
+  if (tipo === "pagamento") privado.clientePagamento = empresa;
+  return {
+    evento: {
+      summary: titulo,
+      location: tipo === "pagamento" ? "" : v("eventEndereco"),
+      description: v("eventDescricao"),
+      start: { dateTime: new Date(start).toISOString() },
+      end: { dateTime: new Date(end).toISOString() },
+      // cor no Google Agenda: visita amarela, pagamento vermelha
+      colorId: tipo === "visita" ? "5" : tipo === "pagamento" ? "11" : undefined,
+      extendedProperties: { private: privado },
+    },
+  };
+}
+
+function limparCamposEvento() {
+  ["eventTitle", "eventClientePagamento", "eventEndereco", "eventDescricao", "eventLocalNome", "eventClienteVisita", "eventTelefone"]
+    .forEach((id) => { document.getElementById(id).value = ""; });
+}
+
 function abrirModalNovo(data) {
   eventoSelecionado = null;
-  document.getElementById("eventTitle").value = "";
-  document.getElementById("eventClientePagamento").value = "";
-  document.getElementById("eventEndereco").value = "";
+  limparCamposEvento();
+  aplicarTipoEvento("visita");
   atualizarMapaEvento();
-  document.getElementById("eventDescricao").value = "";
   document.getElementById("eventStart").value = data + "T09:00";
   document.getElementById("eventEnd").value = data + "T10:00";
   document.querySelector("#eventModal h3").textContent = "Novo Evento";
@@ -182,11 +249,22 @@ function abrirModalNovo(data) {
 
 function abrirModalEditar(event) {
   eventoSelecionado = event;
-  document.getElementById("eventTitle").value = event.extendedProps?.tituloOriginal ?? event.title;
-  document.getElementById("eventClientePagamento").value = event.extendedProps?.clientePagamento || "";
-  document.getElementById("eventEndereco").value = event.extendedProps?.location || "";
+  limparCamposEvento();
+  const ep = event.extendedProps || {};
+  const priv = ep.privado || {};
+  const tipo = ep.tipo || "outro";
+  aplicarTipoEvento(tipo);
+  document.getElementById("eventTitle").value = ep.tituloOriginal ?? event.title;
+  if (tipo === "visita") {
+    // evento antigo sem os campos novos: usa o "cliente" antigo como local
+    document.getElementById("eventLocalNome").value = priv.localNome || (!priv.enjobTipo ? (ep.clientePagamento || ep.tituloOriginal || "") : "");
+    document.getElementById("eventClienteVisita").value = priv.clienteVisita || "";
+    document.getElementById("eventTelefone").value = priv.telefone || "";
+  }
+  if (tipo === "pagamento") document.getElementById("eventClientePagamento").value = ep.clientePagamento || ep.tituloOriginal || "";
+  document.getElementById("eventEndereco").value = ep.location || "";
   atualizarMapaEvento();
-  document.getElementById("eventDescricao").value = event.extendedProps?.description || "";
+  document.getElementById("eventDescricao").value = ep.description || "";
   document.getElementById("eventStart").value = event.startStr.slice(0, 16);
   document.getElementById("eventEnd").value = event.endStr ? event.endStr.slice(0, 16) : "";
   document.querySelector("#eventModal h3").textContent = "Editar Evento";
@@ -201,36 +279,11 @@ function fecharModal() {
 }
 
 function salvarEvento() {
-  const title = document.getElementById("eventTitle").value;
-  const clientePagamento = document.getElementById("eventClientePagamento").value.trim();
-  const endereco = document.getElementById("eventEndereco").value.trim();
-  const descricao = document.getElementById("eventDescricao").value.trim();
-  const start = document.getElementById("eventStart").value;
-  const end = document.getElementById("eventEnd").value;
-
-  if (!title || !start || !end) {
-    alert("Preencha todos os campos!");
-    return;
-  }
-
-  const evento = {
-    summary: title,
-    location: endereco,
-    description: descricao,
-    start: { dateTime: new Date(start).toISOString() },
-    end: { dateTime: new Date(end).toISOString() },
-    extendedProperties: { private: { clientePagamento } },
-  };
-
+  const r = montarEventoDoFormulario();
+  if (r.erro) { alert(r.erro); return; }
   gapi.client.calendar.events
-    .insert({
-      calendarId: "primary",
-      resource: evento,
-    })
-    .then(() => {
-      fecharModal();
-      listarEventos();
-    })
+    .insert({ calendarId: "primary", resource: r.evento })
+    .then(() => { fecharModal(); listarEventos(); })
     .catch((err) => {
       console.error("Erro ao criar evento:", err);
       alert("Erro ao criar evento." + mensagemErroGoogle(err));
@@ -239,33 +292,11 @@ function salvarEvento() {
 
 function editarEvento() {
   if (!eventoSelecionado) return;
-
-  const title = document.getElementById("eventTitle").value;
-  const clientePagamento = document.getElementById("eventClientePagamento").value.trim();
-  const endereco = document.getElementById("eventEndereco").value.trim();
-  const descricao = document.getElementById("eventDescricao").value.trim();
-  const start = document.getElementById("eventStart").value;
-  const end = document.getElementById("eventEnd").value;
-
-  const eventoAtualizado = {
-    summary: title,
-    location: endereco,
-    description: descricao,
-    start: { dateTime: new Date(start).toISOString() },
-    end: { dateTime: new Date(end).toISOString() },
-    extendedProperties: { private: { clientePagamento } },
-  };
-
+  const r = montarEventoDoFormulario();
+  if (r.erro) { alert(r.erro); return; }
   gapi.client.calendar.events
-    .update({
-      calendarId: "primary",
-      eventId: eventoSelecionado.id,
-      resource: eventoAtualizado,
-    })
-    .then(() => {
-      fecharModal();
-      listarEventos();
-    })
+    .update({ calendarId: "primary", eventId: eventoSelecionado.id, resource: r.evento })
+    .then(() => { fecharModal(); listarEventos(); })
     .catch((err) => {
       console.error("Erro ao editar evento:", err);
       alert("Erro ao editar evento." + mensagemErroGoogle(err));

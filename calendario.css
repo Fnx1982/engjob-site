@@ -227,3 +227,15 @@ body {
   #eventModal .modal-actions { flex-wrap: wrap; }
   #eventModal .modal-actions button { flex: 1 1 100%; }
 }
+
+/* Tipo do evento (Visita / Pagamento / Outro) */
+.tipos-evento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 6px; }
+.tipo-evento { position: relative; margin: 0 !important; cursor: pointer; }
+.tipo-evento input { position: absolute; opacity: 0; pointer-events: none; }
+.tipo-evento span { display: block; text-align: center; border: 1.5px solid #ddd; border-radius: 10px; padding: 9px 4px; font-size: 13px;
+  font-weight: 600; color: #555; background: #fafafa; transition: .15s; }
+.tipo-evento input:checked + span { border-color: #EB991C; background: #fff3dc; color: #8a5200; }
+.dica-tipo-evento { font-size: 12px; color: #888; margin: 0 0 8px; }
+.so-tipo { display: contents; }
+.so-tipo.escondido { display: none; }
+@media (max-width: 480px) { .tipos-evento { grid-template-columns: 1fr; } }

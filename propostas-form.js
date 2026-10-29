@@ -119,8 +119,8 @@ function montarModalFormularioProposta() {
             <input type="text" id="campoResponsavel" placeholder="Quem está fazendo o orçamento" list="listaResponsaveisDatalist" autocomplete="off" />
             <datalist id="listaResponsaveisDatalist"></datalist>
           </label>
-          <label>Local
-            <input type="text" id="campoLocalDescricao" placeholder="Ex.: Bloco B, fachada, guarita" />
+          <label>Nome do local
+            <input type="text" id="campoLocalDescricao" placeholder="Ex.: Ed. L'Espace Alameda, Condomínio Sol" />
           </label>
           <label class="campo-largura-total">Endereço
             <input type="text" id="campoLocal" placeholder="Rua, número, bairro, cidade" />

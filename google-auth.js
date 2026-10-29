@@ -168,3 +168,20 @@ setInterval(() => {
   if (!googleEmailConectado) return;
   if (googleTokenExpiresAt - Date.now() < 5 * 60 * 1000) buscarTokenGoogleNoServidor();
 }, 4 * 60 * 1000);
+
+
+// ============================================================
+// Tipo do evento da agenda (criado pelo EnJob): "visita", "pagamento"
+// ou "outro". Fica guardado no próprio evento do Google
+// (extendedProperties.private.enjobTipo). Eventos antigos, de antes
+// disso (ou criados direto no Google), são adivinhados pelo texto.
+// ============================================================
+function tipoEventoEnjob(ev) {
+  const priv = (ev && (ev.extendedProperties?.private || ev.extendedProps?.privado)) || {};
+  if (["visita", "pagamento", "outro"].includes(priv.enjobTipo)) return priv.enjobTipo;
+  const texto = String([ev.summary || ev.title || "", ev.description || "", priv.clientePagamento || ""].join(" "))
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(boleto|pagamento|pagar|vencimento|fatura|parcela)\b/.test(texto)) return "pagamento";
+  if (/\b(visita|vistoria|orcamento|medicao|levantamento)\b/.test(texto)) return "visita";
+  return "outro";
+}

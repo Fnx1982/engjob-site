@@ -554,6 +554,12 @@ function separarEnderecoGoogle(texto) {
     resultado.endereco = `${partes[0]}, ${numero}`;
     resultado.bairro = bairro || "";
     resultado.cidade = /\d{5}-?\d{3}/.test(cidade) ? "" : cidade;
+  } else if (partes.length === 2 && partes[1].split(" - ").length >= 3) {
+    // Formato do próprio EnJob: "Rua X, 100 - Bairro - Cidade"
+    const [numero, bairro, cidade] = partes[1].split(" - ").map((s) => s.trim());
+    resultado.endereco = `${partes[0]}, ${numero}`;
+    resultado.bairro = bairro || "";
+    resultado.cidade = cidade || "";
   }
   return resultado;
 }
@@ -604,17 +610,26 @@ function renderAgenda() {
   const lista = document.getElementById("listaAgenda");
   if (!lista || !eventosAgendaCache.length && lista.textContent.includes("Gmail")) return;
   const busca = normalizarBuscaVisita(document.getElementById("buscaAgenda").value);
-  let eventos = eventosAgendaCache;
+  // Só visitas (o resto — pagamentos, reuniões — fica escondido, a
+  // menos que marque "mostrar também os outros eventos")
+  const mostrarTodos = document.getElementById("mostrarTodosEventosAgenda")?.checked;
+  const soVisitas = eventosAgendaCache.filter((ev) => tipoEventoEnjob(ev) === "visita");
+  const contagem = document.getElementById("contagemOutrosAgenda");
+  const outros = eventosAgendaCache.length - soVisitas.length;
+  if (contagem) contagem.textContent = !mostrarTodos && outros ? `(${outros} outro(s) evento(s) escondido(s))` : "";
+  let eventos = mostrarTodos ? eventosAgendaCache : soVisitas;
   if (busca) {
-    eventos = eventos.filter((ev) => normalizarBuscaVisita([ev.summary, ev.location, ev.description, ev.extendedProperties?.private?.clientePagamento].join(" ")).includes(busca));
+    eventos = eventos.filter((ev) => { const pv = ev.extendedProperties?.private || {}; return normalizarBuscaVisita([ev.summary, ev.location, ev.description, pv.clientePagamento, pv.localNome, pv.clienteVisita].join(" ")).includes(busca); });
   }
   if (!eventos.length) {
-    lista.innerHTML = '<div class="vazio-agenda">Nenhum agendamento nesse período.</div>';
+    lista.innerHTML = `<div class="vazio-agenda">Nenhuma visita agendada nesse período.${outros && !mostrarTodos ? " Marque \"mostrar também os outros eventos\" se a visita foi agendada sem o tipo Visita técnica." : ""}</div>`;
     return;
   }
   lista.innerHTML = "";
   eventos.forEach((ev) => {
-    const cliente = ev.extendedProperties?.private?.clientePagamento || "";
+    const pv = ev.extendedProperties?.private || {};
+    const cliente = pv.enjobTipo ? "" : (pv.clientePagamento || ""); // eventos novos já têm o nome no título
+    const tipoEv = tipoEventoEnjob(ev);
     const inicioEv = dataInicioEvento(ev);
     const dataTexto = inicioEv
       ? inicioEv.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }) + (ev.start.dateTime ? " · " + inicioEv.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "")
@@ -626,7 +641,8 @@ function renderAgenda() {
     el.innerHTML = `
       <div style="min-width:0;">
         <div class="data-agenda">${escaparHtml(dataTexto)}</div>
-        <div class="titulo-agenda">${escaparHtml(cliente ? cliente + " — " : "")}${escaparHtml(ev.summary || "(sem título)")}</div>
+        <div class="titulo-agenda">${escaparHtml(cliente ? cliente + " — " : "")}${escaparHtml(ev.summary || "(sem título)")}${tipoEv !== "visita" ? `<span class="tag-tipo-agenda ${tipoEv}">${tipoEv === "pagamento" ? "pagamento" : "outro"}</span>` : ""}</div>
+        ${pv.clienteVisita || pv.telefone ? `<div class="info-agenda">👤 ${escaparHtml([pv.clienteVisita, pv.telefone].filter(Boolean).join(" · "))}</div>` : ""}
         ${ev.location ? `<div class="info-agenda">📍 ${escaparHtml(ev.location)}</div><div class="endereco-com-mapa">${htmlLinksMapa(ev.location)}</div>` : ""}
         ${descricao ? `<div class="desc-agenda">${escaparHtml(descricao)}</div>` : ""}
       </div>
@@ -655,11 +671,16 @@ async function registrarVisitaDoEvento(ev) {
     await salvarRascunhoAtual();
   }
   limparFormulario();
-  const cliente = ev.extendedProperties?.private?.clientePagamento || "";
+  const pv = ev.extendedProperties?.private || {};
+  const novo = !!pv.enjobTipo; // evento criado já com os campos de visita
+  const cliente = novo ? (pv.clienteVisita || pv.localNome || "") : (pv.clientePagamento || "");
   const end = separarEnderecoGoogle(ev.location);
   const inicioEv = dataInicioEvento(ev);
   const p = (n) => String(n).padStart(2, "0");
   document.getElementById("campoClienteNome").value = cliente || ev.summary || "";
+  // Nome do local (condomínio/empresa): vem da agenda e depois vai pro orçamento
+  document.getElementById("campoLocal").value = novo ? (pv.localNome || "") : "";
+  if (pv.telefone) document.getElementById("campoTelefone").value = pv.telefone;
   document.getElementById("campoEndereco").value = end.endereco;
   document.getElementById("campoBairro").value = end.bairro;
   document.getElementById("campoCidade").value = end.cidade;
@@ -667,7 +688,7 @@ async function registrarVisitaDoEvento(ev) {
   // Se o evento tem cliente separado, o título (ex.: "Vistoria fachada")
   // entra como primeira linha do descritivo.
   const descricao = textoSemHtml(ev.description);
-  document.getElementById("campoDescricao").value = [cliente ? ev.summary : "", descricao].filter(Boolean).join("\n");
+  document.getElementById("campoDescricao").value = novo ? descricao : [cliente ? ev.summary : "", descricao].filter(Boolean).join("\n");
   definirEventoVinculado({ id: ev.id, titulo: ev.summary || "" });
   document.getElementById("tituloFormulario").textContent = `Nova visita — ${cliente || ev.summary || ""}`;
   document.getElementById("btnCancelarEdicao").style.display = "inline-block";
@@ -676,6 +697,7 @@ async function registrarVisitaDoEvento(ev) {
 }
 
 document.getElementById("periodoAgenda").addEventListener("change", carregarAgendaVisitas);
+document.getElementById("mostrarTodosEventosAgenda").addEventListener("change", renderAgenda);
 
 // Botões Maps/Waze do formulário: acompanham o endereço digitado
 function atualizarMapaFormVisita() {

@@ -85,3 +85,10 @@
 /* Anotações feitas durante a visita (uso interno) */
 .dica-anotacoes { font-weight: normal; font-size: 12px; color: #888; }
 #campoAnotacoes { min-height: 140px; resize: vertical; font-size: 15px; line-height: 1.4; }
+
+.filtro-tipo-agenda { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 12.5px; color: #666; margin: -4px 0 10px; }
+.filtro-tipo-agenda label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.filtro-tipo-agenda input { width: 16px; height: 16px; accent-color: #EB991C; }
+.tag-tipo-agenda { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 10px; padding: 1px 8px; margin-left: 6px; vertical-align: middle; }
+.tag-tipo-agenda.pagamento { color: #b03a2e; background: #fbe8e6; }
+.tag-tipo-agenda.outro { color: #1D5FB4; background: #E3EEFB; }

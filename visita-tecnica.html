@@ -9,11 +9,11 @@
   <title>Visita Técnica — Eng Job</title>
   <link rel="stylesheet" href="contatos.css" />
   <link rel="stylesheet" href="extrato.css" />
-  <link rel="stylesheet" href="visita-tecnica.css?v=2" />
+  <link rel="stylesheet" href="visita-tecnica.css?v=3" />
   <link rel="stylesheet" href="mobile.css?v=3" />
 
   <!-- Google Agenda: pra puxar os agendamentos de visita -->
-  <script src="google-auth.js?v=2"></script>
+  <script src="google-auth.js?v=3"></script>
   <script async defer src="https://apis.google.com/js/api.js" onload="initGoogleAPI()"></script>
 </head>
 <body>
@@ -48,7 +48,11 @@
           <input type="text" id="buscaAgenda" placeholder="Buscar no calendário..." />
         </div>
       </div>
-      <p class="texto-ajuda-agenda">Toque em <b>Registrar visita</b> para trazer o agendamento para o formulário abaixo — cliente, endereço e o descritivo do calendário já vêm preenchidos.</p>
+      <p class="texto-ajuda-agenda">Aqui aparecem só os eventos marcados como <b>📍 Visita técnica</b> no Calendário. Toque em <b>Registrar visita</b> para trazer para o formulário — nome do local, cliente, telefone, endereço e o descritivo já vêm preenchidos.</p>
+      <div class="filtro-tipo-agenda">
+        <label><input type="checkbox" id="mostrarTodosEventosAgenda" /> Mostrar também os outros eventos (pagamentos, reuniões...)</label>
+        <span id="contagemOutrosAgenda"></span>
+      </div>
       <div id="listaAgenda" class="lista-agenda"><div class="vazio-agenda">Carregando o calendário…</div></div>
     </div>
 
@@ -73,8 +77,8 @@
           <input type="text" id="campoTelefone" placeholder="(41) 99999-9999" />
         </div>
         <div class="campo">
-          <label for="campoLocal">Local / bloco / referência</label>
-          <input type="text" id="campoLocal" placeholder="ex: Bloco B, fachada" />
+          <label for="campoLocal">Nome do local</label>
+          <input type="text" id="campoLocal" placeholder="Ex.: Ed. L'Espace Alameda, Condomínio Sol — bloco B" />
         </div>
         <div class="campo">
           <label for="campoEndereco">Endereço</label>
@@ -142,7 +146,7 @@
 
   <script src="mapas.js?v=1"></script>
   <script src="visita-para-orcamento.js?v=1"></script>
-  <script src="visita-tecnica.js?v=6"></script>
+  <script src="visita-tecnica.js?v=7"></script>
   <script>onGoogleAuthChange(carregarAgendaVisitas);</script>
   <script src="camera.js?v=1"></script>
   <script src="modal-expandir.js?v=1"></script>

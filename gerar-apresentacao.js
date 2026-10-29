@@ -205,6 +205,9 @@ function criarBlocoProposta() {
       // que a pessoa já tiver digitado.
       const campoClienteTopo = document.getElementById("campoNomeClienteApres");
       if (!campoClienteTopo.value.trim() && proposta.cliente) campoClienteTopo.value = proposta.cliente;
+      // Nome do local (condomínio/empresa) que veio da agenda → visita → orçamento
+      const campoLocalTopo = document.getElementById("campoNomeLocalApres");
+      if (campoLocalTopo && !campoLocalTopo.value.trim() && proposta.localDescricao) campoLocalTopo.value = proposta.localDescricao;
     }
     atualizarPreviewProposta(bloco, proposta);
   });

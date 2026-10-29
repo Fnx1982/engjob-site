@@ -6,14 +6,14 @@
 <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Google Calendar</title>
-  <link rel="stylesheet" href="calendario.css?v=2">
+  <link rel="stylesheet" href="calendario.css?v=3">
 
   <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <!-- Autenticação Google compartilhada com home.html (carrega primeiro) -->
-  <script src="google-auth.js?v=2"></script>
+  <script src="google-auth.js?v=3"></script>
 
   <!-- Google API -->
   <script async defer src="https://apis.google.com/js/api.js"
@@ -54,15 +54,37 @@
       <span class="close" onclick="fecharModal()">&times;</span>
       <h3>Novo Evento</h3>
 
-      <label for="eventTitle">Título do evento</label>
-      <input type="text" id="eventTitle" placeholder="Ex: Reunião, Vistoria..." />
+      <div class="tipos-evento" role="radiogroup" aria-label="Tipo do evento">
+        <label class="tipo-evento"><input type="radio" name="tipoEvento" value="visita" checked /><span>📍 Visita técnica</span></label>
+        <label class="tipo-evento"><input type="radio" name="tipoEvento" value="pagamento" /><span>💳 Pagamento / boleto</span></label>
+        <label class="tipo-evento"><input type="radio" name="tipoEvento" value="outro" /><span>📅 Outro</span></label>
+      </div>
+      <p class="dica-tipo-evento" id="dicaTipoEvento"></p>
 
-      <label for="eventClientePagamento">Nome do cliente ou do pagamento</label>
-      <input type="text" id="eventClientePagamento" placeholder="Ex: João Silva, Boleto Sicredi..." />
+      <div class="so-tipo" data-tipos="outro">
+        <label for="eventTitle">Título do evento</label>
+        <input type="text" id="eventTitle" placeholder="Ex: Reunião, entrega de material..." />
+      </div>
 
-      <label for="eventEndereco">Endereço</label>
-      <input type="text" id="eventEndereco" placeholder="Rua, número, bairro, cidade" />
-      <div class="endereco-com-mapa" id="mapaEvento"></div>
+      <div class="so-tipo" data-tipos="visita">
+        <label for="eventLocalNome">Nome do local</label>
+        <input type="text" id="eventLocalNome" placeholder="Ex: Ed. L'Espace Alameda, Condomínio Sol Nascente" />
+        <label for="eventClienteVisita">Cliente / responsável</label>
+        <input type="text" id="eventClienteVisita" placeholder="Ex: síndico João, administradora..." />
+        <label for="eventTelefone">Telefone</label>
+        <input type="text" id="eventTelefone" placeholder="(41) 9 9999-9999" inputmode="tel" />
+      </div>
+
+      <div class="so-tipo" data-tipos="pagamento">
+        <label for="eventClientePagamento">Empresa</label>
+        <input type="text" id="eventClientePagamento" placeholder="Ex: Sicredi, Leroy Merlin, fornecedor..." />
+      </div>
+
+      <div class="so-tipo" data-tipos="visita outro">
+        <label for="eventEndereco">Endereço</label>
+        <input type="text" id="eventEndereco" placeholder="Rua, número, bairro, cidade" />
+        <div class="endereco-com-mapa" id="mapaEvento"></div>
+      </div>
 
       <label for="eventStart">Início</label>
       <input type="datetime-local" id="eventStart">
@@ -70,7 +92,7 @@
       <label for="eventEnd">Fim</label>
       <input type="datetime-local" id="eventEnd">
 
-      <label for="eventDescricao">Descritivo / Observação</label>
+      <label for="eventDescricao" id="rotuloDescricaoEvento">Descritivo / Observação</label>
       <textarea id="eventDescricao" rows="3" placeholder="Detalhes sobre o evento..."></textarea>
 
       <div class="modal-actions">
@@ -83,7 +105,7 @@
 
 
   <script src="mapas.js?v=1"></script>
-  <script src="calendario.js?v=3"></script>
+  <script src="calendario.js?v=4"></script>
   <script>
     // O calendario.js está no final do <body>, então os elementos
     // (#btnLogin, #calendar, etc.) já existem nesse ponto — não
