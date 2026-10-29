@@ -37,9 +37,23 @@ const ITENS_MENU_DISPONIVEIS = [
 function lerSetoresPermissoes() {
   return JSON.parse(localStorage.getItem(CHAVE_SETORES_PERMISSOES)) || {};
 }
-function salvarSetoresPermissoes(mapa) {
+// Antes salvava no navegador e mandava pro servidor "em silêncio": se o
+// servidor recusasse (conta sem acesso de administrador), a tela dizia
+// que salvou e mostrava "Acesso total", mas nada tinha mudado de verdade.
+// Agora, se o servidor recusar, avisa e desfaz no navegador.
+async function salvarSetoresPermissoes(mapa) {
+  const anterior = localStorage.getItem(CHAVE_SETORES_PERMISSOES);
   localStorage.setItem(CHAVE_SETORES_PERMISSOES, JSON.stringify(mapa));
-  apiDataSet("setoresPermissoes", mapa).catch((e) => console.warn("Falha ao salvar permissões no servidor:", e));
+  let r;
+  try { r = await apiDataSet("setoresPermissoes", mapa); } catch (e) { r = { ok: false, erro: "Sem conexão com o servidor." }; }
+  if (!r || !r.ok) {
+    if (anterior !== null) localStorage.setItem(CHAVE_SETORES_PERMISSOES, anterior);
+    else localStorage.removeItem(CHAVE_SETORES_PERMISSOES);
+    const msg = (r && r.erro) || "Não foi possível salvar as permissões.";
+    if (typeof mostrarToast === "function") mostrarToast(`Permissões NÃO salvas: ${msg}`, "erro");
+    return false;
+  }
+  return true;
 }
 
 function getPermissoesDoSetor(nomeSetor) {
@@ -50,7 +64,7 @@ function getPermissoesDoSetor(nomeSetor) {
 function salvarPermissoesDoSetor(nomeSetor, idsPermitidos) {
   const mapa = lerSetoresPermissoes();
   mapa[nomeSetor] = idsPermitidos;
-  salvarSetoresPermissoes(mapa);
+  return salvarSetoresPermissoes(mapa);
 }
 
 // Renomear ou excluir um setor também deve atualizar o mapa de

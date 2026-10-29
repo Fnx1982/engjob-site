@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="gerenciacontas.css" />
 <script src="confirm-modal.js"></script>
 <script src="validacao.js"></script>
-<script src="permissoes-setor.js?v=6"></script>
+<script src="permissoes-setor.js?v=7"></script>
 <script src="senha-visivel.js"></script>
 <title>Gerenciar Usuários</title>
 
@@ -29,6 +29,7 @@
 </style>
 </head>
 <body>
+<div id="avisoAcessoAdmin" style="display:none; max-width:1100px; margin:16px auto 0; background:#FBE8EC; border-left:4px solid #c0392b; border-radius:8px; padding:12px 16px; font-size:13.5px; line-height:1.5; color:#7a1f1f; font-family:inherit;"></div>
 <main class="container">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px;">
         <h1 style="margin-bottom:0;">Gerenciar Usuários</h1>
@@ -311,7 +312,7 @@
         document.querySelectorAll("#listaCheckboxPermissao input[type=checkbox]").forEach((cb) => cb.checked = false);
     });
 
-    document.getElementById("btnSalvarPermissaoSetor").addEventListener("click", () => {
+    document.getElementById("btnSalvarPermissaoSetor").addEventListener("click", async () => {
         if (!setorEmEdicaoPermissao) return;
         const marcados = [...document.querySelectorAll("#listaCheckboxPermissao input[type=checkbox]:checked")].map((cb) => cb.value);
         if (document.getElementById("checkAcessoTotal").checked && !ehSetorAdministradorFixo(setorEmEdicaoPermissao)) {
@@ -319,8 +320,9 @@
             // Acesso total já mostra o menu inteiro
             ITENS_MENU_DISPONIVEIS.forEach((i) => { if (!marcados.includes(i.id)) marcados.push(i.id); });
         }
-        salvarPermissoesDoSetor(setorEmEdicaoPermissao, marcados);
-        mostrarToast(`Permissões de "${setorEmEdicaoPermissao}" atualizadas.`);
+        const salvou = await salvarPermissoesDoSetor(setorEmEdicaoPermissao, marcados);
+        if (!salvou) return; // o aviso de erro já apareceu
+        mostrarToast(`Permissões de "${setorEmEdicaoPermissao}" atualizadas. Quem é desse setor precisa sair e entrar de novo.`);
         fecharModalPermissaoFn();
         carregarSetores();
     });
@@ -726,7 +728,31 @@
         document.getElementById("rotuloAcessoAte").style.display = e.target.checked ? "" : "none";
     });
 
+    // Mostra no topo se ESTA conta tem acesso de administrador no
+    // servidor — e, se não tiver, o que fazer pra liberar.
+    async function verificarAcessoAdmin() {
+        const aviso = document.getElementById("avisoAcessoAdmin");
+        if (!aviso) return;
+        const r = await chamarWorker("auth-session-check");
+        if (!r.ok) return;
+        const setor = r.setor || "(sem setor)";
+        if (r.acessoTotal === undefined) {
+            aviso.innerHTML = `<b>⚠ O Worker da Cloudflare ainda é o antigo.</b> O site novo já está no ar, mas o servidor não. Cole o arquivo <b>worker-storage-COMPLETO.txt</b> inteiro na Cloudflare e clique em <b>Deploy</b>. Enquanto isso, só CEO e Diretoria conseguem mexer no Cadastro.`;
+            aviso.style.display = "block";
+        } else if (!r.acessoTotal) {
+            aviso.innerHTML = `<b>⚠ Sua conta (${escaparHtml(r.nome)} — setor ${escaparHtml(setor)}) não tem acesso de administrador.</b>
+                Você vê esta tela, mas o servidor não deixa criar, editar ou excluir contas nem salvar permissões.<br>
+                <b>Para liberar:</b> entre com uma conta do <b>CEO</b> ou da <b>Diretoria</b> → em "Setores Cadastrados" clique nas permissões do setor <b>${escaparHtml(setor)}</b> →
+                marque <b>⭐ Acesso total ao site</b> → Salvar. Depois saia e entre de novo nesta conta.
+                <br><small>Marcar todos os itens do menu não basta — eles só mostram o menu.</small>`;
+            aviso.style.display = "block";
+        } else {
+            aviso.style.display = "none";
+        }
+    }
+
     window.addEventListener("load", async () => {
+        verificarAcessoAdmin();
         // Garante que existe uma configuração padrão de setores no
         // servidor (só faz algo na primeira vez que um admin acessa,
         // se ainda não houver nada configurado).
