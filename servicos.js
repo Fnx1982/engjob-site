@@ -81,6 +81,7 @@ function limparFormularioServico() {
   });
   document.getElementById("campoUnidade").value = "UND";
   document.getElementById("listaCamposExtras").innerHTML = "";
+  if (typeof preencherFiscalServico === "function") preencherFiscalServico({});
   tituloFormularioServico.textContent = "Novo serviço";
   btnCancelarEdicaoServico.style.display = "none";
 }
@@ -98,6 +99,7 @@ function preencherFormularioServico(servico) {
   document.getElementById("campoObservacao").value = servico.observacao || "";
   document.getElementById("listaCamposExtras").innerHTML = "";
   (servico.camposAdicionais || []).forEach((c) => adicionarLinhaExtra(c));
+  if (typeof preencherFiscalServico === "function") preencherFiscalServico(servico.fiscal);
   tituloFormularioServico.textContent = `Editando — ${servico.nome}`;
   btnCancelarEdicaoServico.style.display = "inline-block";
   abrirModalServico();
@@ -120,6 +122,7 @@ function coletarDadosRascunhoServico() {
     aliquotaIss: aliquota === "" ? null : Number(aliquota),
     observacao: document.getElementById("campoObservacao").value.trim(),
     camposAdicionais: lerCamposExtras(),
+    fiscal: typeof lerFiscalServico === "function" ? lerFiscalServico() : undefined,
   };
 }
 
@@ -164,6 +167,7 @@ function continuarRascunhoServico(dados, idRascunho) {
   document.getElementById("campoObservacao").value = dados.observacao || "";
   document.getElementById("listaCamposExtras").innerHTML = "";
   (dados.camposAdicionais || []).forEach((c) => adicionarLinhaExtra(c));
+  if (typeof preencherFiscalServico === "function") preencherFiscalServico(dados.fiscal);
   tituloFormularioServico.textContent = dados.nome ? `Continuando rascunho — ${dados.nome}` : "Continuando rascunho";
   btnCancelarEdicaoServico.style.display = "inline-block";
   abrirModalServico();

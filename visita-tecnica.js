@@ -90,7 +90,7 @@ function limparFormulario() {
   visitaEmEdicaoId = null;
   rascunhoAtualId = null;
   document.getElementById("campoId").value = "";
-  ["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao"].forEach((id) => {
+  ["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao", "campoAnotacoes"].forEach((id) => {
     document.getElementById(id).value = "";
   });
   document.getElementById("campoDataVisita").value = hojeISOVisita();
@@ -116,6 +116,7 @@ function preencherFormulario(visita) {
   document.getElementById("campoBairro").value = visita.bairro || "";
   document.getElementById("campoCidade").value = visita.cidade || "";
   document.getElementById("campoDescricao").value = visita.descricao || "";
+  document.getElementById("campoAnotacoes").value = visita.anotacoes || "";
   document.getElementById("campoDataVisita").value = visita.dataVisita || "";
   medidasVisita = Array.isArray(visita.medidas) ? visita.medidas.map((m) => ({ ...m })) : [];
   renderMedidas();
@@ -152,7 +153,7 @@ function coletarDadosRascunhoVisita() {
 }
 
 function formularioVisitaTemConteudo(d) {
-  return !!(d.clienteNome || d.telefone || d.local || d.endereco || d.bairro || d.cidade || d.descricao || d.fotos.length || (d.medidas && d.medidas.length));
+  return !!(d.clienteNome || d.telefone || d.local || d.endereco || d.bairro || d.cidade || d.descricao || d.anotacoes || d.fotos.length || (d.medidas && d.medidas.length));
 }
 
 async function salvarRascunhoAtual() {
@@ -169,8 +170,16 @@ function salvarRascunhoAtualImediato() {
   apiSalvarRascunhoImediato("visita", rascunhoAtualId, dados);
 }
 
-["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao", "campoDataVisita"].forEach((idCampo) => {
+["campoClienteNome", "campoTelefone", "campoLocal", "campoEndereco", "campoBairro", "campoCidade", "campoDescricao", "campoAnotacoes", "campoDataVisita"].forEach((idCampo) => {
   document.getElementById(idCampo).addEventListener("blur", salvarRascunhoAtual);
+});
+// Anotações são digitadas por muito tempo durante a visita: salva o
+// rascunho alguns segundos depois que a pessoa para de digitar, sem
+// precisar sair do campo (se o celular desligar, não perde o texto).
+let timerAnotacoes = null;
+document.getElementById("campoAnotacoes").addEventListener("input", () => {
+  clearTimeout(timerAnotacoes);
+  timerAnotacoes = setTimeout(salvarRascunhoAtual, 3000);
 });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") salvarRascunhoAtualImediato(); });
 window.addEventListener("beforeunload", salvarRascunhoAtualImediato);
@@ -186,6 +195,7 @@ function preencherFormularioComRascunho(dados, idRascunho) {
   document.getElementById("campoBairro").value = dados.bairro || "";
   document.getElementById("campoCidade").value = dados.cidade || "";
   document.getElementById("campoDescricao").value = dados.descricao || "";
+  document.getElementById("campoAnotacoes").value = dados.anotacoes || "";
   document.getElementById("campoDataVisita").value = dados.dataVisita || hojeISOVisita();
   medidasVisita = Array.isArray(dados.medidas) ? dados.medidas.map((m) => ({ ...m })) : [];
   renderMedidas();
@@ -361,13 +371,7 @@ document.getElementById("buscaVisitas").addEventListener("input", renderizarList
 // Abre o Orçamento com um orçamento novo já preenchido com a visita.
 // "visitaId" faz as fotos da visita aparecerem num quadro no canto.
 function abrirOrcamentoDaVisita(v) {
-  const dadosProposta = {
-    cliente: v.clienteNome,
-    telefone: v.telefone,
-    local: [v.local, v.endereco, v.bairro, v.cidade].filter(Boolean).join(", "),
-    observacao: [v.descricao, textoMedidasParaOrcamento(v.medidas)].filter(Boolean).join("\n\n"),
-    visitaId: v.id,
-  };
+  const dadosProposta = montarOrcamentoDaVisita(v); // visita-para-orcamento.js
   const codificado = btoa(unescape(encodeURIComponent(JSON.stringify(dadosProposta))));
   navegarParaOrcamento(`orcamento.html?dadosVisita=${encodeURIComponent(codificado)}`);
 }
@@ -395,7 +399,13 @@ function dataBRVisita(iso) {
   return d && m && a ? `${d}/${m}/${a}` : iso;
 }
 function numeroBR(texto) {
-  const n = parseFloat(String(texto || "").replace(/\./g, "").replace(",", "."));
+  // Aceita vírgula OU ponto como casa decimal: "0,5" e "0.5" = meio.
+  // (Antes o ponto era tratado como milhar: 0.5 virava 5 e 0.5 x 0.5 dava 25 m².)
+  // Só quando tem vírgula é que o ponto vale como milhar: "1.234,5".
+  let t = String(texto || "").trim().replace(/\s/g, "");
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if ((t.match(/\./g) || []).length > 1) t = t.replace(/\./g, ""); // 1.234.567
+  const n = parseFloat(t);
   return isNaN(n) ? 0 : n;
 }
 function formatarNumeroBR(n) {
@@ -405,6 +415,7 @@ function formatarNumeroBR(n) {
 function camposExtrasVisita() {
   return {
     dataVisita: document.getElementById("campoDataVisita").value || "",
+    anotacoes: document.getElementById("campoAnotacoes").value.trim(),
     medidas: medidasVisita.filter((m) => (m.descricao || "").trim() || m.m1 || m.m2),
     eventoCalendarioId: eventoVinculado ? eventoVinculado.id : null,
     eventoCalendarioTitulo: eventoVinculado ? eventoVinculado.titulo : "",

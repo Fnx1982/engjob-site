@@ -81,3 +81,7 @@
   .linha-medida .resultado-medida { grid-column: 4 / 6; text-align: right; }
   .cab-medidas { display: none; }
 }
+
+/* Anotações feitas durante a visita (uso interno) */
+.dica-anotacoes { font-weight: normal; font-size: 12px; color: #888; }
+#campoAnotacoes { min-height: 140px; resize: vertical; font-size: 15px; line-height: 1.4; }

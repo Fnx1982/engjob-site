@@ -143,7 +143,7 @@ async function updateMenuVisibility() {
   // qualquer pessoa do setor "Diretoria" também tem acesso total,
   // sem precisar configurar cada permissão manualmente.
   const userType = (localStorage.getItem("userType") || "").toLowerCase();
-  const ehLoginFixo = userType === "ceo" || nomeSetor === "Diretoria";
+  const ehLoginFixo = userType === "ceo" || ehSetorAdministradorLocal(nomeSetor);
 
   const idsPermitidos = ehLoginFixo ? "todos" : getPermissoesDoSetor(nomeSetor);
 

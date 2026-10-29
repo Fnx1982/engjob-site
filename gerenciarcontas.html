@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-<script src="auth-worker.js?v=5"></script>
+<script src="auth-worker.js?v=6"></script>
 <script src="auth-guard.js"></script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,11 +9,24 @@
 <link rel="stylesheet" href="gerenciacontas.css" />
 <script src="confirm-modal.js"></script>
 <script src="validacao.js"></script>
-<script src="permissoes-setor.js"></script>
+<script src="permissoes-setor.js?v=6"></script>
 <script src="senha-visivel.js"></script>
 <title>Gerenciar Usuários</title>
 
   <link rel="stylesheet" href="mobile.css?v=3" />
+<style>
+  .caixa-acesso-total { display: flex; gap: 10px; align-items: flex-start; background: #fff7ea; border: 1.5px solid #EB991C;
+    border-radius: 10px; padding: 12px; margin: 0 0 12px; cursor: pointer; font-size: 13px; line-height: 1.4; }
+  .caixa-acesso-total input { width: 18px; height: 18px; margin-top: 2px; accent-color: #EB991C; flex: 0 0 auto; }
+  .caixa-acesso-total small { color: #7a5a20; }
+  .bloco-acesso-temp { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; background: #f6f8fb; border: 1px dashed #c9d3e0;
+    border-radius: 10px; padding: 10px 12px; }
+  .bloco-acesso-temp small { color: #667; font-size: 12px; }
+  .linha-check-temp { flex-direction: row !important; align-items: center; gap: 8px; font-weight: 600; }
+  .linha-check-temp input { width: 16px; height: 16px; }
+  .tag-temporario { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; color: #1D5FB4; background: #E3EEFB; border-radius: 10px; padding: 1px 8px; }
+  .tag-temporario.vencido { color: #b03a2e; background: #fbe8e6; }
+</style>
 </head>
 <body>
 <main class="container">
@@ -79,6 +92,14 @@
             </select>
         </label>
 
+        <div class="bloco-acesso-temp">
+            <label class="linha-check-temp"><input type="checkbox" id="acessoTemporario" /> ⏳ Cadastro temporário</label>
+            <label id="rotuloAcessoAte" style="display:none;">Pode entrar até (inclusive)
+                <input type="date" id="acessoAte" />
+            </label>
+            <small>Depois dessa data a pessoa não consegue mais entrar (e quem estiver logado é desconectado). A conta continua cadastrada — dá pra estender a data ou excluir.</small>
+        </div>
+
         <button type="submit">Adicionar Usuário</button>
     </form>
 
@@ -111,7 +132,13 @@
                 <h2 id="tituloModalPermissao">Permissões do setor</h2>
                 <button type="button" class="modal-fechar-permissao" id="fecharModalPermissao">&times;</button>
             </div>
-            <p class="texto-ajuda-permissao">Marque o que esse setor pode ver no menu. "Sair" e o login sempre ficam disponíveis para todos.</p>
+            <label class="caixa-acesso-total" id="caixaAcessoTotal">
+                <input type="checkbox" id="checkAcessoTotal" />
+                <span><b>⭐ Acesso total ao site (administrador)</b><br>
+                <small>Vê e mexe em tudo, inclusive Cadastro (criar, editar e excluir contas), permissões dos setores e o ponto de todos. Só marque para quem pode ter esse poder.</small></span>
+            </label>
+            <p class="texto-ajuda-permissao">Marque o que esse setor pode ver no menu. "Sair" e o login sempre ficam disponíveis para todos.
+            Marcar os itens do menu <b>não</b> dá poder de administrador — isso é só a caixa acima.</p>
             <div class="lista-checkbox-permissao" id="listaCheckboxPermissao"></div>
             <div class="modal-rodape-permissao">
                 <button type="button" class="btn-secundario-permissao" id="btnMarcarTudoPermissao">Marcar tudo</button>
@@ -187,6 +214,8 @@
     let setorEmEdicaoPermissao = null;
 
     function rotuloResumoPermissoes(nomeSetor) {
+        if (ehSetorAdministradorFixo(nomeSetor)) return "Acesso total (fixo)";
+        if (ehSetorAdministradorLocal(nomeSetor)) return "⭐ Acesso total (administrador)";
         const permissoes = getPermissoesDoSetor(nomeSetor);
         if (permissoes.length === 0) return "Nenhuma permissão definida";
         if (permissoes.length === ITENS_MENU_DISPONIVEIS.length) return "Acesso total";
@@ -200,7 +229,7 @@
         setores.forEach(setor => {
             const option = document.createElement("option");
             option.value = setor;
-            option.textContent = setor;
+            option.textContent = ehSetorAdministradorLocal(setor) ? `${setor} (acesso total)` : setor;
             selectSetor.appendChild(option);
         });
 
@@ -244,6 +273,12 @@
         const lista = document.getElementById("listaCheckboxPermissao");
         lista.innerHTML = "";
 
+        const checkTotal = document.getElementById("checkAcessoTotal");
+        const fixo = ehSetorAdministradorFixo(nomeSetor);
+        checkTotal.checked = fixo || permissoesAtuais.includes(PERMISSAO_ACESSO_TOTAL);
+        checkTotal.disabled = fixo;
+        checkTotal.title = fixo ? "Diretoria e Supervisor TI sempre têm acesso total" : "";
+
         ITENS_MENU_DISPONIVEIS.forEach((item) => {
             const linha = document.createElement("label");
             linha.className = "linha-checkbox-permissao";
@@ -279,6 +314,11 @@
     document.getElementById("btnSalvarPermissaoSetor").addEventListener("click", () => {
         if (!setorEmEdicaoPermissao) return;
         const marcados = [...document.querySelectorAll("#listaCheckboxPermissao input[type=checkbox]:checked")].map((cb) => cb.value);
+        if (document.getElementById("checkAcessoTotal").checked && !ehSetorAdministradorFixo(setorEmEdicaoPermissao)) {
+            marcados.push(PERMISSAO_ACESSO_TOTAL);
+            // Acesso total já mostra o menu inteiro
+            ITENS_MENU_DISPONIVEIS.forEach((i) => { if (!marcados.includes(i.id)) marcados.push(i.id); });
+        }
         salvarPermissoesDoSetor(setorEmEdicaoPermissao, marcados);
         mostrarToast(`Permissões de "${setorEmEdicaoPermissao}" atualizadas.`);
         fecharModalPermissaoFn();
@@ -389,6 +429,15 @@
 
             const tdSetor = document.createElement("td");
             tdSetor.textContent = user.setor || "—";
+            if (user.acessoAte) {
+                const [a, m, d] = user.acessoAte.split("-");
+                const vencido = new Date(user.acessoAte + "T23:59:59-03:00").getTime() < Date.now();
+                const tag = document.createElement("span");
+                tag.className = "tag-temporario" + (vencido ? " vencido" : "");
+                tag.textContent = vencido ? `⏳ temporário — venceu ${d}/${m}` : `⏳ temporário até ${d}/${m}/${a}`;
+                tdSetor.appendChild(document.createElement("br"));
+                tdSetor.appendChild(tag);
+            }
             tr.appendChild(tdSetor);
 
             const tdEditar = document.createElement("td");
@@ -611,6 +660,11 @@
         const senha = campoSenha.value;
         const setor = campoSetor.value;
         const nivelAcessoObra = document.getElementById("nivelAcessoObra").value;
+        const acessoAte = document.getElementById("acessoTemporario").checked ? document.getElementById("acessoAte").value : "";
+        if (document.getElementById("acessoTemporario").checked && !acessoAte) {
+            mostrarToast("Escolha até quando o cadastro temporário vale.", "erro");
+            return;
+        }
 
         // Campos obrigatórios: Nome, Registro, Sexo, Senha e Setor.
         // Email, Telefone, CPF e Endereço agora são opcionais.
@@ -643,7 +697,7 @@
             // O servidor (Worker) valida duplicidade de registro e faz o
             // hash da senha — nada de senha em texto puro chega a ficar
             // salvo em lugar nenhum, nem local nem remoto.
-            const resposta = await apiSalvarUsuario({ nome, registro, email, telefone, sexo, cpf, rg, endereco, senha, setor, nivelAcessoObra });
+            const resposta = await apiSalvarUsuario({ nome, registro, email, telefone, sexo, cpf, rg, endereco, senha, setor, nivelAcessoObra, acessoAte });
 
             if (!resposta.ok) {
                 if ((resposta.erro || "").toLowerCase().includes("registro")) {
@@ -668,12 +722,26 @@
     });
 
 
+    document.getElementById("acessoTemporario").addEventListener("change", (e) => {
+        document.getElementById("rotuloAcessoAte").style.display = e.target.checked ? "" : "none";
+    });
+
     window.addEventListener("load", async () => {
         // Garante que existe uma configuração padrão de setores no
         // servidor (só faz algo na primeira vez que um admin acessa,
         // se ainda não houver nada configurado).
         await seedPermissoesPadraoSeVazio();
         await sincronizarDadosCompartilhados();
+
+        // Setor "Supervisor TI" (acesso total ao site) sempre existe
+        try {
+            const setoresAtuais = JSON.parse(localStorage.getItem("setores")) || [];
+            if (!setoresAtuais.some((s) => String(s).trim().toUpperCase() === "SUPERVISOR TI")) {
+                setoresAtuais.push("Supervisor TI");
+                localStorage.setItem("setores", JSON.stringify(setoresAtuais));
+                await apiDataSet("setores", setoresAtuais);
+            }
+        } catch (e) { console.warn("Não foi possível criar o setor Supervisor TI:", e); }
 
         carregarSetores();
         carregarUsuarios();

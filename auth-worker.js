@@ -396,13 +396,14 @@ async function apiExcluirClienteCrm(id) {
 // ── Numeração automática (Orçamento, Apresentação — compartilhada) ──
 // Cada "tipo" tem seu próprio contador (ex: "orcamento", "apresentacao").
 // Pega o próximo número da sequência e já incrementa pro próximo uso.
+// Quem incrementa é o servidor (rota própria): antes o site gravava o
+// contador com "data-set", que só administrador pode usar — pra quem
+// não era administrador o número nunca avançava e todo orçamento novo
+// saía com o MESMO número.
 async function proximoNumeroSequencial(tipo) {
-  const resp = await apiDataGet("contadorNumeracao");
-  const contadores = (resp.ok && resp.valor) ? resp.valor : {};
-  const atual = contadores[tipo] || 1;
-  contadores[tipo] = atual + 1;
-  await apiDataSet("contadorNumeracao", contadores);
-  return atual;
+  const r = await chamarWorker("numeracao-proximo", { method: "POST", body: { tipo } });
+  if (r.ok && r.numero) return r.numero;
+  throw new Error(r.erro || "Sem numeração");
 }
 async function verNumeracaoAtual(tipo) {
   const resp = await apiDataGet("contadorNumeracao");
@@ -423,32 +424,81 @@ async function definirNumeracaoAtual(tipo, novoValor) {
 async function abrirModalConfigNumeracao(tipo, rotulo, aoSalvar) {
   let modal = document.getElementById("modalConfigNumeracao");
   if (!modal) {
+    const estilo = document.createElement("style");
+    estilo.textContent = `
+      #modalConfigNumeracao { position: fixed; inset: 0; z-index: 5000; background: rgba(0,0,0,.45); display: none;
+        align-items: center; justify-content: center; padding: 16px; font-family: 'Montserrat', sans-serif; }
+      #modalConfigNumeracao.active { display: flex; }
+      #modalConfigNumeracao .cx-num { background: #fff; width: 100%; max-width: 420px; border-radius: 16px; overflow: hidden;
+        box-shadow: 0 16px 50px rgba(0,0,0,.3); }
+      #modalConfigNumeracao .topo-num { background: #262626; color: #fff; padding: 16px 18px; border-bottom: 5px solid #EB991C;
+        display: flex; justify-content: space-between; align-items: center; }
+      #modalConfigNumeracao .topo-num h2 { margin: 0; font-size: 16px; }
+      #modalConfigNumeracao .topo-num small { display: block; color: #f3c477; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+      #modalConfigNumeracao .topo-num button { background: none; border: none; color: #fff; font-size: 26px; cursor: pointer; line-height: 1; }
+      #modalConfigNumeracao .corpo-num { padding: 20px 18px 18px; text-align: center; }
+      #modalConfigNumeracao .rot-num { font-size: 13px; color: #555; margin-bottom: 10px; }
+      #modalConfigNumeracao .controle-num { display: flex; align-items: center; justify-content: center; gap: 10px; }
+      #modalConfigNumeracao .controle-num button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid #ddd; background: #f6f6f6;
+        font-size: 22px; font-weight: 700; color: #333; cursor: pointer; }
+      #modalConfigNumeracao .controle-num button:hover { background: #fff3dc; border-color: #EB991C; }
+      #modalConfigNumeracao .controle-num input { width: 140px; text-align: center; font-size: 34px; font-weight: 800; color: #222;
+        border: 2px solid #EB991C; border-radius: 12px; padding: 6px 4px; font-family: inherit; }
+      #modalConfigNumeracao .previa-num { margin-top: 14px; font-size: 12.5px; color: #777; }
+      #modalConfigNumeracao .previa-num span { display: inline-block; background: #fff3dc; color: #B26A00; font-weight: 700; border-radius: 12px;
+        padding: 2px 10px; margin: 2px; }
+      #modalConfigNumeracao .aviso-num { margin-top: 12px; font-size: 11.5px; color: #999; line-height: 1.4; }
+      #modalConfigNumeracao .rodape-num { display: flex; gap: 10px; padding: 0 18px 18px; }
+      #modalConfigNumeracao .rodape-num button { flex: 1; padding: 12px; border-radius: 24px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; }
+      #modalConfigNumeracao .btn-cancelar-num { background: #fff; border: 1px solid #ccc; color: #444; }
+      #modalConfigNumeracao .btn-salvar-num { background: #EB991C; border: none; color: #fff; }
+    `;
+    document.head.appendChild(estilo);
     modal = document.createElement("div");
     modal.id = "modalConfigNumeracao";
-    modal.className = "modal-overlay";
     modal.innerHTML = `
-      <div class="modal-caixa">
-        <div class="modal-cabecalho">
-          <h2 id="tituloModalConfigNumeracao">Configurar numeração</h2>
-          <button type="button" class="modal-fechar" id="fecharModalConfigNumeracao">&times;</button>
+      <form class="cx-num" id="formConfigNumeracao">
+        <div class="topo-num">
+          <div><small>Numeração automática</small><h2 id="tituloModalConfigNumeracao">Configurar numeração</h2></div>
+          <button type="button" id="fecharModalConfigNumeracao" aria-label="Fechar">&times;</button>
         </div>
-        <form id="formConfigNumeracao" class="form-modal-grid">
-          <label class="campo-largura-total" id="labelConfigNumeracao">
-            Próximo número a ser usado
-            <input type="number" id="campoValorConfigNumeracao" min="1" step="1" />
-          </label>
-          <button type="submit" class="btn-laranja campo-largura-total">Salvar</button>
-        </form>
-      </div>
+        <div class="corpo-num">
+          <div class="rot-num" id="labelConfigNumeracao">Próximo número a ser usado</div>
+          <div class="controle-num">
+            <button type="button" id="menosNumeracao" aria-label="Diminuir">−</button>
+            <input type="number" id="campoValorConfigNumeracao" min="1" step="1" inputmode="numeric" />
+            <button type="button" id="maisNumeracao" aria-label="Aumentar">+</button>
+          </div>
+          <div class="previa-num" id="previaNumeracao"></div>
+          <div class="aviso-num">Use isso para continuar a sequência que você já tinha (por exemplo, a do sistema antigo). Os números já usados não mudam.</div>
+        </div>
+        <div class="rodape-num">
+          <button type="button" class="btn-cancelar-num" id="cancelarConfigNumeracao">Cancelar</button>
+          <button type="submit" class="btn-salvar-num">Salvar</button>
+        </div>
+      </form>
     `;
     document.body.appendChild(modal);
-    document.getElementById("fecharModalConfigNumeracao").addEventListener("click", () => modal.classList.remove("active"));
-    modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("active"); });
+    const fechar = () => modal.classList.remove("active");
+    document.getElementById("fecharModalConfigNumeracao").addEventListener("click", fechar);
+    document.getElementById("cancelarConfigNumeracao").addEventListener("click", fechar);
+    modal.addEventListener("click", (e) => { if (e.target === modal) fechar(); });
+    const campo = document.getElementById("campoValorConfigNumeracao");
+    const previa = () => {
+      const v = parseInt(campo.value, 10);
+      document.getElementById("previaNumeracao").innerHTML = isNaN(v) || v < 1 ? "Digite um número a partir de 1."
+        : `Os próximos vão sair: <span>${v}</span><span>${v + 1}</span><span>${v + 2}</span>…`;
+    };
+    campo.addEventListener("input", previa);
+    document.getElementById("menosNumeracao").addEventListener("click", () => { campo.value = Math.max(1, (parseInt(campo.value, 10) || 1) - 1); previa(); });
+    document.getElementById("maisNumeracao").addEventListener("click", () => { campo.value = (parseInt(campo.value, 10) || 0) + 1; previa(); });
+    modal._previa = previa;
   }
 
-  document.getElementById("tituloModalConfigNumeracao").textContent = `Configurar numeração — ${rotulo}`;
-  document.getElementById("labelConfigNumeracao").firstChild.textContent = `Próximo número de ${rotulo.toLowerCase()} a ser usado`;
+  document.getElementById("tituloModalConfigNumeracao").textContent = rotulo;
+  document.getElementById("labelConfigNumeracao").textContent = `Próximo número de ${rotulo.toLowerCase()} a ser usado`;
   document.getElementById("campoValorConfigNumeracao").value = await verNumeracaoAtual(tipo);
+  modal._previa();
   modal.classList.add("active");
 
   const form = document.getElementById("formConfigNumeracao");
@@ -456,7 +506,8 @@ async function abrirModalConfigNumeracao(tipo, rotulo, aoSalvar) {
     e.preventDefault();
     const valor = parseInt(document.getElementById("campoValorConfigNumeracao").value, 10);
     if (isNaN(valor) || valor < 1) return;
-    await definirNumeracaoAtual(tipo, valor);
+    const r = await definirNumeracaoAtual(tipo, valor);
+    if (!r || !r.ok) { mostrarToast((r && r.erro) || "Não foi possível salvar a numeração.", "erro"); return; }
     mostrarToast("Numeração atualizada.");
     modal.classList.remove("active");
     if (aoSalvar) aoSalvar(valor);

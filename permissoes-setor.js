@@ -69,6 +69,20 @@ function excluirSetorDasPermissoes(nomeSetor) {
   salvarSetoresPermissoes(mapa);
 }
 
+// Setores com acesso total fixo (mesma regra do Worker): Diretoria e
+// Supervisor TI. Não dependem das permissões marcadas no setor.
+// Além desses, qualquer setor com a caixinha "Acesso total ao site"
+// marcada (permissão "acesso-total-admin") — o Worker usa a mesma regra.
+const PERMISSAO_ACESSO_TOTAL = "acesso-total-admin";
+function ehSetorAdministradorFixo(setor) {
+  const s = String(setor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase().replace(/\s+/g, " ");
+  return s === "DIRETORIA" || s === "SUPERVISOR TI";
+}
+function ehSetorAdministradorLocal(setor) {
+  if (ehSetorAdministradorFixo(setor)) return true;
+  try { return getPermissoesDoSetor(setor).includes(PERMISSAO_ACESSO_TOTAL); } catch (e) { return false; }
+}
+
 // ====================================================
 // SINCRONIZAÇÃO COM O SERVIDOR (Worker + KV)
 // ====================================================

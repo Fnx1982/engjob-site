@@ -41,13 +41,15 @@ function tentarAutopreencherClienteOrcamento() {
   const nomeDigitado = document.getElementById("campoCliente").value.trim();
   const contato = contatosCacheOrcamento.find((c) => c.nome === nomeDigitado);
   if (!contato) return;
+  // Escolheu um contato cadastrado: puxa sempre o endereço, o telefone
+  // e o CPF/CNPJ dele (dá pra editar depois, se precisar)
   const campoTel = document.getElementById("campoTelefone");
   const campoLoc = document.getElementById("campoLocal");
-  if (contato.telefone && !campoTel.value.trim()) campoTel.value = contato.telefone;
-  if (!campoLoc.value.trim()) {
-    const enderecoPartes = [contato.logradouro, contato.numero, contato.bairro, contato.cidade, contato.uf].filter(Boolean);
-    if (enderecoPartes.length) campoLoc.value = enderecoPartes.join(", ");
-  }
+  const campoDoc = document.getElementById("campoDocumentoCliente");
+  if (contato.telefone) campoTel.value = contato.telefone;
+  if (contato.documento && campoDoc) campoDoc.value = contato.documento;
+  const enderecoPartes = [[contato.logradouro, contato.numero].filter(Boolean).join(", "), contato.bairro, [contato.cidade, contato.uf].filter(Boolean).join("/")].filter(Boolean);
+  if (enderecoPartes.length) campoLoc.value = enderecoPartes.join(" - ");
 }
 
 // Se o cliente que acabou de ser salvo na proposta ainda não existe
@@ -107,20 +109,30 @@ function montarModalFormularioProposta() {
             <input type="text" id="campoCliente" placeholder="Nome do cliente" list="listaClientesOrcamentoDatalist" />
             <datalist id="listaClientesOrcamentoDatalist"></datalist>
           </label>
-          <label>CPF / CNPJ <span style="font-weight:normal; color:#888;">(opcional)</span>
+          <label><span class="rotulo-com-opcional">CPF / CNPJ <span class="texto-opcional-inline">opcional</span></span>
             <input type="text" id="campoDocumentoCliente" placeholder="000.000.000-00" />
           </label>
           <label>Telefone
             <input type="text" id="campoTelefone" placeholder="(99) 9 9999-9999" maxlength="17" />
           </label>
-          <label class="campo-largura-total">Local
-            <input type="text" id="campoLocal" placeholder="Endereço / local da obra" />
+          <label>Responsável pela proposta
+            <input type="text" id="campoResponsavel" placeholder="Quem está fazendo o orçamento" list="listaResponsaveisDatalist" autocomplete="off" />
+            <datalist id="listaResponsaveisDatalist"></datalist>
+          </label>
+          <label>Local
+            <input type="text" id="campoLocalDescricao" placeholder="Ex.: Bloco B, fachada, guarita" />
+          </label>
+          <label class="campo-largura-total">Endereço
+            <input type="text" id="campoLocal" placeholder="Rua, número, bairro, cidade" />
           </label>
           <label class="campo-largura-total">Serviço
-            <textarea id="campoServico" rows="2" placeholder="Descrição do serviço"></textarea>
+            <textarea id="campoServico" rows="3" placeholder="Descrição do serviço (vem do descritivo da visita)"></textarea>
           </label>
-          <label class="campo-largura-total">Observação <span class="texto-opcional-inline">(opcional)</span>
-            <textarea id="campoObservacao" rows="2" placeholder="Alguma observação sobre esta proposta..."></textarea>
+          <label class="campo-largura-total"><span class="rotulo-com-opcional">Observação para o cliente <span class="texto-opcional-inline">opcional — sai no PDF do cliente</span></span>
+            <textarea id="campoObservacao" rows="2" placeholder="Só o que o cliente deve ler..."></textarea>
+          </label>
+          <label class="campo-largura-total campo-interno-visita"><span class="rotulo-com-opcional">Dados da visita <span class="tag-interno">só empresa</span> <span class="texto-opcional-inline">medidas, descrição e anotações — só no PDF interno</span></span>
+            <textarea id="campoDadosVisitaInterno" rows="4" placeholder="Medidas tiradas no local, anotações da visita..."></textarea>
           </label>
         </div>
       </div>
@@ -148,9 +160,18 @@ function montarModalFormularioProposta() {
         <button type="button" class="btn-add-item" id="btnAddMaoDeObra">+ Adicionar item de mão de obra</button>
         <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
           <div>Subtotal M.O.: <span id="subtotalMaoDeObraTexto">R$ 0,00</span></div>
+          <div class="linha-desconto">
+            <label>Desconto M.O.</label>
+            <input type="text" inputmode="decimal" id="descontoMaoDeObra" placeholder="0" />
+            <select id="descontoTipoMaoDeObra" title="Desconto em reais ou em porcentagem">
+              <option value="rs">R$</option>
+              <option value="pct">%</option>
+            </select>
+            <span class="valor-desconto" id="descontoTextoMaoDeObra"></span>
+          </div>
           <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
             <label style="font-weight:600;font-size:13px;margin:0;">Ajuste M.O.
-              <span style="font-weight:normal;font-size:11px;color:#888;">(desconto= negativo, acréscimo= positivo)</span>
+              <span style="font-weight:normal;font-size:11px;color:#888;">(acréscimo= positivo, abatimento= negativo)</span>
             </label>
             <input type="number" id="ajusteMaoDeObra" step="0.01" placeholder="0,00"
               style="width:130px;padding:7px 10px;border-radius:6px;border:1px solid #ccc;font-family:inherit;font-size:14px;text-align:right;" />
@@ -182,9 +203,18 @@ function montarModalFormularioProposta() {
         <button type="button" class="btn-add-item" id="btnAddMaterial">+ Adicionar material</button>
         <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
           <div>Subtotal Materiais: <span id="subtotalMateriaisTexto">R$ 0,00</span></div>
+          <div class="linha-desconto">
+            <label>Desconto Materiais</label>
+            <input type="text" inputmode="decimal" id="descontoMateriais" placeholder="0" />
+            <select id="descontoTipoMateriais" title="Desconto em reais ou em porcentagem">
+              <option value="rs">R$</option>
+              <option value="pct">%</option>
+            </select>
+            <span class="valor-desconto" id="descontoTextoMateriais"></span>
+          </div>
           <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
             <label style="font-weight:600;font-size:13px;margin:0;">Ajuste Materiais
-              <span style="font-weight:normal;font-size:11px;color:#888;">(desconto= negativo, acréscimo= positivo)</span>
+              <span style="font-weight:normal;font-size:11px;color:#888;">(acréscimo= positivo, abatimento= negativo)</span>
             </label>
             <input type="number" id="ajusteMateriais" step="0.01" placeholder="0,00"
               style="width:130px;padding:7px 10px;border-radius:6px;border:1px solid #ccc;font-family:inherit;font-size:14px;text-align:right;" />
@@ -243,15 +273,33 @@ function montarModalFormularioProposta() {
 
       <div class="form-secao secao-condicoes">
         <h3>Condições</h3>
-        <div class="form-grid">
-          <label>Forma de pagamento
-            <input type="text" id="campoFormaPagamento" placeholder="Ex: à vista, débito, PIX e boleto" />
+        <div class="grupo-condicao">
+          <div class="titulo-condicao">💳 Forma de pagamento</div>
+          <div class="form-grid grid-pagamento">
+            <label class="campo-largura-total">Como vai ser pago
+              <input type="text" id="campoFormaPagamento" placeholder="Ex.: boletos bancários para CNPJ, PIX, cartão" />
+            </label>
+            <label>Entrada (%)
+              <input type="text" inputmode="decimal" id="campoEntradaPerc" placeholder="Ex.: 50 (vazio = sem entrada)" />
+            </label>
+            <label>Parcelas do saldo
+              <input type="number" id="campoParcelas" min="0" max="60" placeholder="Ex.: 1 (vazio = à vista)" />
+            </label>
+            <label class="campo-largura-total">Vencimento das parcelas
+              <input type="text" id="campoPrazosParcelas" placeholder="Ex.: 30 dias — ou 30/60/90/120 dias" />
+            </label>
+          </div>
+          <div class="previa-pagamento" id="previaPagamento"></div>
+        </div>
+        <div class="form-grid grid-condicoes-prazos">
+          <label>Validade (dias corridos)
+            <input type="number" id="campoValidade" min="0" placeholder="Ex.: 20" />
           </label>
-          <label>Planejamento (dias úteis)
-            <input type="number" id="campoPlanejamento" min="0" placeholder="Ex: 10" />
+          <label>Programação (dias úteis)
+            <input type="number" id="campoPlanejamento" min="0" placeholder="Ex.: 7" />
           </label>
-          <label class="campo-largura-total">Proposta válida por (dias)
-            <input type="number" id="campoValidade" min="0" placeholder="Ex: 10" />
+          <label>Garantia dos serviços
+            <input type="text" id="campoGarantia" placeholder="Ex.: 3 meses" />
           </label>
         </div>
       </div>
@@ -286,6 +334,12 @@ function montarModalFormularioProposta() {
   document.getElementById("campoTelefone").addEventListener("input", aplicarMascaraTelefoneProposta);
   document.getElementById("campoDocumentoCliente").addEventListener("blur", formatarDocumentoClienteOrcamento);
   document.getElementById("ajusteMaoDeObra").addEventListener("input", atualizarTotaisFormulario);
+  ["descontoMaoDeObra", "descontoTipoMaoDeObra", "descontoMateriais", "descontoTipoMateriais",
+   "campoEntradaPerc", "campoParcelas", "campoPrazosParcelas"].forEach((idCampo) => {
+    const el = document.getElementById(idCampo);
+    el.addEventListener("input", atualizarTotaisFormulario);
+    el.addEventListener("change", atualizarTotaisFormulario);
+  });
   document.getElementById("ajusteMateriais").addEventListener("input", atualizarTotaisFormulario);
   document.getElementById("campoCliente").addEventListener("change", tentarAutopreencherClienteOrcamento);
   limparErroAoEditar(document.getElementById("campoCliente"));
@@ -316,8 +370,10 @@ function montarModalFormularioProposta() {
   // em nada. Itens de mão de obra/materiais já disparam o próprio save
   // no "blur" deles (ver renderTabelaMaoDeObra/renderTabelaMateriais).
   const camposComAutoSave = [
-    "campoNumeroOrcamento", "campoCliente", "campoTelefone", "campoLocal",
+    "campoNumeroOrcamento", "campoCliente", "campoResponsavel", "campoTelefone", "campoLocal",
     "campoServico", "campoObservacao", "campoFormaPagamento", "campoPlanejamento", "campoValidade",
+    "campoLocalDescricao", "campoDadosVisitaInterno", "campoEntradaPerc", "campoParcelas", "campoPrazosParcelas", "campoGarantia",
+    "descontoMaoDeObra", "descontoMateriais",
     "campoLocalObra", "campoMesImpostosOrc", "campoInssOrc", "campoIssOrc", "campoMatOrc",
   ];
   camposComAutoSave.forEach((idCampo) => {
@@ -463,6 +519,13 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
   document.getElementById("tituloModalProposta").textContent = id ? "Editar Orçamento" : "Novo Orçamento";
   document.getElementById("campoNumeroOrcamento").value = propostaEmEdicao.numeroOrcamento || "";
   document.getElementById("campoCliente").value = propostaEmEdicao.cliente;
+  // Responsável: orçamento novo já vem com quem está logado (dá pra trocar)
+  if (!id && !propostaEmEdicao.responsavelNome) {
+    propostaEmEdicao.responsavelNome = localStorage.getItem("userNome") || "";
+    propostaEmEdicao.responsavelRegistro = localStorage.getItem("userId") || null;
+  }
+  document.getElementById("campoResponsavel").value = propostaEmEdicao.responsavelNome || propostaEmEdicao.criadoPorNome || "";
+  carregarListaResponsaveis();
   document.getElementById("campoDocumentoCliente").value = propostaEmEdicao.documentoCliente || "";
   document.getElementById("campoTelefone").value = propostaEmEdicao.telefone;
   document.getElementById("campoLocal").value = propostaEmEdicao.local;
@@ -471,6 +534,7 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
   document.getElementById("campoFormaPagamento").value = propostaEmEdicao.formaPagamento;
   document.getElementById("campoPlanejamento").value = propostaEmEdicao.planejamentoDias;
   document.getElementById("campoValidade").value = propostaEmEdicao.validadeDias;
+  preencherCamposExtrasOrcamento();
 
   document.getElementById("modalProposta").classList.add("active");
 
@@ -506,6 +570,73 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
   atualizarTotaisFormulario();
 }
 
+// ====================================================
+// RESPONSÁVEL PELA PROPOSTA — lista de pessoas cadastradas. Quem é
+// escolhido aqui também passa a ver o orçamento (além de quem criou).
+// ====================================================
+let usuariosResponsavelCache = null;
+function normalizarNomePessoa(t) {
+  return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+async function carregarListaResponsaveis() {
+  if (!usuariosResponsavelCache) {
+    const r = typeof apiListarUsuariosBasico === "function" ? await apiListarUsuariosBasico() : { ok: false };
+    usuariosResponsavelCache = r.ok ? (r.usuarios || []).filter((u) => u.nome) : [];
+  }
+  const dl = document.getElementById("listaResponsaveisDatalist");
+  if (!dl) return;
+  dl.innerHTML = usuariosResponsavelCache
+    .slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+    .map((u) => `<option value="${escaparHtml(u.nome)}"></option>`).join("");
+}
+function aplicarResponsavelDoCampo() {
+  const el = document.getElementById("campoResponsavel");
+  if (!el || !propostaEmEdicao) return;
+  const alvo = normalizarNomePessoa(el.value);
+  let registro = null;
+  if (alvo) {
+    const achado = (usuariosResponsavelCache || []).find((u) => normalizarNomePessoa(u.nome) === alvo);
+    if (achado) { registro = String(achado.registro); el.value = achado.nome; }
+    else if (alvo === normalizarNomePessoa(localStorage.getItem("userNome"))) registro = localStorage.getItem("userId") || null;
+  }
+  propostaEmEdicao.responsavelNome = el.value.trim();
+  propostaEmEdicao.responsavelRegistro = registro;
+}
+
+// ====================================================
+// CAMPOS NOVOS: local, dados internos da visita, desconto, parcelas,
+// garantia
+// ====================================================
+function preencherCamposExtrasOrcamento() {
+  const p = propostaEmEdicao;
+  const val = (id, v) => { const el = document.getElementById(id); if (el) el.value = v === undefined || v === null ? "" : v; };
+  val("campoLocalDescricao", p.localDescricao);
+  val("campoDadosVisitaInterno", p.dadosVisitaInterno);
+  val("descontoMaoDeObra", p.descontoMaoDeObra ? String(p.descontoMaoDeObra).replace(".", ",") : "");
+  val("descontoTipoMaoDeObra", p.descontoTipoMaoDeObra || "rs");
+  val("descontoMateriais", p.descontoMateriais ? String(p.descontoMateriais).replace(".", ",") : "");
+  val("descontoTipoMateriais", p.descontoTipoMateriais || "rs");
+  val("campoEntradaPerc", p.entradaPerc ? String(p.entradaPerc).replace(".", ",") : "");
+  val("campoParcelas", p.parcelas || "");
+  val("campoPrazosParcelas", p.prazosParcelas);
+  val("campoGarantia", p.garantia);
+}
+function coletarCamposExtrasOrcamento() {
+  if (!propostaEmEdicao) return;
+  const p = propostaEmEdicao;
+  const txt = (id) => (document.getElementById(id)?.value || "").trim();
+  p.localDescricao = txt("campoLocalDescricao");
+  p.dadosVisitaInterno = txt("campoDadosVisitaInterno");
+  p.descontoMaoDeObra = numeroDigitadoProposta(txt("descontoMaoDeObra"));
+  p.descontoTipoMaoDeObra = txt("descontoTipoMaoDeObra") || "rs";
+  p.descontoMateriais = numeroDigitadoProposta(txt("descontoMateriais"));
+  p.descontoTipoMateriais = txt("descontoTipoMateriais") || "rs";
+  p.entradaPerc = Math.min(100, numeroDigitadoProposta(txt("campoEntradaPerc")));
+  p.parcelas = Math.max(0, Math.min(60, parseInt(txt("campoParcelas"), 10) || 0));
+  p.prazosParcelas = txt("campoPrazosParcelas");
+  p.garantia = txt("campoGarantia");
+}
+
 function fecharFormularioProposta() {
   const modal = document.getElementById("modalProposta");
   if (modal) modal.classList.remove("active");
@@ -530,6 +661,7 @@ function coletarCamposBasicosDoFormulario() {
   const campo = (id) => document.getElementById(id);
   propostaEmEdicao.numeroOrcamento = (campo("campoNumeroOrcamento")?.value || "").trim();
   propostaEmEdicao.cliente = (campo("campoCliente")?.value || "").trim();
+  aplicarResponsavelDoCampo();
   propostaEmEdicao.documentoCliente = (campo("campoDocumentoCliente")?.value || "").trim();
   propostaEmEdicao.telefone = (campo("campoTelefone")?.value || "").trim();
   propostaEmEdicao.local = (campo("campoLocal")?.value || "").trim();
@@ -538,6 +670,7 @@ function coletarCamposBasicosDoFormulario() {
   propostaEmEdicao.formaPagamento = (campo("campoFormaPagamento")?.value || "").trim();
   propostaEmEdicao.planejamentoDias = campo("campoPlanejamento")?.value || "";
   propostaEmEdicao.validadeDias = campo("campoValidade")?.value || "";
+  coletarCamposExtrasOrcamento();
   coletarImpostosDoFormulario();
 }
 
@@ -547,7 +680,7 @@ function coletarCamposBasicosDoFormulario() {
 function formularioTemConteudoParaRascunho() {
   if (!propostaEmEdicao) return false;
   const p = propostaEmEdicao;
-  const camposTexto = [p.numeroOrcamento, p.cliente, p.telefone, p.local, p.servico, p.observacao, p.formaPagamento];
+  const camposTexto = [p.numeroOrcamento, p.cliente, p.telefone, p.local, p.servico, p.observacao, p.formaPagamento, p.localDescricao, p.dadosVisitaInterno];
   if (camposTexto.some((v) => (v || "").trim() !== "")) return true;
   if ((p.itensMaoDeObra || []).some((i) => (i.descricao || "").trim() !== "")) return true;
   if ((p.itensMateriais || []).some((i) => (i.nome || "").trim() !== "")) return true;
@@ -934,9 +1067,21 @@ function atualizarTotaisFormulario() {
   const subtotalMat = totalMateriaisForm(propostaEmEdicao);
   const ajusteMO    = parseFloat(document.getElementById("ajusteMaoDeObra")?.value) || 0;
   const ajusteMat   = parseFloat(document.getElementById("ajusteMateriais")?.value) || 0;
-  const totalMO     = subtotalMO + ajusteMO;
-  const totalMat    = subtotalMat + ajusteMat;
+  coletarCamposExtrasOrcamento();
+  const descMO      = valorDescontoProposta(subtotalMO, propostaEmEdicao.descontoMaoDeObra, propostaEmEdicao.descontoTipoMaoDeObra);
+  const descMat     = valorDescontoProposta(subtotalMat, propostaEmEdicao.descontoMateriais, propostaEmEdicao.descontoTipoMateriais);
+  const totalMO     = subtotalMO - descMO + ajusteMO;
+  const totalMat    = subtotalMat - descMat + ajusteMat;
   const totalGeral  = totalMO + totalMat;
+  const txtDescMO = document.getElementById("descontoTextoMaoDeObra");
+  if (txtDescMO) txtDescMO.textContent = descMO ? `- R$ ${formatarMoeda(descMO)}` : "";
+  const txtDescMat = document.getElementById("descontoTextoMateriais");
+  if (txtDescMat) txtDescMat.textContent = descMat ? `- R$ ${formatarMoeda(descMat)}` : "";
+  const previa = document.getElementById("previaPagamento");
+  if (previa) {
+    const linhas = linhasCondicaoPagamento({ ...propostaEmEdicao, _totalForcado: totalGeral }, true);
+    previa.innerHTML = linhas.length ? "<b>Como sai no PDF:</b> " + linhas.map(escaparHtml).join(" ") : "";
+  }
 
   const subtotalMOEl = document.getElementById("subtotalMaoDeObraTexto");
   if (subtotalMOEl) subtotalMOEl.textContent = `R$ ${formatarMoeda(subtotalMO)}`;
@@ -965,6 +1110,7 @@ async function salvarFormularioProposta() {
 
   propostaEmEdicao.numeroOrcamento = document.getElementById("campoNumeroOrcamento").value.trim();
   propostaEmEdicao.cliente = campoCliente.value.trim();
+  aplicarResponsavelDoCampo();
   propostaEmEdicao.documentoCliente = document.getElementById("campoDocumentoCliente").value.trim();
   propostaEmEdicao.telefone = document.getElementById("campoTelefone").value.trim();
   propostaEmEdicao.local = document.getElementById("campoLocal").value.trim();
@@ -973,6 +1119,7 @@ async function salvarFormularioProposta() {
   propostaEmEdicao.formaPagamento = document.getElementById("campoFormaPagamento").value.trim();
   propostaEmEdicao.planejamentoDias = document.getElementById("campoPlanejamento").value;
   propostaEmEdicao.validadeDias = document.getElementById("campoValidade").value;
+  coletarCamposExtrasOrcamento();
   coletarImpostosDoFormulario();
 
   if (!propostaEmEdicao.cliente) {
@@ -1341,10 +1488,16 @@ function montarPainelFotosVisita() {
   if (document.getElementById("painelFotosVisita")) return;
   const estilo = document.createElement("style");
   estilo.textContent = `
-    #painelFotosVisita { position: fixed; right: 16px; bottom: 16px; z-index: 1500; width: 300px; max-height: 70vh;
+    /* Fica no canto INFERIOR ESQUERDO — no direito cobria o botão "Salvar Orçamento" */
+    #painelFotosVisita { position: fixed; left: 16px; bottom: 16px; z-index: 1500; width: 300px; max-height: 70vh;
       background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.28); display: none; flex-direction: column;
       font-family: 'Montserrat', sans-serif; overflow: hidden; }
     #painelFotosVisita.aberto { display: flex; }
+    #btnReabrirFotosVisita { position: fixed; left: 16px; bottom: 16px; z-index: 1500; display: none; align-items: center; gap: 6px;
+      background: #2b2b2b; color: #fff; border: none; border-radius: 22px; padding: 10px 16px; font-size: 13px; font-weight: 700;
+      font-family: 'Montserrat', sans-serif; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+    #btnReabrirFotosVisita:hover { background: #000; }
+    #btnReabrirFotosVisita.visivel { display: inline-flex; }
     #painelFotosVisita .topo-pfv { display: flex; align-items: center; justify-content: space-between; gap: 8px;
       background: #2b2b2b; color: #fff; padding: 9px 12px; cursor: pointer; user-select: none; }
     #painelFotosVisita .topo-pfv b { font-size: 13px; }
@@ -1354,6 +1507,7 @@ function montarPainelFotosVisita() {
     #painelFotosVisita .grade-pfv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
     #painelFotosVisita .grade-pfv img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; cursor: zoom-in; }
     #painelFotosVisita .texto-pfv { font-size: 12px; color: #444; white-space: pre-wrap; margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px; }
+    #painelFotosVisita .anot-pfv { background: #fffbe6; border: 1px solid #f0e2a0; border-radius: 6px; padding: 8px; }
     #painelFotosVisita .vazio-pfv { font-size: 12px; color: #999; text-align: center; padding: 10px 0; }
     #zoomFotoVisita { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,.88); display: none;
       align-items: center; justify-content: center; flex-direction: column; padding: 16px; }
@@ -1362,6 +1516,7 @@ function montarPainelFotosVisita() {
     #zoomFotoVisita button { background: rgba(255,255,255,.15); color: #fff; border: none; border-radius: 20px; padding: 8px 16px; font-size: 14px; cursor: pointer; font-family: inherit; }
     @media (max-width: 768px) {
       #painelFotosVisita { right: 8px; left: 8px; bottom: 8px; width: auto; max-height: 55vh; }
+      #btnReabrirFotosVisita { left: 8px; bottom: 8px; padding: 8px 12px; font-size: 12px; }
     }
   `;
   document.head.appendChild(estilo);
@@ -1376,6 +1531,19 @@ function montarPainelFotosVisita() {
     <div class="corpo-pfv" id="corpoPainelFotos"></div>`;
   document.body.appendChild(painel);
 
+  // Fechou o quadro: fica um botão pequeno no canto pra abrir de novo
+  const reabrir = document.createElement("button");
+  reabrir.type = "button";
+  reabrir.id = "btnReabrirFotosVisita";
+  reabrir.innerHTML = "📷 Fotos da visita";
+  reabrir.addEventListener("click", () => {
+    reabrir.classList.remove("visivel");
+    painel.classList.add("aberto");
+    painel.classList.remove("minimizado");
+    document.getElementById("btnMinPainelFotos").textContent = "▾";
+  });
+  document.body.appendChild(reabrir);
+
   const zoom = document.createElement("div");
   zoom.id = "zoomFotoVisita";
   zoom.innerHTML = `<img id="imgZoomFotoVisita" alt="" /><div class="nav-zoom">
@@ -1387,7 +1555,11 @@ function montarPainelFotosVisita() {
     document.getElementById("btnMinPainelFotos").textContent = painel.classList.contains("minimizado") ? "▴" : "▾";
   };
   document.getElementById("topoPainelFotos").addEventListener("click", (e) => { if (e.target.id !== "btnFecharPainelFotos") alternarMin(); });
-  document.getElementById("btnFecharPainelFotos").addEventListener("click", (e) => { e.stopPropagation(); painel.classList.remove("aberto"); });
+  document.getElementById("btnFecharPainelFotos").addEventListener("click", (e) => {
+    e.stopPropagation();
+    painel.classList.remove("aberto");
+    reabrir.classList.add("visivel");
+  });
 
   document.getElementById("zoomFechar").addEventListener("click", () => { zoom.style.display = "none"; });
   zoom.addEventListener("click", (e) => { if (e.target === zoom) zoom.style.display = "none"; });
@@ -1424,6 +1596,7 @@ async function mostrarPainelFotosVisita(visitaId) {
   const painel = document.getElementById("painelFotosVisita");
   const corpo = document.getElementById("corpoPainelFotos");
   painel.classList.add("aberto");
+  document.getElementById("btnReabrirFotosVisita").classList.remove("visivel");
   painel.classList.toggle("minimizado", window.matchMedia("(max-width: 768px)").matches); // no celular começa fechadinho
   document.getElementById("btnMinPainelFotos").textContent = painel.classList.contains("minimizado") ? "▴" : "▾";
   corpo.innerHTML = '<div class="vazio-pfv">Carregando…</div>';
@@ -1439,12 +1612,15 @@ async function mostrarPainelFotosVisita(visitaId) {
     ${fotosPainelVisita.length
       ? `<div class="grade-pfv">${fotosPainelVisita.map((c, i) => `<img src="${urlFotoPainelVisita(c)}" data-i="${i}" alt="Foto ${i + 1}" />`).join("")}</div>`
       : '<div class="vazio-pfv">Essa visita não tem fotos.</div>'}
-    <div class="texto-pfv"><b>${escaparHtml(visita.clienteNome)}</b>${quando ? " · visita em " + quando : ""}${visita.descricao ? "\n" + escaparHtml(visita.descricao) : ""}</div>`;
+    <div class="texto-pfv"><b>${escaparHtml(visita.clienteNome)}</b>${quando ? " · visita em " + quando : ""}${visita.descricao ? "\n" + escaparHtml(visita.descricao) : ""}</div>
+    ${visita.anotacoes ? `<div class="texto-pfv anot-pfv"><b>📝 Anotações da visita</b> <span style="color:#999">(só interno)</span>\n${escaparHtml(visita.anotacoes)}</div>` : ""}`;
   corpo.querySelectorAll("img[data-i]").forEach((img) => img.addEventListener("click", () => abrirZoomFoto(Number(img.dataset.i))));
 }
 
 function esconderPainelFotosVisita() {
   const painel = document.getElementById("painelFotosVisita");
   if (painel) painel.classList.remove("aberto");
+  const reabrir = document.getElementById("btnReabrirFotosVisita");
+  if (reabrir) reabrir.classList.remove("visivel");
 }
 

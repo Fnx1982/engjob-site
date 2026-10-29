@@ -76,8 +76,13 @@ async function carregarPropostasDoServidor() {
   return true;
 }
 
+// Devolve CÓPIAS dos orçamentos. Antes devolvia os mesmos objetos do
+// cache: quem mudava o status (ex.: "Enviar para Análise") alterava o
+// cache direto, e salvarPropostas não via diferença nenhuma — por isso
+// a mudança nunca chegava no servidor e o orçamento "voltava" ao abrir
+// outra tela.
 function lerPropostas() {
-  return propostasCache.map((p) => p); // cópia rasa da lista (os itens são os mesmos objetos)
+  return propostasCache.map((p) => JSON.parse(JSON.stringify(p)));
 }
 
 // Recebe a lista completa (como sempre foi) e grava só a diferença no servidor
@@ -108,8 +113,15 @@ let ultimoEnvioPropostas = Promise.resolve(true);
 // Começa a buscar assim que a página abre
 const propostasProntas = carregarPropostasDoServidor();
 
+// Nome de quem responde pelo orçamento (o escolhido no formulário;
+// se não tiver, quem criou)
+function nomeResponsavelProposta(p) {
+  return (p && (p.responsavelNome || p.criadoPorNome)) || "";
+}
+
 function buscarProposta(id) {
-  return lerPropostas().find((p) => p.id === id);
+  const p = propostasCache.find((x) => x.id === id);
+  return p ? JSON.parse(JSON.stringify(p)) : undefined;
 }
 
 // ── Monta os dados de NF-e/NFS-e a partir de uma proposta ────────
@@ -178,8 +190,16 @@ function criarPropostaVazia() {
     itensMaoDeObra: [],
     itensMateriais: [],
     formaPagamento: "",
+    entradaPerc: 0,
+    parcelas: 0,
+    prazosParcelas: "",
+    garantia: "",
     planejamentoDias: "",
     validadeDias: "",
+    localDescricao: "",          // "Local" (ex.: bloco B, fachada) — o "local" antigo virou o Endereço
+    dadosVisitaInterno: "",      // medidas/anotações da visita — só PDF interno
+    descontoMaoDeObra: 0, descontoTipoMaoDeObra: "rs",
+    descontoMateriais: 0, descontoTipoMateriais: "rs",
     status: "orcamento",
     statusObra: "andamento",      // "andamento" | "finalizada" — visível nas obras
     statusExecucao: "",
@@ -345,13 +365,67 @@ async function atualizarServicoNoCatalogo(servicoId, novosDados) {
 // Soma igual à do formulário: respeita o "Valor Final" digitado no
 // item (antes era sempre Qtd × Valor Unit., e um item só com Valor
 // Final saía R$ 0,00 no PDF) e inclui o Ajuste (desconto/acréscimo).
+// Número digitado com vírgula ou ponto ("10,5" ou "10.5")
+function numeroDigitadoProposta(texto) {
+  let t = String(texto === undefined || texto === null ? "" : texto).trim().replace(/\s/g, "").replace(/^R\$/i, "");
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(t);
+  return isNaN(n) || n < 0 ? 0 : n;
+}
+// Desconto em R$ ou % sobre o subtotal (nunca maior que o subtotal)
+function valorDescontoProposta(subtotal, valor, tipo) {
+  const v = Number(valor) || 0;
+  if (!v || subtotal <= 0) return 0;
+  const d = tipo === "pct" ? subtotal * Math.min(v, 100) / 100 : v;
+  return Math.min(Math.round(d * 100) / 100, subtotal);
+}
+function subtotalMaoDeObra(proposta) {
+  return (proposta.itensMaoDeObra || []).reduce((s, item) => s + valorFinalItemProposta(item), 0);
+}
+function subtotalMateriais(proposta) {
+  return (proposta.itensMateriais || []).reduce((s, item) => s + valorFinalItemProposta(item), 0);
+}
+function descontoMaoDeObra(proposta) {
+  return valorDescontoProposta(subtotalMaoDeObra(proposta), proposta.descontoMaoDeObra, proposta.descontoTipoMaoDeObra);
+}
+function descontoMateriais(proposta) {
+  return valorDescontoProposta(subtotalMateriais(proposta), proposta.descontoMateriais, proposta.descontoTipoMateriais);
+}
+// Total = subtotal - desconto + ajuste
 function totalMaoDeObra(proposta) {
-  return (proposta.itensMaoDeObra || []).reduce((s, item) => s + valorFinalItemProposta(item), 0)
-    + (parseFloat(proposta.ajusteMaoDeObra) || 0);
+  return subtotalMaoDeObra(proposta) - descontoMaoDeObra(proposta) + (parseFloat(proposta.ajusteMaoDeObra) || 0);
 }
 function totalMateriais(proposta) {
-  return (proposta.itensMateriais || []).reduce((s, item) => s + valorFinalItemProposta(item), 0)
-    + (parseFloat(proposta.ajusteMateriais) || 0);
+  return subtotalMateriais(proposta) - descontoMateriais(proposta) + (parseFloat(proposta.ajusteMateriais) || 0);
+}
+
+// Texto da forma de pagamento com entrada/parcelas, pro PDF e pra prévia
+// no formulário. "semValores" = PDF descritivo (só %, sem R$).
+function linhasCondicaoPagamento(proposta, comValores) {
+  const linhas = [];
+  const total = proposta._totalForcado !== undefined ? proposta._totalForcado : totalGeral(proposta);
+  const forma = (proposta.formaPagamento || "").trim();
+  const entrada = Number(proposta.entradaPerc) || 0;
+  const parcelas = parseInt(proposta.parcelas, 10) || 0;
+  const prazos = (proposta.prazosParcelas || "").trim();
+  const rs = (v) => `R$ ${formatarMoeda(v)}`;
+  if (entrada > 0 || parcelas > 0) {
+    const valorEntrada = total * entrada / 100;
+    const saldo = total - valorEntrada;
+    let t = "";
+    if (entrada > 0) t += `Entrada de ${String(entrada).replace(".", ",")}%${comValores ? ` (${rs(valorEntrada)})` : ""}`;
+    if (parcelas > 0) {
+      const desc = parcelas === 1 ? "parcela" : "parcelas";
+      t += `${t ? " e saldo" : "Pagamento"} em ${parcelas} ${desc}${comValores ? ` de ${rs(saldo / parcelas)}` : ""}`;
+      if (prazos) t += ` (${prazos})`;
+    } else if (entrada > 0 && entrada < 100) {
+      t += ` e saldo restante${comValores ? ` de ${rs(saldo)}` : ""}${prazos ? " em " + prazos : " na finalização"}`;
+    }
+    linhas.push(t + (forma ? `, via ${forma}` : "") + ".");
+  } else if (forma) {
+    linhas.push(forma.endsWith(".") ? forma : forma + ".");
+  }
+  return linhas;
 }
 function totalGeral(proposta) {
   return totalMaoDeObra(proposta) + totalMateriais(proposta);
@@ -770,18 +844,25 @@ const EMPRESA_INFO = {
   site: "www.engjob.com.br",
 };
 
-// modo "cliente": só as observações para o cliente.
-// modo "interno": tudo — observações do cliente, observações internas
-// e o quadro de impostos. Nunca enviar o interno ao cliente.
+// modo "cliente": o que o cliente pode ver (sem impostos, sem links,
+//   sem os dados internos da visita, sem observação interna dos itens).
+// modo "interno": tudo — impostos, links, dados da visita (medidas e
+//   anotações) e observações internas. Nunca enviar ao cliente.
+// modo "descritivo": só os itens e as condições, SEM nenhum valor —
+//   pro cliente entender o que está incluso.
 function gerarPdfProposta(proposta, modo) {
   const interno = modo === "interno";
+  const descritivo = modo === "descritivo";
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const margem = 40;
-  const larguraUtil = doc.internal.pageSize.getWidth() - margem * 2;
+  const larguraPagina = doc.internal.pageSize.getWidth();
+  const larguraUtil = larguraPagina - margem * 2;
+  const LARANJA = [235, 153, 28];
+  const ESCURO = [45, 45, 45];
   let y = 40;
 
-  // ----- Cabeçalho: logo larga (já traz o nome da empresa desenhado) -----
+  // ----- Cabeçalho: logo + dados da empresa -----
   const larguraLogo = 140;
   const alturaLogo = larguraLogo / (typeof LOGO_ENGJOB_PROPORCAO !== "undefined" ? LOGO_ENGJOB_PROPORCAO : 3.35);
   try {
@@ -789,124 +870,163 @@ function gerarPdfProposta(proposta, modo) {
       doc.addImage(LOGO_ENGJOB_BASE64, "JPEG", margem, y - 6, larguraLogo, alturaLogo);
     }
   } catch (e) {
-    // Se a logo falhar por algum motivo, o PDF continua sendo gerado
-    // normalmente, só sem a imagem — nunca trava a geração da proposta.
     console.warn("[propostas-core] Não foi possível desenhar a logo no PDF:", e);
   }
-
   const xTextoEmpresa = margem + larguraLogo + 16;
   let yTexto = y + 6;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
+  doc.setTextColor(60);
   doc.text(`${EMPRESA_INFO.endereco} - ${EMPRESA_INFO.bairro} - ${EMPRESA_INFO.cidade}/${EMPRESA_INFO.estado} - CEP ${EMPRESA_INFO.cep}`, xTextoEmpresa, yTexto);
   yTexto += 12;
   doc.text(`CNPJ: ${EMPRESA_INFO.cnpj}  •  ${EMPRESA_INFO.email}`, xTextoEmpresa, yTexto);
   yTexto += 12;
-  // Quebrada em duas linhas — a linha única não cabia na largura
-  // disponível ao lado da logo, estourando a margem direita da página.
   doc.text(`Fone: ${EMPRESA_INFO.fone} | ${EMPRESA_INFO.fone2}`, xTextoEmpresa, yTexto);
   yTexto += 12;
   doc.text(`${EMPRESA_INFO.instagram}  •  ${EMPRESA_INFO.site}`, xTextoEmpresa, yTexto);
+  doc.setTextColor(0);
+  y = Math.max(yTexto, y - 6 + alturaLogo) + 12;
 
-  y = Math.max(yTexto, y - 6 + alturaLogo) + 14;
-
-  doc.setDrawColor(235, 153, 28);
-  doc.setLineWidth(1.2);
-  doc.line(margem, y, margem + larguraUtil, y);
-  y += 18;
-
-  if (interno) {
-    doc.setFillColor(253, 240, 220);
-    doc.setDrawColor(235, 153, 28);
-    doc.rect(margem, y - 12, larguraUtil, 22, "FD");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(180, 110, 10);
-    doc.text("DOCUMENTO INTERNO — NÃO ENVIAR AO CLIENTE", margem + larguraUtil / 2, y + 3, { align: "center" });
-    doc.setTextColor(0, 0, 0);
-    y += 26;
-  }
-
-  // ----- Dados do cliente / obra -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("Cliente:", margem, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.cliente || "-", margem + 50, y);
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Fone:", margem + 300, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.telefone || "-", margem + 335, y);
-  y += 16;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Local:", margem, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(proposta.local || "-", margem + 50, y);
-  y += 16;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Serviço:", margem, y);
-  doc.setFont("helvetica", "normal");
-  const servicoLinhas = doc.splitTextToSize(proposta.servico || "-", larguraUtil - 55);
-  doc.text(servicoLinhas, margem + 55, y);
-  y += 16 * servicoLinhas.length + 8;
-
-  // ----- Tabela: Mão de Obra -----
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("MÃO DE OBRA", margem, y);
-  y += 8;
-
-  const linhasMao = linhasItensPdf(proposta.itensMaoDeObra, "descricao", interno);
-
-  doc.autoTable({
-    startY: y,
-    head: [["Item", "Qtd", "Unid", "Descrição", "Valor Unit.", "Total"]],
-    body: linhasMao.length ? linhasMao : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [235, 153, 28] },
-    foot: rodapeTabelaPdf(totalMaoDeObra(proposta), proposta.ajusteMaoDeObra, "Total Mão de Obra"),
-    footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
-  });
-  y = doc.lastAutoTable.finalY + 24;
-
-  // ----- Tabela: Materiais -----
-  y = garantirEspacoPdf(doc, y, 80);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("MATERIAIS", margem, y);
-  y += 8;
-
-  const linhasMat = linhasItensPdf(proposta.itensMateriais, "nome", interno);
-
-  doc.autoTable({
-    startY: y,
-    head: [["Item", "Qtd", "Unid", "Descrição", "Valor Unit.", "Total"]],
-    body: linhasMat.length ? linhasMat : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]],
-    margin: { left: margem, right: margem },
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [235, 153, 28] },
-    foot: rodapeTabelaPdf(totalMateriais(proposta), proposta.ajusteMateriais, "Total Materiais"),
-    footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
-  });
-  y = doc.lastAutoTable.finalY + 16;
-
-  // ----- Total geral -----
-  y = garantirEspacoPdf(doc, y, 60);
-  doc.setFillColor(235, 153, 28);
+  // ----- Faixa do título -----
+  const titulo = descritivo ? "DESCRITIVO DOS SERVIÇOS" : "ORÇAMENTO";
+  const numero = proposta.numeroOrcamento ? `Nº ${proposta.numeroOrcamento}` : "";
+  doc.setFillColor(...ESCURO);
   doc.rect(margem, y, larguraUtil, 26, "F");
-  doc.setTextColor(255, 255, 255);
+  doc.setFillColor(...LARANJA);
+  doc.rect(margem, y, 6, 26, "F");
+  doc.setTextColor(255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text("MATERIAL E MÃO DE OBRA — TOTAL:", margem + 10, y + 17);
-  doc.text(`R$ ${formatarMoeda(totalGeral(proposta))}`, margem + larguraUtil - 10, y + 17, { align: "right" });
-  doc.setTextColor(0, 0, 0);
-  y += 44;
+  doc.text(`${titulo}${numero ? "  " + numero : ""}`, margem + 16, y + 17);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const dataDoc = new Date(proposta.criadoEm || Date.now()).toLocaleDateString("pt-BR");
+  doc.text(`${EMPRESA_INFO.cidade}, ${dataDoc}`, margem + larguraUtil - 10, y + 17, { align: "right" });
+  doc.setTextColor(0);
+  y += 40;
+
+  if (interno || descritivo) {
+    const aviso = interno ? "DOCUMENTO INTERNO — NÃO ENVIAR AO CLIENTE" : "Este documento descreve os itens da proposta, sem valores.";
+    doc.setFillColor(interno ? 253 : 240, interno ? 240 : 246, interno ? 220 : 250);
+    doc.setDrawColor(...(interno ? LARANJA : [180, 200, 220]));
+    doc.rect(margem, y - 12, larguraUtil, 22, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...(interno ? [180, 110, 10] : [40, 80, 130]));
+    doc.text(aviso, margem + larguraUtil / 2, y + 3, { align: "center" });
+    doc.setTextColor(0);
+    y += 24;
+  }
+
+  // ----- Dados do cliente / obra (duas colunas) -----
+  const campos = [
+    ["Cliente", proposta.cliente || "-"],
+    ["CPF/CNPJ", proposta.documentoCliente || ""],
+    ["Telefone", proposta.telefone || ""],
+    ["Responsável", nomeResponsavelProposta(proposta)],
+    ["Endereço", proposta.local || ""],
+    ["Local", proposta.localDescricao || ""],
+  ].filter(([, v]) => (v || "").trim());
+  doc.autoTable({
+    startY: y,
+    body: campos.map(([k, v]) => [k + ":", v]),
+    theme: "plain",
+    margin: { left: margem, right: margem },
+    styles: { fontSize: 9.5, cellPadding: { top: 2.5, bottom: 2.5, left: 0, right: 4 } },
+    columnStyles: { 0: { fontStyle: "bold", cellWidth: 70 } },
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  if ((proposta.servico || "").trim()) {
+    y = garantirEspacoPdf(doc, y, 40);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Serviço:", margem, y);
+    y += 13;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    const servicoLinhas = doc.splitTextToSize(proposta.servico, larguraUtil);
+    servicoLinhas.forEach((l) => { y = garantirEspacoPdf(doc, y, 14); doc.text(l, margem, y); y += 12; });
+    y += 6;
+  }
+
+  // ----- Tabelas de itens -----
+  const desenharTabela = (rotulo, itens, campoNome, subtotal, desconto, descontoInfo, ajuste, rotuloTotal) => {
+    y = garantirEspacoPdf(doc, y, 80);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...ESCURO);
+    doc.text(rotulo, margem, y);
+    doc.setTextColor(0);
+    y += 8;
+    const cabeca = descritivo ? [["Item", "Qtd", "Unid", "Descrição"]] : [["Item", "Qtd", "Unid", "Descrição", "Valor Unit.", "Total"]];
+    doc.autoTable({
+      startY: y,
+      head: cabeca,
+      body: linhasItensPdf(itens, campoNome, interno, descritivo),
+      margin: { left: margem, right: margem },
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: LARANJA },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+      columnStyles: descritivo
+        ? { 0: { cellWidth: 32 }, 1: { cellWidth: 40, halign: "center" }, 2: { cellWidth: 40, halign: "center" } }
+        : { 0: { cellWidth: 32 }, 1: { cellWidth: 36, halign: "center" }, 2: { cellWidth: 36, halign: "center" }, 4: { halign: "right", cellWidth: 72 }, 5: { halign: "right", cellWidth: 78 } },
+      foot: descritivo ? undefined : rodapeTabelaPdf(subtotal, desconto, descontoInfo, ajuste, rotuloTotal),
+      footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold", halign: "right" },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+  };
+  const infoDesconto = (valor, tipo) => (tipo === "pct" && valor ? `${String(valor).replace(".", ",")}%` : "");
+  if ((proposta.itensMaoDeObra || []).length || !descritivo) {
+    desenharTabela("MÃO DE OBRA", proposta.itensMaoDeObra, "descricao", subtotalMaoDeObra(proposta), descontoMaoDeObra(proposta),
+      infoDesconto(proposta.descontoMaoDeObra, proposta.descontoTipoMaoDeObra), proposta.ajusteMaoDeObra, "Total Mão de Obra");
+  }
+  if ((proposta.itensMateriais || []).length || !descritivo) {
+    desenharTabela("MATERIAIS", proposta.itensMateriais, "nome", subtotalMateriais(proposta), descontoMateriais(proposta),
+      infoDesconto(proposta.descontoMateriais, proposta.descontoTipoMateriais), proposta.ajusteMateriais, "Total Materiais");
+  }
+
+  // ----- Total geral -----
+  if (!descritivo) {
+    y = garantirEspacoPdf(doc, y, 50);
+    const descontoTotal = descontoMaoDeObra(proposta) + descontoMateriais(proposta);
+    if (descontoTotal > 0) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(176, 58, 46);
+      doc.text(`Desconto aplicado: R$ ${formatarMoeda(descontoTotal)}`, margem + larguraUtil, y - 4, { align: "right" });
+      doc.setTextColor(0);
+      y += 6;
+    }
+    doc.setFillColor(...LARANJA);
+    doc.rect(margem, y, larguraUtil, 28, "F");
+    doc.setTextColor(255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("MATERIAL E MÃO DE OBRA — TOTAL:", margem + 10, y + 18);
+    doc.text(`R$ ${formatarMoeda(totalGeral(proposta))}`, margem + larguraUtil - 10, y + 18, { align: "right" });
+    doc.setTextColor(0);
+    y += 46;
+  }
 
   if (interno) {
+    // Dados da visita: medidas, descritivo e anotações (só interno)
+    if ((proposta.dadosVisitaInterno || "").trim()) {
+      y = garantirEspacoPdf(doc, y, 70);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text("DADOS DA VISITA (INTERNO)", margem, y);
+      y += 6;
+      doc.autoTable({
+        startY: y,
+        body: [[proposta.dadosVisitaInterno.trim()]],
+        margin: { left: margem, right: margem },
+        styles: { fontSize: 9, fillColor: [255, 251, 230], textColor: [60, 60, 60], cellPadding: 8, lineColor: [240, 226, 160], lineWidth: 0.6 },
+        theme: "grid",
+      });
+      y = doc.lastAutoTable.finalY + 20;
+    }
+
     const imp = calcularImpostosProposta(proposta);
     y = garantirEspacoPdf(doc, y, 150);
     doc.setFont("helvetica", "bold");
@@ -930,7 +1050,7 @@ function gerarPdfProposta(proposta, modo) {
       ],
       margin: { left: margem, right: margem },
       styles: { fontSize: 9 },
-      headStyles: { fillColor: [235, 153, 28] },
+      headStyles: { fillColor: LARANJA },
       footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: "bold" },
       columnStyles: { 2: { halign: "center" }, 3: { halign: "right" } },
     });
@@ -942,7 +1062,6 @@ function gerarPdfProposta(proposta, modo) {
       y = garantirEspacoPdf(doc, y, 60);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
-      doc.setTextColor(0, 0, 0);
       doc.text("LINKS DOS MATERIAIS (INTERNO)", margem, y);
       y += 14;
       doc.setFontSize(9);
@@ -956,8 +1075,7 @@ function gerarPdfProposta(proposta, modo) {
           const url = /^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : "https://" + l.url.trim();
           doc.setFont("helvetica", "normal");
           doc.setTextColor(30, 90, 200);
-          const linhas = doc.splitTextToSize(url, larguraUtil - 12);
-          linhas.forEach((linha) => {
+          doc.splitTextToSize(url, larguraUtil - 12).forEach((linha) => {
             doc.textWithLink(linha, margem + 10, y, { url });
             y += 11;
           });
@@ -969,92 +1087,137 @@ function gerarPdfProposta(proposta, modo) {
     }
   }
 
-  // ----- Condições / avisos -----
-  y = garantirEspacoPdf(doc, y, 90);
+  // ----- Condições (mesma ordem da proposta comercial) -----
+  const secoes = [];
+  const pagamento = linhasCondicaoPagamento(proposta, !descritivo);
+  if (pagamento.length) secoes.push(["Forma de Pagamento", pagamento.join(" ")]);
+  if (proposta.validadeDias) secoes.push(["Validade", `Proposta tem validade de ${proposta.validadeDias} dias corridos.`]);
+  if (proposta.planejamentoDias) secoes.push(["Programação",
+    `Prazo previsto para execução dos serviços: ${proposta.planejamentoDias} dias úteis. Os prazos podem sofrer alterações conforme previsão do tempo, chegada de materiais necessários e andamento interno do local.`]);
+  if ((proposta.garantia || "").trim()) secoes.push(["Garantia",
+    `O contratado fornece garantia de ${proposta.garantia.trim()} para os serviços executados citados nesta proposta. Materiais conforme fornecedor.`]);
+  secoes.push(["Início", "Início dos serviços após aprovação e formalização da proposta."]);
+
+  y = garantirEspacoPdf(doc, y, 60);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...ESCURO);
+  doc.text("CONDIÇÕES", margem, y);
+  doc.setDrawColor(...LARANJA);
+  doc.setLineWidth(1);
+  doc.line(margem, y + 4, margem + larguraUtil, y + 4);
+  doc.setTextColor(0);
+  y += 20;
+  secoes.forEach(([tituloSec, texto], i) => {
+    const linhas = doc.splitTextToSize(texto, larguraUtil - 14);
+    y = garantirEspacoPdf(doc, y, 26 + linhas.length * 12);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(`${i + 1}. ${tituloSec}:`, margem, y);
+    y += 13;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    linhas.forEach((l) => { doc.text(l, margem + 14, y); y += 12; });
+    y += 6;
+  });
+
+  y = garantirEspacoPdf(doc, y, 30);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(200, 0, 0);
   doc.text("Não nos responsabilizamos por compra particular de material.", margem, y);
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(0);
   y += 18;
 
-  doc.setFont("helvetica", "normal");
-  doc.text(`Forma de pagamento: ${proposta.formaPagamento || "-"}`, margem, y);
-  y += 16;
-  doc.text(`Planejamento: ${proposta.planejamentoDias ? proposta.planejamentoDias + " dias úteis" : "-"}`, margem, y);
-  y += 16;
-  doc.text(`Proposta válida por: ${proposta.validadeDias ? proposta.validadeDias + " dias" : "-"}`, margem, y);
-  y += 16;
-  doc.text(`Início da proposta após aprovação.`, margem, y);
-  y += 20;
-
-  if (proposta.observacao) {
-    const larguraUtilObs = doc.internal.pageSize.getWidth() - margem * 2;
+  // Observação: só a que foi escrita para o cliente no orçamento
+  if ((proposta.observacao || "").trim()) {
+    const linhasObs = doc.splitTextToSize(proposta.observacao.trim(), larguraUtil);
+    y = garantirEspacoPdf(doc, y, 30 + linhasObs.length * 12);
     doc.setFont("helvetica", "bold");
-    doc.text("Observação:", margem, y);
-    y += 14;
+    doc.setFontSize(10);
+    doc.text("Observações:", margem, y);
+    y += 13;
     doc.setFont("helvetica", "normal");
-    const linhasObs = doc.splitTextToSize(proposta.observacao, larguraUtilObs);
-    doc.text(linhasObs, margem, y);
-    y += 14 * linhasObs.length + 6;
+    doc.setFontSize(9.5);
+    linhasObs.forEach((l) => { y = garantirEspacoPdf(doc, y, 14); doc.text(l, margem, y); y += 12; });
+    y += 8;
   }
 
-  doc.setFont("helvetica", "bold");
-  doc.text(`Situação: ${rotuloStatus(proposta)}`, margem, y);
-  y += 24;
+  if (interno) {
+    y = garantirEspacoPdf(doc, y, 20);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(`Situação: ${rotuloStatus(proposta)}`, margem, y);
+  }
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(120);
-  doc.text(
-    `${EMPRESA_INFO.cidade}, ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`,
-    margem,
-    y
-  );
+  // Rodapé com número da página
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for (let pag = 1; pag <= totalPaginas; pag++) {
+    doc.setPage(pag);
+    const alt = doc.internal.pageSize.getHeight();
+    doc.setDrawColor(220);
+    doc.setLineWidth(0.5);
+    doc.line(margem, alt - 28, margem + larguraUtil, alt - 28);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(130);
+    doc.text(`${EMPRESA_INFO.nome}  •  ${EMPRESA_INFO.site}`, margem, alt - 16);
+    doc.text(`${pag} | Página`, margem + larguraUtil, alt - 16, { align: "right" });
+    doc.setTextColor(0);
+  }
 
-  const nomeArquivo = `proposta_${(proposta.cliente || "sem_nome").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}${interno ? "_INTERNO" : ""}.pdf`;
+  const sufixo = interno ? "_INTERNO" : descritivo ? "_descritivo" : "";
+  const nomeArquivo = `proposta_${(proposta.numeroOrcamento ? proposta.numeroOrcamento + "_" : "")}${(proposta.cliente || "sem_nome").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}${sufixo}.pdf`;
   doc.save(nomeArquivo);
 }
 
 // Linhas da tabela de itens do PDF. Embaixo de cada item vão as
 // observações: a do cliente sempre; a interna só no PDF interno.
-function linhasItensPdf(itens, campoNome, interno) {
+// "semValores" (PDF descritivo): só Item, Qtd, Unid e Descrição.
+function linhasItensPdf(itens, campoNome, interno, semValores) {
+  const colunas = semValores ? 4 : 6;
   const linhas = [];
   (itens || []).forEach((item, i) => {
     const temQtd = item.qtd !== null && item.qtd !== undefined && item.qtd !== "" && Number(item.qtd) !== 0;
     const temUnit = item.valorUnit !== null && item.valorUnit !== undefined && item.valorUnit !== "" && Number(item.valorUnit) !== 0;
-    linhas.push([
+    const linha = [
       String(i + 1),
       temQtd ? String(item.qtd).replace(".", ",") : "-",
       item.unid || "",
       item[campoNome] || "",
-      temUnit ? `R$ ${formatarMoeda(Number(item.valorUnit))}` : "-",
-      `R$ ${formatarMoeda(valorFinalItemProposta(item))}`,
-    ]);
+    ];
+    if (!semValores) {
+      linha.push(temUnit ? `R$ ${formatarMoeda(Number(item.valorUnit))}` : "-");
+      linha.push(`R$ ${formatarMoeda(valorFinalItemProposta(item))}`);
+    }
+    linhas.push(linha);
     const obsCliente = (item.obsCliente || "").trim();
     const obsInterna = (item.obsInterna || "").trim();
     if (obsCliente) {
-      linhas.push([{ content: `Obs.: ${obsCliente}`, colSpan: 6,
+      linhas.push([{ content: `Obs.: ${obsCliente}`, colSpan: colunas,
         styles: { fontStyle: "italic", textColor: [80, 80, 80], fontSize: 8 } }]);
     }
     if (interno && obsInterna) {
-      linhas.push([{ content: `Interno: ${obsInterna}`, colSpan: 6,
+      linhas.push([{ content: `Interno: ${obsInterna}`, colSpan: colunas,
         styles: { fontStyle: "italic", textColor: [180, 110, 10], fontSize: 8, fillColor: [253, 244, 230] } }]);
     }
   });
-  return linhas.length ? linhas : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]];
+  if (linhas.length) return linhas;
+  return semValores ? [["-", "-", "-", "Nenhum item cadastrado"]] : [["-", "-", "-", "Nenhum item cadastrado", "-", "-"]];
 }
 
-// Rodapé da tabela: com ajuste, mostra Subtotal / Desconto ou
-// Acréscimo / Total — igual ao formulário.
-function rodapeTabelaPdf(total, ajuste, rotuloTotal) {
+// Rodapé da tabela: Subtotal / Desconto / Ajuste / Total (só mostra as
+// linhas que existem).
+function rodapeTabelaPdf(subtotal, desconto, descontoInfo, ajuste, rotuloTotal) {
   const aj = parseFloat(ajuste) || 0;
-  if (!aj) return [["", "", "", "", rotuloTotal, `R$ ${formatarMoeda(total)}`]];
-  return [
-    ["", "", "", "", "Subtotal", `R$ ${formatarMoeda(total - aj)}`],
-    ["", "", "", "", aj < 0 ? "Desconto" : "Acréscimo", `${aj < 0 ? "- " : "+ "}R$ ${formatarMoeda(Math.abs(aj))}`],
-    ["", "", "", "", rotuloTotal, `R$ ${formatarMoeda(total)}`],
-  ];
+  const total = subtotal - (desconto || 0) + aj;
+  const linha = (rotulo, valor) => [{ content: rotulo, colSpan: 5, styles: { halign: "right" } }, valor];
+  if (!desconto && !aj) return [linha(rotuloTotal, `R$ ${formatarMoeda(total)}`)];
+  const linhas = [linha("Subtotal", `R$ ${formatarMoeda(subtotal)}`)];
+  if (desconto) linhas.push(linha(`Desconto${descontoInfo ? " (" + descontoInfo + ")" : ""}`, `- R$ ${formatarMoeda(desconto)}`));
+  if (aj) linhas.push(linha(aj < 0 ? "Abatimento" : "Acréscimo", `${aj < 0 ? "- " : "+ "}R$ ${formatarMoeda(Math.abs(aj))}`));
+  linhas.push(linha(rotuloTotal, `R$ ${formatarMoeda(total)}`));
+  return linhas;
 }
 
 function garantirEspacoPdf(doc, y, minimo) {

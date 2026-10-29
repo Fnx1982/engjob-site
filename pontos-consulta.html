@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <script src="auth-worker.js?v=5"></script>
+  <script src="auth-worker.js?v=6"></script>
 <script src="auth-guard.js"></script>
 <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Consulta de Pontos</title>
-  <link rel="stylesheet" href="pontos.css" />
+  <link rel="stylesheet" href="pontos.css?v=5" />
   <script src="confirm-modal.js?v=4"></script>
   <script src="validacao.js?v=4"></script>
-  <script src="permissoes-setor.js?v=4"></script>
-  <script src="pontos-core.js?v=4"></script>
+  <script src="permissoes-setor.js?v=6"></script>
+  <script src="pontos-core.js?v=5"></script>
   <link rel="stylesheet" href="mobile.css?v=3" />
 </head>
 <body>
@@ -133,6 +133,7 @@
         <button type="button" class="btn-secundario" id="btnExportarPdfPontos" style="padding:10px 16px;font-size:13px;">📄 Exportar PDF</button>
         <button type="button" class="btn-secundario" id="btnExtratoPonto" style="padding:10px 16px;font-size:13px;">📄 Extrato do Mês</button>
         <button type="button" class="btn-secundario" id="btnApuracaoPonto" style="padding:10px 16px;font-size:13px;">📄 Apuração do Mês</button>
+        <button type="button" class="btn-secundario btn-zerar-banco" id="btnZerarBanco" style="padding:10px 16px;font-size:13px;display:none;">⟲ Zerar banco de horas</button>
       </div>
 
       <div class="secao-titulo">Batidas do Mês</div>
@@ -262,7 +263,7 @@
           <div class="feriados-card-topo">
             <div>
               <div class="feriados-card-titulo">Feriados Nacionais</div>
-              <div class="feriados-card-sub">Valem para todos os funcionários — formato MM-DD</div>
+              <div class="feriados-card-sub">Valem para todos e já repetem todo ano (fixos) — formato MM-DD</div>
             </div>
           </div>
 
@@ -291,9 +292,14 @@
 
           <div id="listaFeriadosFuncionario" class="feriados-lista"></div>
 
-          <div class="feriados-add-row">
+          <div class="feriados-add-row feriados-add-row-func">
             <input type="date" id="novoFeriadoFunc" class="feriados-input-data" />
             <button type="button" class="btn-laranja" id="btnAdicionarFeriadoFunc">Adicionar</button>
+            <div class="feriados-opcoes">
+              <label class="feriados-check"><input type="checkbox" id="feriadoFuncFixo" /> 🔁 Fixo — repetir todo ano</label>
+              <label class="feriados-check"><input type="checkbox" id="feriadoFuncTodos" /> Para todos os funcionários</label>
+              <span class="feriados-dica">Use "fixo" só para feriado de data certa (ex.: 08/09 Curitiba, 19/12 Paraná). Carnaval, Sexta-feira Santa e Corpus Christi mudam de data todo ano — cadastre sem "fixo".</span>
+            </div>
           </div>
         </div>
 
@@ -344,6 +350,28 @@
     </div>
   </div>
 
+  <!-- Modal: zerar banco de horas -->
+  <div class="modal-overlay" id="modalZerarBanco" style="z-index:2000;">
+    <div class="modal-caixa" style="max-width:460px;">
+      <div class="modal-cabecalho">
+        <h2>Zerar banco de horas</h2>
+        <button type="button" class="modal-fechar" id="fecharModalZerarBanco">&times;</button>
+      </div>
+      <p id="textoZerarBanco" style="font-size:14px;margin:0 0 12px;"></p>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;margin-bottom:12px;">Zerar até o fim do dia
+        <input type="date" id="dataZerarBanco" style="padding:9px;border:1px solid #ccc;border-radius:6px;font-family:inherit;" />
+      </label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;margin-bottom:12px;">Motivo
+        <textarea id="motivoZerarBanco" rows="3" placeholder="Ex.: horas pagas na folha de outubro / compensadas em folga" style="padding:9px;border:1px solid #ccc;border-radius:6px;font-family:inherit;"></textarea>
+      </label>
+      <p style="font-size:12px;color:#777;margin:0 0 14px;">Nenhuma batida é apagada — o histórico e os PDFs continuam iguais. Só o saldo recomeça do zero a partir do dia seguinte. Para desfazer, exclua o lançamento "Banco zerado".</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn-secundario" id="cancelarZerarBanco">Cancelar</button>
+        <button type="button" class="btn-laranja" id="confirmarZerarBanco">Zerar banco</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: editar feriado nacional -->
   <div class="modal-overlay" id="modalEditarFeriado" style="z-index:2000;">
     <div class="modal-caixa" style="max-width:380px;">
@@ -368,7 +396,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-  <script src="pontos-consulta.js?v=4"></script>
+  <script src="pontos-consulta.js?v=5"></script>
   <script src="camera.js?v=1"></script>
   <script src="modal-expandir.js?v=1"></script>
 </body>

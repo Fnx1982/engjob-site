@@ -58,7 +58,8 @@ function aplicarFiltros() {
       termo === "" ||
       (p.cliente || "").toLowerCase().includes(termo) ||
       (p.local || "").toLowerCase().includes(termo) ||
-      (p.servico || "").toLowerCase().includes(termo);
+      (p.servico || "").toLowerCase().includes(termo) ||
+      nomeResponsavelProposta(p).toLowerCase().includes(termo);
     const mesOK = mesSel === "todos" || data.getMonth() === parseInt(mesSel, 10);
     const anoOK = anoSel === "todos" || data.getFullYear() === parseInt(anoSel, 10);
     const abaOK = p.status === abaAtiva;
@@ -116,17 +117,18 @@ function renderLista() {
         </div>
       </div>
       <div class="proposta-meta">
-        <span>Criado em ${dataFormatada}</span>
+        <span>Criado em ${dataFormatada}${nomeResponsavelProposta(p) ? ` · 👤 ${escaparHtml(nomeResponsavelProposta(p))}` : ""}</span>
         <span class="proposta-total">Total: R$ ${formatarMoeda(totalGeral(p))}</span>
       </div>
       <div class="proposta-acoes">
         <button class="btn-pdf" data-pdf-id="${p.id}" title="Só com as observações para o cliente">PDF Cliente</button>
         <button class="btn-pdf-interno" data-pdf-interno-id="${p.id}" title="Com impostos e observações internas — não enviar ao cliente">PDF Interno</button>
+        <button class="btn-pdf-descritivo" data-pdf-desc-id="${p.id}" title="Só os itens e condições, sem nenhum valor — pro cliente entender o que está incluso">PDF Descritivo</button>
         <button class="btn-editar" data-edit-id="${p.id}">Editar</button>
         ${botaoNfe}
         ${botaoNfse}
         ${botaoStatusObra}
-        <button class="btn-negar" data-reverter-id="${p.id}">Voltar para Propostas</button>
+        <button class="btn-negar" data-reverter-id="${p.id}">Voltar para Análise</button>
         <button class="btn-excluir-item" data-delete-id="${p.id}">Excluir</button>
       </div>
     `;
@@ -135,6 +137,9 @@ function renderLista() {
 
   listaPropostasEl.querySelectorAll("[data-pdf-id]").forEach((btn) => {
     btn.addEventListener("click", () => gerarPdfProposta(buscarProposta(btn.dataset.pdfId), "cliente"));
+  });
+  listaPropostasEl.querySelectorAll("[data-pdf-desc-id]").forEach((btn) => {
+    btn.addEventListener("click", () => gerarPdfProposta(buscarProposta(btn.dataset.pdfDescId), "descritivo"));
   });
   listaPropostasEl.querySelectorAll("[data-pdf-interno-id]").forEach((btn) => {
     btn.addEventListener("click", () => gerarPdfProposta(buscarProposta(btn.dataset.pdfInternoId), "interno"));
@@ -174,7 +179,7 @@ function renderLista() {
   });
   listaPropostasEl.querySelectorAll("[data-reverter-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const confirmado = await confirmarAcao("Voltar para Propostas?", "A aprovação será desfeita.");
+      const confirmado = await confirmarAcao("Voltar para Análise?", "A aprovação será desfeita.");
       if (!confirmado) return;
       reverterParaAnalise(btn.dataset.reverterId);
       renderLista();

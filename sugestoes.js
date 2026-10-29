@@ -17,8 +17,8 @@
 
   // Só pra mostrar a aba — quem decide de verdade é o Worker
   function pareceTI() {
-    const setor = (localStorage.getItem("userSetor") || "").trim().toUpperCase();
-    return setor === "TI" || setor === "DIRETORIA" || localStorage.getItem("userTipo") === "ceo";
+    const setor = (localStorage.getItem("userSetor") || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase().replace(/\s+/g, " ");
+    return setor === "TI" || setor === "SUPERVISOR TI" || setor === "DIRETORIA" || (localStorage.getItem("userType") || "").toLowerCase() === "ceo";
   }
   const esc = (t) => (typeof escaparHtml === "function" ? escaparHtml(t) : String(t || ""));
   const dataBR = (ms) => new Date(ms).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
@@ -47,7 +47,12 @@
     .corpo-sug textarea { min-height:110px; resize:vertical; }
     .btn-enviar-sug { width:100%; padding:12px; border:none; border-radius:24px; background:#EB991C; color:#fff; font-weight:700; font-size:15px; cursor:pointer; font-family:inherit; }
     .btn-enviar-sug:disabled { opacity:.6; }
-    .card-sug { border:1px solid #eee; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+    .card-sug { position:relative; border:1px solid #eee; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+    .card-sug .x-sug { position:absolute; top:6px; right:6px; width:28px; height:28px; border:none; background:none; color:#aaa;
+      font-size:20px; line-height:1; cursor:pointer; border-radius:50%; }
+    .card-sug .x-sug:hover { background:#f3f3f3; color:#c0392b; }
+    .card-sug.com-x h4 { padding-right:26px; }
+    .tag-oculta-sug { display:inline-block; font-size:10.5px; color:#777; background:#eee; border-radius:10px; padding:1px 8px; margin-left:4px; }
     .card-sug h4 { margin:0 0 4px; font-size:14.5px; color:#222; }
     .meta-sug { font-size:11.5px; color:#888; margin-bottom:6px; }
     .desc-sug { font-size:13px; color:#444; white-space:pre-wrap; margin:6px 0; }
@@ -169,12 +174,13 @@
     }
 
     if (!lista.length) {
-      corpo.innerHTML = filtrosHtml + `<div class="vazio-sug">${modoTI ? "Nenhuma sugestão aqui." : "Você ainda não enviou sugestões."}</div>`;
+      corpo.innerHTML = filtrosHtml + `<div class="vazio-sug">${modoTI ? "Nenhuma sugestão aqui." : "Nenhuma sugestão na sua lista."}</div>`;
     } else {
       corpo.innerHTML = filtrosHtml + lista.map((s) => `
-        <div class="card-sug">
+        <div class="card-sug ${modoTI ? "" : "com-x"}">
+          ${modoTI ? "" : `<button type="button" class="x-sug" data-ocultar-id="${s.id}" title="Tirar da minha lista (o TI continua com ela)" aria-label="Tirar da minha lista">&times;</button>`}
           <h4>${esc(s.titulo)}</h4>
-          <div class="meta-sug">${tagStatus(s.status)} · ${esc(s.area || "Geral")} · ${dataBR(s.criadoEm)}${modoTI ? ` · por <b>${esc(s.autorNome)}</b>` : ""}</div>
+          <div class="meta-sug">${tagStatus(s.status)} · ${esc(s.area || "Geral")} · ${dataBR(s.criadoEm)}${modoTI ? ` · por <b>${esc(s.autorNome)}</b>` : ""}${modoTI && s.ocultaParaAutor ? '<span class="tag-oculta-sug">tirada da lista de quem pediu</span>' : ""}</div>
           <div class="desc-sug">${esc(s.descricao)}</div>
           ${s.respostaTI ? `<div class="resposta-sug"><b>Resposta do TI:</b> ${esc(s.respostaTI)}</div>` : ""}
           ${modoTI ? `
@@ -188,6 +194,19 @@
         </div>`).join("");
     }
 
+    corpo.querySelectorAll("[data-ocultar-id]").forEach((b) => b.addEventListener("click", async () => {
+      const card = b.closest(".card-sug");
+      const titulo = card ? card.querySelector("h4").textContent : "";
+      const pergunta = "Tirar \"" + titulo + "\" da sua lista?";
+      const detalhe = "Ela some só pra você. O TI continua com ela e, se for finalizada, você ainda recebe o aviso no sino.";
+      const ok = typeof confirmarAcao === "function" ? await confirmarAcao(pergunta, detalhe) : confirm(pergunta + "\n\n" + detalhe);
+      if (!ok) return;
+      b.disabled = true;
+      const resp = await chamarWorker("sugestoes-ocultar", { method: "POST", body: { id: b.dataset.ocultarId } });
+      if (!resp.ok) { avisar(resp.erro || "Não foi possível tirar da lista.", "erro"); b.disabled = false; return; }
+      avisar("Tirada da sua lista.");
+      renderLista(false);
+    }));
     corpo.querySelectorAll("[data-filtro]").forEach((b) => b.addEventListener("click", () => { filtroTI = b.dataset.filtro; renderLista(true); }));
     corpo.querySelectorAll("[data-salvar-id]").forEach((b) => b.addEventListener("click", async () => {
       const id = b.dataset.salvarId;

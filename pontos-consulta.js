@@ -160,6 +160,7 @@ function abrirModalDetalhe(registro, nome) {
   renderModalBanco();
   renderModalBatidas();
   renderModalLancamentos();
+  document.getElementById("btnZerarBanco").style.display = podeAlterarPontosDeOutros() ? "" : "none";
   document.getElementById("modalDetalhe").classList.add("active");
 }
 
@@ -212,6 +213,7 @@ function renderModalBanco() {
     <div class="card-banco"><div class="rotulo">Trabalhadas</div><div class="valor neutro">${formatarHoras(banco.horasTrabalhadas)}</div></div>
     <div class="card-banco"><div class="rotulo">Saldo</div><div class="valor ${corSaldo}">${banco.saldo >= 0 ? "+" : ""}${formatarHoras(banco.saldo)}</div></div>
     <div class="card-banco"><div class="rotulo">Dias</div><div class="valor neutro">${banco.diasTrabalhados}</div></div>
+    ${banco.zeradoEm ? `<div style="grid-column:1/-1;font-size:12px;color:#777;">⟲ Banco zerado em ${new Date(banco.zeradoEm + "T12:00:00").toLocaleDateString("pt-BR")} — saldo, trabalhadas e dias contam a partir do dia seguinte.</div>` : ""}
   `;
 }
 
@@ -308,10 +310,10 @@ function renderModalLancamentos() {
         <div class="lancamento-descricao">${formatarDataBR(l.data)}${l.horaInicio && l.horaFim ? " (" + l.horaInicio + " às " + l.horaFim + ")" : ""}${l.feriasInicio && l.feriasFim ? " (férias: " + formatarDataBR(l.feriasInicio) + " a " + formatarDataBR(l.feriasFim) + ")" : ""} ${l.descricao ? "— " + escaparHtml(l.descricao) : ""} ${renderDocumentoLanc(l)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
-        <div class="lancamento-horas">${info.efeito === "credito" ? "+" : info.efeito === "debito" ? "-" : ""}${formatarHoras(Math.abs(l.horas))}</div>
+        <div class="lancamento-horas">${l.tipo === "zeragem" ? "→ 0h" : (info.efeito === "credito" ? "+" : info.efeito === "debito" ? "-" : "") + formatarHoras(Math.abs(l.horas))}</div>
         <div class="lancamento-acoes">
-          <button class="btn-editar-mini" data-edit-lanc="${l.id}">Editar</button>
-          <button class="btn-excluir-mini" data-del-lanc="${l.id}">Excluir</button>
+          ${l.tipo === "zeragem" ? "" : `<button class="btn-editar-mini" data-edit-lanc="${l.id}">Editar</button>`}
+          <button class="btn-excluir-mini" data-del-lanc="${l.id}">${l.tipo === "zeragem" ? "Desfazer" : "Excluir"}</button>
         </div>
       </div>
     `;
@@ -332,6 +334,62 @@ function renderModalLancamentos() {
     });
   });
 }
+
+// ====================================================
+// ZERAR BANCO DE HORAS (só gestor — o Worker confere de novo)
+// ====================================================
+function hojeISOConsulta() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+document.getElementById("btnZerarBanco").addEventListener("click", () => {
+  if (!funcSelecionado) return;
+  const banco = calcularBancoHorasCompleto(funcSelecionado.registro);
+  document.getElementById("textoZerarBanco").innerHTML =
+    `Saldo atual de <b>${escaparHtml(funcSelecionado.nome)}</b>: <b style="color:${banco.saldo >= 0 ? "#1c8a4b" : "crimson"}">${banco.saldo >= 0 ? "+" : ""}${formatarHoras(banco.saldo)}</b>`;
+  document.getElementById("dataZerarBanco").value = hojeISOConsulta();
+  document.getElementById("dataZerarBanco").max = hojeISOConsulta();
+  document.getElementById("motivoZerarBanco").value = "";
+  document.getElementById("modalZerarBanco").classList.add("active");
+});
+["fecharModalZerarBanco", "cancelarZerarBanco"].forEach((id) =>
+  document.getElementById(id).addEventListener("click", () => document.getElementById("modalZerarBanco").classList.remove("active")));
+document.getElementById("confirmarZerarBanco").addEventListener("click", async () => {
+  if (!funcSelecionado) return;
+  const data = document.getElementById("dataZerarBanco").value;
+  const motivo = document.getElementById("motivoZerarBanco").value.trim();
+  if (!data) { mostrarToast("Escolha a data.", "erro"); return; }
+  if (data > hojeISOConsulta()) { mostrarToast("Não dá pra zerar com data no futuro.", "erro"); return; }
+  if (!motivo) { mostrarToast("Escreva o motivo (fica registrado).", "erro"); return; }
+  const corteAtual = dataUltimaZeragem(funcSelecionado.registro);
+  if (corteAtual && data <= corteAtual) {
+    mostrarToast(`O banco já foi zerado em ${new Date(corteAtual + "T12:00:00").toLocaleDateString("pt-BR")}. Escolha uma data depois dessa.`, "erro");
+    return;
+  }
+  // Saldo até o fim do dia escolhido = o que será zerado (fica registrado)
+  const saldoZerado = calcularBancoHorasCompleto(funcSelecionado.registro, data).saldo;
+
+  const ok = await confirmarAcao(`Zerar o banco de ${funcSelecionado.nome}?`,
+    `Saldo até ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}: ${saldoZerado >= 0 ? "+" : ""}${formatarHoras(saldoZerado)} → 0h00min.`);
+  if (!ok) return;
+  const botao = document.getElementById("confirmarZerarBanco");
+  botao.disabled = true;
+  const resp = await adicionarLancamento({
+    registroFuncionario: funcSelecionado.registro,
+    nomeFuncionario: funcSelecionado.nome,
+    tipo: "zeragem",
+    data,
+    horas: 0,
+    descricao: `Saldo zerado: ${saldoZerado >= 0 ? "+" : ""}${formatarHoras(saldoZerado)}. Motivo: ${motivo}`,
+  });
+  botao.disabled = false;
+  if (!resp.ok) { mostrarToast(resp.erro || "Não foi possível zerar.", "erro"); return; }
+  document.getElementById("modalZerarBanco").classList.remove("active");
+  mostrarToast("Banco de horas zerado.");
+  renderModalBanco();
+  renderModalLancamentos();
+  renderTabelaFuncionarios();
+});
 
 document.getElementById("btnAdicionarBatida").addEventListener("click", () => abrirModalBatida(null));
 document.getElementById("btnAdicionarLancamentoDetalhe").addEventListener("click", () => abrirModalLancamento(null));
@@ -816,6 +874,7 @@ const NOMES_FERIADOS_PADRAO = {
 };
 
 function renderAbaFeriados() {
+  Object.assign(NOMES_FERIADOS_PADRAO, lerNomesFeriadosNacionais() || {});
   const podeEditar = podeEditarFeriados();
   renderFeriadosNacionais(podeEditar);
   popularSelectFuncFeriado(podeEditar);
@@ -900,6 +959,7 @@ document.addEventListener("click", async (e) => {
     await salvarFeriadosNacionais(lista);
     if (novoNome) NOMES_FERIADOS_PADRAO[novoMmdd] = novoNome;
     if (_feriadoEditando !== novoMmdd) delete NOMES_FERIADOS_PADRAO[_feriadoEditando];
+    salvarNomesFeriadosNacionais({ ...NOMES_FERIADOS_PADRAO }); // antes o nome se perdia ao recarregar
     document.getElementById("modalEditarFeriado").classList.remove("active");
     renderFeriadosNacionais(podeEditarFeriados());
     mostrarToast("Feriado atualizado.");
@@ -918,6 +978,7 @@ document.addEventListener("click", async (e) => {
     lista.sort();
     await salvarFeriadosNacionais(lista);
     NOMES_FERIADOS_PADRAO[val] = document.getElementById("novoFeriadoNacionalNome").value.trim() || "Feriado";
+    salvarNomesFeriadosNacionais({ ...NOMES_FERIADOS_PADRAO });
     document.getElementById("novoFeriadoNacional").value = "";
     document.getElementById("novoFeriadoNacionalNome").value = "";
     renderFeriadosNacionais(podeEditarFeriados());
@@ -928,15 +989,35 @@ document.addEventListener("click", async (e) => {
   if (e.target.id === "btnAdicionarFeriadoFunc") {
     const reg = document.getElementById("selectFuncFeriado").value;
     const data = document.getElementById("novoFeriadoFunc").value;
-    if (!reg || !data) { mostrarToast("Selecione o funcionário e a data.", "erro"); return; }
-    const lista = lerFeriadosFuncionario(reg);
-    if (lista.includes(data)) { mostrarToast("Data já cadastrada.", "erro"); return; }
-    lista.push(data);
-    lista.sort();
-    await salvarFeriadosFuncionario(reg, lista);
+    const fixo = document.getElementById("feriadoFuncFixo").checked;
+    const paraTodos = document.getElementById("feriadoFuncTodos").checked;
+    if ((!reg && !paraTodos) || !data) { mostrarToast("Selecione o funcionário e a data.", "erro"); return; }
+    const valor = fixo ? data.slice(5) : data; // fixo guarda só "MM-DD" (vale todo ano)
+    const alvos = paraTodos ? listarFuncionarios().map((f) => f.registro) : [reg];
+    if (paraTodos) {
+      const ok = await confirmarAcao(`Adicionar para ${alvos.length} funcionário(s)?`, fixo ? "Fixo: vale todo ano." : "Só nesta data.");
+      if (!ok) return;
+    }
+    const botao = e.target;
+    botao.disabled = true;
+    let adicionados = 0, jaTinham = 0, falhas = 0;
+    for (const r of alvos) {
+      const lista = [...lerFeriadosFuncionario(r)];
+      if (lista.includes(valor)) { jaTinham++; continue; }
+      lista.push(valor);
+      lista.sort();
+      const resp = await salvarFeriadosFuncionario(r, lista);
+      if (resp && resp.ok === false) { falhas++; continue; }
+      adicionados++;
+    }
+    botao.disabled = false;
     document.getElementById("novoFeriadoFunc").value = "";
+    document.getElementById("feriadoFuncFixo").checked = false;
+    document.getElementById("feriadoFuncTodos").checked = false;
     renderFeriadosFuncionario(podeEditarFeriados());
-    mostrarToast("Feriado adicionado.");
+    if (falhas) mostrarToast(`${falhas} não foram salvos (sem permissão ou sem conexão).`, "erro");
+    else if (!adicionados) mostrarToast("Já estava cadastrado.", "erro");
+    else mostrarToast(adicionados > 1 ? `Feriado adicionado para ${adicionados} funcionários.` : "Feriado adicionado." + (jaTinham ? ` (${jaTinham} já tinham)` : ""));
   }
 });
 
@@ -966,14 +1047,17 @@ function renderFeriadosFuncionario(podeEditar) {
     return;
   }
 
-  lista.sort().forEach((data) => {
-    const dataFormatada = new Date(data + "T12:00:00").toLocaleDateString("pt-BR", {
-      weekday: "short", day: "2-digit", month: "long", year: "numeric"
-    });
+  // Fixos (todo ano) primeiro, depois os de data única
+  const ordenada = [...lista].sort((a, b) => (ehFeriadoFixo(b) - ehFeriadoFixo(a)) || a.localeCompare(b));
+  ordenada.forEach((data) => {
+    const fixo = ehFeriadoFixo(data);
+    const dataFormatada = fixo
+      ? new Date("2000-" + data + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })
+      : new Date(data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "long", year: "numeric" });
     const linha = document.createElement("div");
     linha.className = "feriado-item";
     linha.innerHTML = `
-      <span class="feriado-data-completa">${dataFormatada}</span>
+      <span class="feriado-data-completa">${dataFormatada}${fixo ? '<span class="tag-fixo-feriado">🔁 todo ano</span>' : ""}</span>
       ${podeEditar ? `<button class="btn-del-feriado" data-del-func-feriado="${data}" title="Remover">&times;</button>` : ""}
     `;
     container.appendChild(linha);
@@ -1520,10 +1604,11 @@ function gerarApuracaoPontoPDF(registroFuncionario, nomeFuncionario, mes, ano) {
   // onde o "Banco Total" deste mês se encaixa no saldo geral —
   // sem isso, um "+02:00" no mês pareceria sempre bom, mesmo que a
   // pessoa já estivesse devendo 30h de meses anteriores.
-  const registrosOriginais = _batidasCache;
-  _batidasCache = registrosOriginais.filter((b) => b.dataHora.slice(0, 10) < dataIni);
-  const saldoAntes = calcularBancoHorasCompleto(registroFuncionario).saldo;
-  _batidasCache = registrosOriginais;
+  // (calcula "como se hoje fosse" o dia anterior ao período — antes
+  // contava as horas esperadas até hoje e o saldo saía negativo demais)
+  const diaAntesPeriodo = new Date(dataIni + "T12:00:00");
+  diaAntesPeriodo.setDate(diaAntesPeriodo.getDate() - 1);
+  const saldoAntes = calcularBancoHorasCompleto(registroFuncionario, diaAntesPeriodo.toISOString().slice(0, 10)).saldo;
   const saldoDepois = saldoAntes + r.bancoTotal;
 
   const fmt = (h) => {

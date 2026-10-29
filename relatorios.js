@@ -1063,6 +1063,7 @@ async function lerUsuariosDoServidor() {
 function lerBoletos2()    { return JSON.parse(localStorage.getItem("boletos_lista")) || []; }
 
 function totalProposta(p) {
+  if (typeof totalGeral === "function") return totalGeral(p); // já conta desconto e ajuste
   const mo  = (p.itensMaoDeObra  || []).reduce((s,i) => s + (parseFloat(i.valorFinal) || i.qtd * i.valorUnit || 0), 0);
   const mat = (p.itensMateriais  || []).reduce((s,i) => s + (parseFloat(i.valorFinal) || i.qtd * i.valorUnit || 0), 0);
   const ajMO  = parseFloat(p.ajusteMaoDeObra  || 0);

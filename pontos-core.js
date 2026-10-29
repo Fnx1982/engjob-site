@@ -50,7 +50,21 @@ const TIPOS_LANCAMENTO = {
   feriado_manual: { rotulo: "Feriado (manual)", efeito: "abono"   },
   ferias:         { rotulo: "Férias",           efeito: "abono"   },
   ajuste:         { rotulo: "Ajuste Manual",    efeito: "ajuste"  }, // sinal vem do próprio valor de "horas"
+  // Zeragem: o saldo volta a 0 no fim do dia escolhido. Tudo até esse
+  // dia (batidas, lançamentos, horas esperadas) deixa de contar no
+  // saldo — mas NADA é apagado: as batidas continuam no histórico e no
+  // PDF. Excluir a zeragem desfaz.
+  zeragem:        { rotulo: "Banco zerado",     efeito: "zeragem" },
 };
+
+// Data da última zeragem do banco dessa pessoa ("YYYY-MM-DD") ou null
+function dataUltimaZeragem(registro) {
+  const datas = _lancamentosCache
+    .filter((l) => l.registroFuncionario === registro && l.tipo === "zeragem" && l.data)
+    .map((l) => l.data)
+    .sort();
+  return datas.length ? datas[datas.length - 1] : null;
+}
 
 // ====================================================
 // CACHE EM MEMÓRIA
@@ -59,16 +73,19 @@ let _batidasCache = [];
 let _lancamentosCache = [];
 let _jornadasCache = {};           // { registro: {horaEntrada, horaSaida, inicioAlmoco, fimAlmoco} }
 let _feriadosNacionaisCache = [];  // ["MM-DD", ...]
-let _feriadosFuncionarioCache = {}; // { registro: ["YYYY-MM-DD", ...] }
+let _feriadosFuncionarioCache = {}; // { registro: ["YYYY-MM-DD" (só aquele dia) ou "MM-DD" (fixo, todo ano), ...] }
+let _feriadosNomesCache = {};       // { "MM-DD": "Nome do feriado" } — nomes dos feriados nacionais
 
 async function carregarDadosPontosCache() {
-  const [rBatidas, rLanc, rJorn, rFerNac, rFerFunc] = await Promise.all([
+  const [rBatidas, rLanc, rJorn, rFerNac, rFerFunc, rFerNomes] = await Promise.all([
     apiPontosListarBatidas(),
     apiPontosListarLancamentos(),
     apiPontosListarJornadas(),
     apiDataGet("pontosFeriadosNacionais"),
     apiPontosListarFeriadosFuncionario(),
+    apiDataGet("pontosFeriadosNomes").catch(() => ({ ok: false })),
   ]);
+  if (rFerNomes && rFerNomes.ok && rFerNomes.valor) _feriadosNomesCache = rFerNomes.valor;
   if (rBatidas.ok) _batidasCache = rBatidas.batidas;
   if (rLanc.ok) _lancamentosCache = rLanc.lancamentos;
   if (rJorn.ok) _jornadasCache = rJorn.jornadas;
@@ -102,6 +119,17 @@ function lerFeriadosNacionais() {
 }
 function lerFeriadosFuncionario(registro) {
   return _feriadosFuncionarioCache[registro] || [];
+}
+function lerNomesFeriadosNacionais() {
+  return _feriadosNomesCache;
+}
+async function salvarNomesFeriadosNacionais(nomes) {
+  _feriadosNomesCache = nomes;
+  return apiDataSet("pontosFeriadosNomes", nomes);
+}
+// Feriado fixo = "MM-DD" (vale todo ano); com ano = só aquele dia
+function ehFeriadoFixo(valor) {
+  return /^\d{2}-\d{2}$/.test(valor);
 }
 
 function calcularHorasDiaJornada(j) {
@@ -156,7 +184,10 @@ function ehFimDeSemana(dataISO) {
 function ehFeriado(dataISO, registro) {
   const mmdd = dataISO.slice(5, 10);
   if (_feriadosNacionaisCache.includes(mmdd)) return true;
-  if (registro && lerFeriadosFuncionario(registro).includes(dataISO)) return true;
+  if (registro) {
+    const doFunc = lerFeriadosFuncionario(registro);
+    if (doFunc.includes(dataISO) || doFunc.includes(mmdd)) return true; // data exata ou fixo (todo ano)
+  }
   return false;
 }
 function ehDiaUtil(dataISO, registro) {
@@ -217,9 +248,15 @@ function calcularHorasTrabalhadasNoDia(batidasDia) {
 // ====================================================
 // BANCO DE HORAS (saldo acumulado) — ver aviso no topo do arquivo
 // ====================================================
-function calcularBancoHorasCompleto(registro) {
+// "ateISO" (opcional): calcula o saldo como se hoje fosse esse dia
+// (usado pra mostrar quanto vai ser zerado numa data passada).
+function calcularBancoHorasCompleto(registro, ateISO) {
   const jornada = getJornadaFuncionario(registro);
-  const registros = _batidasCache.filter((b) => b.registroFuncionario === registro);
+  // Banco zerado: só conta o que vem DEPOIS do dia da zeragem
+  const corte = dataUltimaZeragem(registro);
+  const corteFinal = corte && ateISO && corte >= ateISO ? null : corte;
+  const registros = _batidasCache.filter((b) => b.registroFuncionario === registro &&
+    (!corteFinal || dataLocalBR(b.dataHora) > corteFinal) && (!ateISO || dataLocalBR(b.dataHora) <= ateISO));
   const diasComBatida = [...new Set(registros.map((r) => dataLocalBR(r.dataHora)))];
 
   let horasTrabalhadas = 0;
@@ -233,10 +270,16 @@ function calcularBancoHorasCompleto(registro) {
   // "data de admissão" separada — o primeiro ponto batido é o
   // proxy mais confiável disponível).
   let horasEsperadas = 0;
-  if (diasComBatida.length > 0) {
-    const primeiraData = [...diasComBatida].sort()[0];
+  if (diasComBatida.length > 0 || corteFinal) {
+    // Depois de uma zeragem, a conta recomeça no dia seguinte a ela
+    let primeiraData = diasComBatida.length ? [...diasComBatida].sort()[0] : null;
+    if (corteFinal) {
+      const diaSeguinte = new Date(corteFinal + "T12:00:00");
+      diaSeguinte.setDate(diaSeguinte.getDate() + 1);
+      primeiraData = diaSeguinte.toISOString().slice(0, 10);
+    }
     const cur = new Date(primeiraData + "T12:00:00");
-    const hoje = new Date();
+    const hoje = ateISO ? new Date(ateISO + "T12:00:00") : new Date();
     hoje.setHours(12, 0, 0, 0);
     while (cur <= hoje) {
       const iso = cur.toISOString().slice(0, 10);
@@ -251,6 +294,9 @@ function calcularBancoHorasCompleto(registro) {
   let horasAbonadas = 0;       // reduz o quanto era ESPERADO (abono/atestado/férias/feriado manual)
 
   getLancamentosFuncionario(registro).forEach((l) => {
+    if (l.tipo === "zeragem") return;
+    if (corteFinal && l.data <= corteFinal) return; // antes da zeragem: já foi zerado
+    if (ateISO && l.data > ateISO) return;
     const info = TIPOS_LANCAMENTO[l.tipo] || { efeito: "abono" };
     const horasAbs = Math.abs(l.horas || 0);
     if (info.efeito === "credito") creditoLancamentos += horasAbs;
@@ -265,7 +311,7 @@ function calcularBancoHorasCompleto(registro) {
   const horasEsperadasAjustadas = Math.max(0, horasEsperadas - horasAbonadas);
   const saldo = (horasTrabalhadas + creditoLancamentos) - debitoLancamentos - horasEsperadasAjustadas;
 
-  return { jornada, horasTrabalhadas, horasEsperadas: horasEsperadasAjustadas, saldo, diasTrabalhados: diasComBatida.length };
+  return { jornada, horasTrabalhadas, horasEsperadas: horasEsperadasAjustadas, saldo, diasTrabalhados: diasComBatida.length, zeradoEm: corteFinal };
 }
 
 // ====================================================
@@ -352,7 +398,7 @@ function calcularApuracaoPeriodo(registro, dataInicioISO, dataFimISO) {
 function _ehAdministradorLocal() {
   const tipo = (localStorage.getItem("userType") || "").toLowerCase();
   const setor = localStorage.getItem("userSetor") || "";
-  return tipo === "ceo" || setor === "Diretoria";
+  return tipo === "ceo" || (typeof ehSetorAdministradorLocal === "function" ? ehSetorAdministradorLocal(setor) : setor === "Diretoria");
 }
 function podeAlterarPontosDeOutros() {
   if (_ehAdministradorLocal()) return true;

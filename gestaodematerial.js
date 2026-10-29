@@ -105,6 +105,7 @@ btnAbrirMaterial.addEventListener("click", () => {
     document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
     document.getElementById("origemMaterial").value = "0";
     document.getElementById("unidadeMaterial").value = "UND";
+    if (typeof preencherFiscalMaterial === "function") preencherFiscalMaterial({});
     tituloModalMaterial.textContent = "Novo Material";
     btnSubmitMaterial.textContent = "Adicionar";
     rascunhoAtualIdMaterial = null;
@@ -123,6 +124,7 @@ document.getElementById("btnCadastrarDaBusca").addEventListener("click", () => {
   document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
   document.getElementById("origemMaterial").value = "0";
   document.getElementById("unidadeMaterial").value = "UND";
+  if (typeof preencherFiscalMaterial === "function") preencherFiscalMaterial({});
   document.getElementById("nomeMaterial").value = termo;
   tituloModalMaterial.textContent = "Novo Material";
   btnSubmitMaterial.textContent = "Adicionar";
@@ -274,6 +276,7 @@ function coletarDadosRascunhoMaterial() {
     cstCsosn: document.getElementById("cstCsosnMaterial").value.trim(),
     unidade: document.getElementById("unidadeMaterial").value.trim().toUpperCase() || "UN",
     camposAdicionais: lerCamposExtrasMaterial(),
+    fiscal: typeof lerFiscalMaterial === "function" ? lerFiscalMaterial() : undefined,
   };
 }
 
@@ -322,6 +325,7 @@ function continuarRascunhoMaterial(dados, idRascunho) {
   document.getElementById("eanMaterial").value = dados.ean || "";
   document.getElementById("origemMaterial").value = dados.origem || "0";
   document.getElementById("cstCsosnMaterial").value = dados.cstCsosn || "";
+  if (typeof preencherFiscalMaterial === "function") preencherFiscalMaterial(dados.fiscal);
   definirUnidadeComSeguranca(document.getElementById("unidadeMaterial"), dados.unidade);
   document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
   (dados.camposAdicionais || []).forEach((c) => adicionarLinhaExtraMaterial(c));
@@ -426,6 +430,7 @@ form.addEventListener("submit", async (e) => {
     cstCsosn: document.getElementById("cstCsosnMaterial").value.trim(),
     unidade: document.getElementById("unidadeMaterial").value.trim().toUpperCase() || "UN",
     camposAdicionais: lerCamposExtrasMaterial(),
+    fiscal: typeof lerFiscalMaterial === "function" ? lerFiscalMaterial() : undefined,
   };
 
   btnSubmitMaterial.disabled = true;
@@ -449,6 +454,7 @@ form.addEventListener("submit", async (e) => {
     document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
     document.getElementById("origemMaterial").value = "0";
     document.getElementById("unidadeMaterial").value = "UND";
+    if (typeof preencherFiscalMaterial === "function") preencherFiscalMaterial({});
     if (rascunhoAtualIdMaterial) { await apiExcluirRascunho("material", rascunhoAtualIdMaterial); rascunhoAtualIdMaterial = null; }
     idMaterialOriginalRascunho = null;
     fecharModalEl(modalMaterial);
@@ -476,6 +482,7 @@ function editar(index) {
   document.getElementById("eanMaterial").value = m.ean || "";
   document.getElementById("origemMaterial").value = m.origem || "0";
   document.getElementById("cstCsosnMaterial").value = m.cstCsosn || "";
+  if (typeof preencherFiscalMaterial === "function") preencherFiscalMaterial(m.fiscal);
   definirUnidadeComSeguranca(document.getElementById("unidadeMaterial"), m.unidade);
   document.getElementById("listaCamposExtrasMaterial").innerHTML = "";
   (m.camposAdicionais || []).forEach((c) => adicionarLinhaExtraMaterial(c));

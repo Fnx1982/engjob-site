@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <script src="auth-worker.js?v=5"></script>
+    <script src="auth-worker.js?v=6"></script>
 <script src="auth-guard.js"></script>
 <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -13,6 +13,12 @@
     <title>Editar Usuário</title>
     
   <link rel="stylesheet" href="mobile.css?v=3" />
+<style>
+  .bloco-acesso-temp { display: flex; flex-direction: column; gap: 6px; background: #f6f8fb; border: 1px dashed #c9d3e0; border-radius: 10px; padding: 10px 12px; margin: 6px 0 12px; }
+  .bloco-acesso-temp small { color: #667; font-size: 12px; }
+  .linha-check-temp { display: flex !important; flex-direction: row !important; align-items: center; gap: 8px; font-weight: 600; }
+  .linha-check-temp input { width: 16px; height: 16px; }
+</style>
 </head>
 <body>
     <main class="container">
@@ -72,6 +78,14 @@
                     <option value="obra-sem-financeiro">Restrito — só demanda, nome do cliente e endereço</option>
                 </select>
             </label>
+
+            <div class="bloco-acesso-temp">
+                <label class="linha-check-temp"><input type="checkbox" id="acessoTemporario" /> ⏳ Cadastro temporário</label>
+                <label id="rotuloAcessoAte" style="display:none;">Pode entrar até (inclusive)
+                    <input type="date" id="acessoAte" />
+                </label>
+                <small>Depois dessa data a pessoa não entra mais. Para virar cadastro normal, desmarque.</small>
+            </div>
 
             <button type="submit" class="btn-salvar">Salvar Alterações</button>
         </form>
@@ -158,7 +172,13 @@
             document.getElementById("endereco").value = usuario.endereco || "";
             document.getElementById("setor").value = usuario.setor || "";
             document.getElementById("nivelAcessoObra").value = usuario.nivelAcessoObra || "total";
+            document.getElementById("acessoTemporario").checked = !!usuario.acessoAte;
+            document.getElementById("acessoAte").value = usuario.acessoAte || "";
+            document.getElementById("rotuloAcessoAte").style.display = usuario.acessoAte ? "" : "none";
         }
+        document.getElementById("acessoTemporario").addEventListener("change", (e) => {
+            document.getElementById("rotuloAcessoAte").style.display = e.target.checked ? "" : "none";
+        });
 
         carregarUsuario();
 
@@ -187,6 +207,7 @@
             const senha = campoSenha.value; // pode ficar em branco = mantém a atual
             const setor = campoSetor.value;
             const nivelAcessoObra = document.getElementById("nivelAcessoObra").value;
+            const acessoAte = document.getElementById("acessoTemporario").checked ? document.getElementById("acessoAte").value : "";
 
             let temErro = false;
             if (!nome) { marcarCampoComErro(campoNome, "Informe o nome completo."); temErro = true; }
@@ -194,6 +215,7 @@
             if (!sexo) { marcarCampoComErro(campoSexo, "Selecione o sexo."); temErro = true; }
             if (senha && senha.length < 6) { marcarCampoComErro(campoSenha, "A nova senha precisa ter pelo menos 6 caracteres."); temErro = true; }
             if (!setor) { marcarCampoComErro(campoSetor, "Selecione o setor."); temErro = true; }
+            if (document.getElementById("acessoTemporario").checked && !acessoAte) { marcarCampoComErro(document.getElementById("acessoAte"), "Escolha até quando vale."); temErro = true; }
 
             const telefoneRegex = /^\(\d{2}\)\s?\d{4,5}-\d{4}$/;
             if (telefone && !telefoneRegex.test(telefone)) {
@@ -213,7 +235,7 @@
 
             try {
                 const resposta = await apiSalvarUsuario({
-                    registro, registroOriginal, nome, email, telefone, sexo, cpf, rg, endereco, setor, nivelAcessoObra,
+                    registro, registroOriginal, nome, email, telefone, sexo, cpf, rg, endereco, setor, nivelAcessoObra, acessoAte,
                     senha: senha || undefined, // omitido = servidor mantém o hash atual
                 });
                 if (!resposta.ok) {

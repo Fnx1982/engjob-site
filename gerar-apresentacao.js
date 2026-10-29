@@ -122,16 +122,59 @@ function atualizarPreviewProposta(bloco, proposta) {
   const mo = totalMaoDeObra(proposta);
   const mat = totalMateriais(proposta);
   const fmt = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const esc = (t) => (typeof escaparHtml === "function" ? escaparHtml(t) : String(t || ""));
+  const itens = [
+    ...(proposta.itensMaoDeObra || []).map((i) => ({ tipo: "Serviço", nome: i.descricao, valor: valorFinalItemApres(i) })),
+    ...(proposta.itensMateriais || []).map((i) => ({ tipo: "Material", nome: i.nome, valor: valorFinalItemApres(i) })),
+  ].filter((i) => (i.nome || "").trim());
+  const mostrar = itens.slice(0, 5);
+  const chips = [
+    proposta.planejamentoDias ? `⏱ ${proposta.planejamentoDias} dias úteis` : "",
+    proposta.validadeDias ? `📅 válida ${proposta.validadeDias} dias` : "",
+    proposta.entradaPerc ? `💳 entrada ${proposta.entradaPerc}%` : "",
+    proposta.parcelas ? `🔁 ${proposta.parcelas}x` : "",
+  ].filter(Boolean);
 
   preview.innerHTML = `
-    <div class="linha-preview"><span>Itens de mão de obra</span><span>${proposta.itensMaoDeObra.length}</span></div>
-    <div class="linha-preview"><span>Itens de material</span><span>${proposta.itensMateriais.length}</span></div>
-    <div class="linha-preview"><span>Total mão de obra</span><span>${fmt(mo)}</span></div>
-    <div class="linha-preview"><span>Total material</span><span>${fmt(mat)}</span></div>
-    <div class="linha-preview total"><span>Total geral</span><span>${fmt(mo + mat)}</span></div>
+    <div class="pv-topo">
+      <div>
+        <div class="pv-numero">Orçamento ${proposta.numeroOrcamento ? "nº " + esc(proposta.numeroOrcamento) : ""}</div>
+        <div class="pv-cliente">${esc(proposta.cliente || "(sem cliente)")}</div>
+        ${proposta.local ? `<div class="pv-endereco">📍 ${esc(proposta.local)}</div>` : ""}
+      </div>
+      <span class="pv-status">${esc(typeof rotuloStatus === "function" ? rotuloStatus(proposta) : "")}</span>
+    </div>
+    <div class="pv-tiles">
+      <div class="pv-tile"><span>Serviços</span><b>${fmt(mo)}</b><small>${(proposta.itensMaoDeObra || []).length} item(ns)</small></div>
+      <div class="pv-tile"><span>Materiais</span><b>${fmt(mat)}</b><small>${(proposta.itensMateriais || []).length} item(ns)</small></div>
+      <div class="pv-tile pv-total"><span>Total</span><b>${fmt(mo + mat)}</b><small>vai assim no PDF</small></div>
+    </div>
+    ${mostrar.length ? `<ul class="pv-itens">${mostrar.map((i) => `<li><span class="pv-tipo ${i.tipo === "Serviço" ? "srv" : "mat"}">${i.tipo}</span><span class="pv-nome">${esc(i.nome)}</span><span class="pv-valor">${fmt(i.valor)}</span></li>`).join("")}</ul>
+      ${itens.length > mostrar.length ? `<div class="pv-mais">+ ${itens.length - mostrar.length} item(ns)</div>` : ""}` : ""}
+    ${chips.length ? `<div class="pv-chips">${chips.map((c) => `<span>${c}</span>`).join("")}</div>` : ""}
   `;
   preview.classList.add("visivel");
 }
+
+// Lista de orçamentos no seletor. Os orçamentos chegam do servidor
+// depois que a página abre — por isso a lista é refeita quando eles
+// chegam (antes, num aparelho novo, o seletor ficava vazio).
+function preencherSelectPropostasApres(select) {
+  const atual = select.value;
+  select.querySelectorAll("option:not([value=''])").forEach((o) => o.remove());
+  lerPropostas()
+    .slice().sort((a, b) => String(b.criadoEm || "").localeCompare(String(a.criadoEm || "")))
+    .forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `${p.numeroOrcamento ? "Nº " + p.numeroOrcamento + " — " : ""}${p.cliente || "(sem cliente)"} — ${p.servico || "(sem serviço)"}`;
+      select.appendChild(opt);
+    });
+  select.value = atual;
+}
+document.addEventListener("propostas-carregadas", () => {
+  document.querySelectorAll(".campo-select-proposta-existente").forEach(preencherSelectPropostasApres);
+});
 
 function criarBlocoProposta() {
   const template = document.getElementById("templateBlocoProposta");
@@ -141,12 +184,7 @@ function criarBlocoProposta() {
   bloco.dataset.blocoId = id;
 
   const selectExistente = bloco.querySelector(".campo-select-proposta-existente");
-  lerPropostas().forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = `${p.cliente || "(sem cliente)"} — ${p.servico || "(sem serviço)"}`;
-    selectExistente.appendChild(opt);
-  });
+  preencherSelectPropostasApres(selectExistente);
 
   selectExistente.addEventListener("change", () => {
     const proposta = buscarProposta(selectExistente.value);
@@ -156,7 +194,10 @@ function criarBlocoProposta() {
 
     if (proposta) {
       if (!campoNomeServico.value.trim()) campoNomeServico.value = proposta.servico || "";
-      if (proposta.formaPagamento && !campoFormaPagamento.value.trim()) campoFormaPagamento.value = proposta.formaPagamento;
+      if (!campoFormaPagamento.value.trim()) {
+        const txtPag = typeof linhasCondicaoPagamento === "function" ? linhasCondicaoPagamento(proposta, true).join(" ") : proposta.formaPagamento;
+        if (txtPag) campoFormaPagamento.value = txtPag;
+      }
       if (proposta.planejamentoDias && !campoProgramacao.value.trim()) campoProgramacao.value = `${proposta.planejamentoDias} dias úteis`;
 
       // Se o nome do cliente lá em cima ainda estiver vazio, aproveita
@@ -448,6 +489,154 @@ async function gerarPdfApresentacao(dados) {
       }
     }
 
+
+    // ── Orçamento dentro da apresentação: cartão com cabeçalho escuro,
+    // dados do cliente em duas colunas, uma tabela só com Tipo
+    // (Serviço/Material), totais em três blocos e um quadro de
+    // observações gerais (prazo, início, validade). ──────────────
+    function desenharOrcamentoNaApresentacao(p, item) {
+      const W = PW - ML - MR;
+      const ESC = [38, 38, 38];
+      const CINZA_TXT = [110, 110, 110];
+      garantirEspaco(120);
+
+      // Cabeçalho do cartão
+      doc.setFillColor(...ESC);
+      doc.roundedRect(ML, y, W, 46, 6, 6, "F");
+      doc.setFillColor(...LARANJA);
+      doc.rect(ML, y + 40, W, 6, "F");
+      doc.setTextColor(255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(`Orçamento ${p.numeroOrcamento ? "nº " + p.numeroOrcamento : ""}`.trim(), ML + 16, y + 26);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      const dataOrc = new Date(p.criadoEm || Date.now()).toLocaleDateString("pt-BR");
+      doc.text(`Emitido em ${dataOrc}`, ML + W - 16, y + 20, { align: "right" });
+      if (typeof nomeResponsavelProposta === "function" && nomeResponsavelProposta(p)) {
+        doc.text(`Responsável: ${nomeResponsavelProposta(p)}`, ML + W - 16, y + 32, { align: "right" });
+      }
+      doc.setTextColor(0);
+      y += 60;
+
+      // Dados do cliente (duas colunas)
+      const pares = [
+        ["CLIENTE", p.cliente], ["TELEFONE", p.telefone],
+        ["ENDEREÇO", p.local], ["LOCAL", p.localDescricao],
+      ].filter(([, v]) => (v || "").trim());
+      const colW = W / 2;
+      for (let i = 0; i < pares.length; i += 2) {
+        garantirEspaco(30);
+        [pares[i], pares[i + 1]].forEach((par, j) => {
+          if (!par) return;
+          const x = ML + j * colW;
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(7.5);
+          doc.setTextColor(...CINZA_TXT);
+          doc.text(par[0], x, y);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          doc.setTextColor(0);
+          doc.text(doc.splitTextToSize(String(par[1]), colW - 12)[0], x, y + 12);
+        });
+        y += 28;
+      }
+      if ((p.servico || "").trim()) {
+        garantirEspaco(30);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...CINZA_TXT);
+        doc.text("SERVIÇO", ML, y);
+        doc.setTextColor(0);
+        y += 12;
+        paragrafo(p.servico, { tamanho: 10, espacoDepois: 6 });
+      }
+
+      // Tabela única: serviços e materiais
+      const fmt = (v) => formatarMoedaApres(v);
+      const corpo = [];
+      (p.itensMaoDeObra || []).forEach((it) => corpo.push(["Serviço", it.descricao || "", it.unid || "", String(it.qtd || "").replace(".", ","),
+        it.valorUnit ? fmt(Number(it.valorUnit)) : "-", fmt(valorFinalItemApres(it))]));
+      (p.itensMateriais || []).forEach((it) => corpo.push(["Material", it.nome || "", it.unid || "", String(it.qtd || "").replace(".", ","),
+        it.valorUnit ? fmt(Number(it.valorUnit)) : "-", fmt(valorFinalItemApres(it))]));
+      if (corpo.length) {
+        doc.autoTable({
+          startY: y,
+          head: [["Tipo", "Descrição", "Unid.", "Qtd", "Valor Unit.", "Total"]],
+          body: corpo,
+          margin: { left: ML, right: MR },
+          styles: { fontSize: 8.5, cellPadding: 5, lineColor: [235, 235, 235], lineWidth: 0.5, textColor: [30, 30, 30] },
+          headStyles: { fillColor: ESC, textColor: 255, fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [250, 247, 242] },
+          columnStyles: { 0: { cellWidth: 52, fontStyle: "bold" }, 2: { cellWidth: 38, halign: "center" }, 3: { cellWidth: 34, halign: "center" },
+            4: { cellWidth: 70, halign: "right" }, 5: { cellWidth: 76, halign: "right" } },
+          didParseCell: (d) => {
+            if (d.section === "body" && d.column.index === 0) {
+              d.cell.styles.textColor = d.cell.raw === "Serviço" ? [180, 110, 10] : [43, 108, 176];
+            }
+          },
+          theme: "grid",
+        });
+        y = doc.lastAutoTable.finalY + 14;
+      }
+
+      // Totais em três blocos
+      const temCore = typeof totalMaoDeObra === "function";
+      const tMO = temCore ? totalMaoDeObra(p) : totalListaApres(p.itensMaoDeObra);
+      const tMat = temCore ? totalMateriais(p) : totalListaApres(p.itensMateriais);
+      const desc = temCore ? descontoMaoDeObra(p) + descontoMateriais(p) : 0;
+      garantirEspaco(70);
+      const gap = 10;
+      const tileW = (W - gap * 2) / 3;
+      const tiles = [["Serviços", tMO, false], ["Materiais", tMat, false], ["Total", tMO + tMat, true]];
+      tiles.forEach(([rot, val, destaque], i) => {
+        const x = ML + i * (tileW + gap);
+        if (destaque) doc.setFillColor(...LARANJA); else doc.setFillColor(246, 246, 246);
+        doc.roundedRect(x, y, tileW, 48, 6, 6, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(...(destaque ? [255, 255, 255] : CINZA_TXT));
+        doc.text(rot.toUpperCase(), x + 12, y + 16);
+        doc.setFontSize(destaque ? 15 : 13);
+        doc.setTextColor(...(destaque ? [255, 255, 255] : [30, 30, 30]));
+        doc.text(fmt(val), x + 12, y + 36);
+      });
+      doc.setTextColor(0);
+      y += 58;
+      if (desc > 0) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(176, 58, 46);
+        doc.text(`Desconto já aplicado: ${fmt(desc)}`, ML + W, y, { align: "right" });
+        doc.setTextColor(0);
+        y += 14;
+      }
+
+      // Observações gerais
+      const obs = [];
+      if (p.planejamentoDias || item.programacao) obs.push(`Prazo de execução: ${item.programacao || p.planejamentoDias + " dias úteis"}.`);
+      obs.push("Início após formalização de contrato e assinatura.");
+      if (p.validadeDias) obs.push(`Proposta válida por ${p.validadeDias} dias.`);
+      if ((p.observacao || "").trim()) obs.push(p.observacao.trim());
+      const linhasObs = obs.flatMap((t) => doc.splitTextToSize(t, W - 28));
+      const altObs = 30 + linhasObs.length * 12;
+      garantirEspaco(altObs + 10);
+      doc.setFillColor(255, 247, 234);
+      doc.setDrawColor(...LARANJA);
+      doc.setLineWidth(0.8);
+      doc.roundedRect(ML, y, W, altObs, 6, 6, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(160, 95, 5);
+      doc.text("Observações gerais", ML + 14, y + 18);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60);
+      linhasObs.forEach((l, i) => doc.text(l, ML + 14, y + 32 + i * 12));
+      doc.setTextColor(0);
+      y += altObs + 16;
+    }
+
     // ── Página 1: Capa ──────────────────────────────────────────
     // Logo redondo grande, centralizado, igual ao modelo original.
     try {
@@ -594,46 +783,7 @@ async function gerarPdfApresentacao(dados) {
       tituloSecao(`${i + 1}° Serviço — ${item.nomeServico || "(sem nome)"}`);
 
       if (item.proposta) {
-        const p = item.proposta;
-        const corpoMO = (p.itensMaoDeObra || []).map((it) => [
-          it.qtd || "", it.unid || "", it.descricao || "", formatarMoedaApres(it.valorUnit), formatarMoedaApres(valorFinalItemApres(it)),
-        ]);
-        const corpoMat = (p.itensMateriais || []).map((it) => [
-          it.qtd || "", it.unid || "", it.nome || "", formatarMoedaApres(it.valorUnit), formatarMoedaApres(valorFinalItemApres(it)),
-        ]);
-
-        if (corpoMO.length) {
-          doc.autoTable({
-            startY: y,
-            head: [["Qtd", "Unid.", "Mão de obra", "Valor Unit.", "Total"]],
-            body: corpoMO,
-            margin: { left: ML, right: MR },
-            styles: { fontSize: 8.5, cellPadding: 5, lineColor: CINZA_LINHA, lineWidth: 0.5 },
-            headStyles: { fillColor: LARANJA, textColor: 255, fontStyle: "bold" },
-            theme: "striped",
-          });
-          y = doc.lastAutoTable.finalY + 10;
-        }
-        if (corpoMat.length) {
-          garantirEspaco(60);
-          doc.autoTable({
-            startY: y,
-            head: [["Qtd", "Unid.", "Material", "Valor Unit.", "Total"]],
-            body: corpoMat,
-            margin: { left: ML, right: MR },
-            styles: { fontSize: 8.5, cellPadding: 5, lineColor: CINZA_LINHA, lineWidth: 0.5 },
-            headStyles: { fillColor: LARANJA, textColor: 255, fontStyle: "bold" },
-            theme: "striped",
-          });
-          y = doc.lastAutoTable.finalY + 10;
-        }
-
-        const totalGeralItem = totalListaApres(p.itensMaoDeObra) + totalListaApres(p.itensMateriais);
-        garantirEspaco(20);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
-        doc.text(`Total: ${formatarMoedaApres(totalGeralItem)}`, PW - MR, y, { align: "right" });
-        y += 20;
+        desenharOrcamentoNaApresentacao(item.proposta, item);
       } else {
         paragrafo("(Item preenchido manualmente, sem tabela de valores vinculada.)", { espacoDepois: 10 });
       }

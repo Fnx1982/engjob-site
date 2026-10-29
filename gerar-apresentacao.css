@@ -224,3 +224,32 @@
 .btn-baixar-apres { color: #1c8a4b; border-color: #1c8a4b; }
 .btn-editar-apres { color: #eb991c; border-color: #eb991c; }
 .btn-excluir-apres { color: #dc143c; border-color: #dc143c; }
+/* ===== Cartão do orçamento escolhido (prévia) ===== */
+.preview-itens-proposta.visivel { display: block; padding: 0 !important; border: none !important; background: none !important; }
+.preview-itens-proposta .pv-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  background: #262626; color: #fff; border-radius: 12px 12px 0 0; padding: 14px 16px; border-bottom: 5px solid #EB991C; }
+.pv-numero { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #f3c477; font-weight: 700; }
+.pv-cliente { font-size: 16px; font-weight: 700; margin-top: 2px; }
+.pv-endereco { font-size: 12px; color: #ccc; margin-top: 3px; }
+.pv-status { font-size: 11px; font-weight: 700; background: rgba(255,255,255,.12); border-radius: 20px; padding: 3px 10px; white-space: nowrap; }
+.pv-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; background: #fff; border: 1px solid #eee; border-top: none; }
+.pv-tile { background: #f6f6f6; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.pv-tile span { font-size: 10.5px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .04em; }
+.pv-tile b { font-size: 16px; color: #222; }
+.pv-tile small { font-size: 11px; color: #999; }
+.pv-tile.pv-total { background: #EB991C; }
+.pv-tile.pv-total span, .pv-tile.pv-total small { color: rgba(255,255,255,.85); }
+.pv-tile.pv-total b { color: #fff; font-size: 18px; }
+.pv-itens { list-style: none; margin: 0; padding: 4px 12px 8px; background: #fff; border: 1px solid #eee; border-top: none; }
+.pv-itens li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #eee; font-size: 13px; }
+.pv-itens li:last-child { border-bottom: none; }
+.pv-tipo { font-size: 10px; font-weight: 700; border-radius: 10px; padding: 1px 8px; flex: 0 0 auto; }
+.pv-tipo.srv { color: #B26A00; background: #FFF3DC; }
+.pv-tipo.mat { color: #1D5FB4; background: #E3EEFB; }
+.pv-nome { flex: 1; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-valor { font-weight: 600; color: #222; }
+.pv-mais { font-size: 12px; color: #888; padding: 0 12px 8px; background: #fff; border: 1px solid #eee; border-top: none; }
+.pv-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; background: #fffaf2; border: 1px solid #eee; border-top: none; border-radius: 0 0 12px 12px; }
+.pv-chips span { font-size: 12px; background: #fff; border: 1px solid #f0d9b0; border-radius: 20px; padding: 3px 10px; color: #7a5a20; }
+.pv-itens:last-child, .pv-mais:last-child, .pv-tiles:last-child { border-radius: 0 0 12px 12px; }
+@media (max-width: 600px) { .pv-tiles { grid-template-columns: 1fr; } }
