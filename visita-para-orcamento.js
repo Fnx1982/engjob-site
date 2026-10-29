@@ -5,7 +5,7 @@
 //   Endereço  ← endereço, bairro e cidade da visita
 //   Local     ← "Local / bloco / referência" da visita
 //   Serviço   ← descritivo da visita (vai pro cliente)
-//   Dados da visita (interno) ← medidas + descritivo + anotações
+//   Dados da visita (interno) ← só as medidas
 //                               (só no PDF interno, nunca no do cliente)
 //   Observação ← vazia (só o que a pessoa escrever pro cliente)
 // ============================================================
@@ -36,11 +36,9 @@ function textoMedidasDaVisita(medidas) {
   return `MEDIDAS DA VISITA:\n${linhas.join("\n")}\nTotal: ${total}`;
 }
 function montarOrcamentoDaVisita(v) {
-  const interno = [
-    textoMedidasDaVisita(v.medidas),
-    (v.descricao || "").trim() ? `DESCRITIVO DA VISITA:\n${v.descricao.trim()}` : "",
-    (v.anotacoes || "").trim() ? `ANOTAÇÕES DA VISITA:\n${v.anotacoes.trim()}` : "",
-  ].filter(Boolean).join("\n\n");
+  // Só as medidas: o descritivo já vai no "Serviço", e as anotações
+  // ficam no quadro de fotos da visita (canto da tela).
+  const interno = textoMedidasDaVisita(v.medidas);
   return {
     cliente: v.clienteNome || "",
     telefone: v.telefone || "",

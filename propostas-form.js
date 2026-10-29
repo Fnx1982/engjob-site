@@ -131,8 +131,8 @@ function montarModalFormularioProposta() {
           <label class="campo-largura-total"><span class="rotulo-com-opcional">Observação para o cliente <span class="texto-opcional-inline">opcional — sai no PDF do cliente</span></span>
             <textarea id="campoObservacao" rows="2" placeholder="Só o que o cliente deve ler..."></textarea>
           </label>
-          <label class="campo-largura-total campo-interno-visita"><span class="rotulo-com-opcional">Dados da visita <span class="tag-interno">só empresa</span> <span class="texto-opcional-inline">medidas, descrição e anotações — só no PDF interno</span></span>
-            <textarea id="campoDadosVisitaInterno" rows="4" placeholder="Medidas tiradas no local, anotações da visita..."></textarea>
+          <label class="campo-largura-total campo-interno-visita"><span class="rotulo-com-opcional">Dados da visita <span class="tag-interno">só empresa</span> <span class="texto-opcional-inline">medidas tiradas no local — só no PDF interno</span></span>
+            <textarea id="campoDadosVisitaInterno" rows="4" placeholder="Medidas tiradas no local..."></textarea>
           </label>
         </div>
       </div>
@@ -161,21 +161,15 @@ function montarModalFormularioProposta() {
         <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
           <div>Subtotal M.O.: <span id="subtotalMaoDeObraTexto">R$ 0,00</span></div>
           <div class="linha-desconto">
-            <label>Desconto M.O.</label>
+            <label for="descontoMaoDeObra">Desconto M.O. <span class="valor-desconto" id="descontoTextoMaoDeObra"></span></label>
             <input type="text" inputmode="decimal" id="descontoMaoDeObra" placeholder="0" />
             <select id="descontoTipoMaoDeObra" title="Desconto em reais ou em porcentagem">
               <option value="rs">R$</option>
               <option value="pct">%</option>
             </select>
-            <span class="valor-desconto" id="descontoTextoMaoDeObra"></span>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
-            <label style="font-weight:600;font-size:13px;margin:0;">Ajuste M.O.
-              <span style="font-weight:normal;font-size:11px;color:#888;">(acréscimo= positivo, abatimento= negativo)</span>
-            </label>
-            <input type="number" id="ajusteMaoDeObra" step="0.01" placeholder="0,00"
-              style="width:130px;padding:7px 10px;border-radius:6px;border:1px solid #ccc;font-family:inherit;font-size:14px;text-align:right;" />
-          </div>
+          <input type="hidden" id="ajusteMaoDeObra" />
+          <div class="aviso-acrescimo-antigo" id="avisoAjusteMaoDeObra" style="display:none;"></div>
           <div style="font-size:16px;font-weight:700;">Total M.O.: <span id="totalMaoDeObraTexto">R$ 0,00</span></div>
         </div>
       </div>
@@ -204,21 +198,15 @@ function montarModalFormularioProposta() {
         <div class="linha-total-secao" style="flex-direction:column;align-items:flex-end;gap:6px;">
           <div>Subtotal Materiais: <span id="subtotalMateriaisTexto">R$ 0,00</span></div>
           <div class="linha-desconto">
-            <label>Desconto Materiais</label>
+            <label for="descontoMateriais">Desconto Materiais <span class="valor-desconto" id="descontoTextoMateriais"></span></label>
             <input type="text" inputmode="decimal" id="descontoMateriais" placeholder="0" />
             <select id="descontoTipoMateriais" title="Desconto em reais ou em porcentagem">
               <option value="rs">R$</option>
               <option value="pct">%</option>
             </select>
-            <span class="valor-desconto" id="descontoTextoMateriais"></span>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;font-size:14px;">
-            <label style="font-weight:600;font-size:13px;margin:0;">Ajuste Materiais
-              <span style="font-weight:normal;font-size:11px;color:#888;">(acréscimo= positivo, abatimento= negativo)</span>
-            </label>
-            <input type="number" id="ajusteMateriais" step="0.01" placeholder="0,00"
-              style="width:130px;padding:7px 10px;border-radius:6px;border:1px solid #ccc;font-family:inherit;font-size:14px;text-align:right;" />
-          </div>
+          <input type="hidden" id="ajusteMateriais" />
+          <div class="aviso-acrescimo-antigo" id="avisoAjusteMateriais" style="display:none;"></div>
           <div style="font-size:16px;font-weight:700;">Total Materiais: <span id="totalMateriaisTexto">R$ 0,00</span></div>
         </div>
       </div>
@@ -333,14 +321,12 @@ function montarModalFormularioProposta() {
   });
   document.getElementById("campoTelefone").addEventListener("input", aplicarMascaraTelefoneProposta);
   document.getElementById("campoDocumentoCliente").addEventListener("blur", formatarDocumentoClienteOrcamento);
-  document.getElementById("ajusteMaoDeObra").addEventListener("input", atualizarTotaisFormulario);
   ["descontoMaoDeObra", "descontoTipoMaoDeObra", "descontoMateriais", "descontoTipoMateriais",
    "campoEntradaPerc", "campoParcelas", "campoPrazosParcelas"].forEach((idCampo) => {
     const el = document.getElementById(idCampo);
     el.addEventListener("input", atualizarTotaisFormulario);
     el.addEventListener("change", atualizarTotaisFormulario);
   });
-  document.getElementById("ajusteMateriais").addEventListener("input", atualizarTotaisFormulario);
   document.getElementById("campoCliente").addEventListener("change", tentarAutopreencherClienteOrcamento);
   limparErroAoEditar(document.getElementById("campoCliente"));
 
@@ -564,8 +550,25 @@ async function abrirFormularioProposta(id, onSalvar, dadosPreenchidos, rascunhoI
   // Preenche ajustes salvos (ou zera se for nova proposta)
   const ajusteMOEl = document.getElementById("ajusteMaoDeObra");
   const ajusteMatEl = document.getElementById("ajusteMateriais");
-  if (ajusteMOEl) ajusteMOEl.value = propostaEmEdicao.ajusteMaoDeObra || "";
-  if (ajusteMatEl) ajusteMatEl.value = propostaEmEdicao.ajusteMateriais || "";
+  // O "Ajuste" saiu da tela (agora é só Desconto). Orçamento antigo com
+  // ajuste negativo vira desconto em R$; ajuste positivo (acréscimo)
+  // continua valendo e aparece só como aviso, pra não mudar o total.
+  [["MaoDeObra", ajusteMOEl], ["Materiais", ajusteMatEl]].forEach(([suf, el]) => {
+    let aj = parseFloat(propostaEmEdicao["ajuste" + suf]) || 0;
+    if (aj < 0 && !(Number(propostaEmEdicao["desconto" + suf]) > 0)) {
+      propostaEmEdicao["desconto" + suf] = Math.abs(aj);
+      propostaEmEdicao["descontoTipo" + suf] = "rs";
+      document.getElementById("desconto" + suf).value = String(Math.abs(aj)).replace(".", ",");
+      document.getElementById("descontoTipo" + suf).value = "rs";
+      aj = 0;
+    }
+    if (el) el.value = aj || "";
+    const aviso = document.getElementById("avisoAjuste" + suf);
+    if (aviso) {
+      aviso.style.display = aj ? "" : "none";
+      aviso.textContent = aj ? `Acréscimo de orçamento antigo: ${aj > 0 ? "+" : "-"} R$ ${formatarMoeda(Math.abs(aj))}` : "";
+    }
+  });
 
   atualizarTotaisFormulario();
 }
@@ -1074,9 +1077,9 @@ function atualizarTotaisFormulario() {
   const totalMat    = subtotalMat - descMat + ajusteMat;
   const totalGeral  = totalMO + totalMat;
   const txtDescMO = document.getElementById("descontoTextoMaoDeObra");
-  if (txtDescMO) txtDescMO.textContent = descMO ? `- R$ ${formatarMoeda(descMO)}` : "";
+  if (txtDescMO) txtDescMO.textContent = descMO ? `(− R$ ${formatarMoeda(descMO)})` : "";
   const txtDescMat = document.getElementById("descontoTextoMateriais");
-  if (txtDescMat) txtDescMat.textContent = descMat ? `- R$ ${formatarMoeda(descMat)}` : "";
+  if (txtDescMat) txtDescMat.textContent = descMat ? `(− R$ ${formatarMoeda(descMat)})` : "";
   const previa = document.getElementById("previaPagamento");
   if (previa) {
     const linhas = linhasCondicaoPagamento({ ...propostaEmEdicao, _totalForcado: totalGeral }, true);
